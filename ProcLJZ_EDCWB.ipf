@@ -16,9 +16,6 @@
 //    - fitmeta 文本主存储
 // ============================================================================
 
-#pragma TextEncoding = "UTF-8"
-#pragma rtGlobals=3
-
 Menu "ARPES_LJZ"
     "EDC Fit Panel", EDCFit_LJZ()
 End
@@ -32,7 +29,121 @@ End
 //    3) 若你已加入 EDCWB，则可用 Open EDCWB
 // ============================================================================
 
+// ============================================================================
+//  Section 0. Shared path helpers
+// ============================================================================
 
+Function/S LJZ_EDCWB_BaseDF()
+    return "root:Packages:ARPES_LJZ:EDCWB"
+End
+
+Function/S LJZ_EDCWB_NormDFPath(df)
+    String df
+
+    if (strlen(df) == 0)
+        return ""
+    endif
+
+    df = RemoveEnding(df, ":") + ":"
+    if (!DataFolderExists(df))
+        return ""
+    endif
+
+    return df
+End
+
+Function/S LJZ_EDCWB_WaveNameFromPath(wPath)
+    String wPath
+
+    Variable p
+    p = strsearch(wPath, ":", Inf)
+    if (p < 0)
+        return ""
+    endif
+
+    return wPath[p + 1, Inf]
+End
+
+
+Function/S EDCFIT_MakeRunDFName(w, kStart, kEnd, tag)
+    Wave w
+    Variable kStart, kEnd
+    String tag
+
+    String nm = CleanupName(NameOfWave(w), 0)
+    return "root:ARPES_LJZ:EDCFit:" + nm + "_RUN_" + tag + "_k" + Num2Str(kStart) + "2" + Num2Str(kEnd) + ":"
+End
+
+Function/S LJZ_EDCWB_WaveDFFromPath(wPath)
+    String wPath
+
+    Variable p
+    p = strsearch(wPath, ":", Inf)
+    if (p < 0)
+        return ""
+    endif
+
+    return wPath[0, p]
+End
+
+Function LJZ_EDCWB_Is1DWave(w)
+    Wave/Z w
+
+    if (!WaveExists(w))
+        return 0
+    endif
+
+    if (DimSize(w, 1) > 0 || DimSize(w, 2) > 0 || DimSize(w, 3) > 0)
+        return 0
+    endif
+
+    return 1
+End
+
+Function LJZ_EDCWB_EnsureNumWaveLen12(w, fillVal)
+    Wave w
+    Variable fillVal
+
+    Variable oldN = numpnts(w)
+    if (oldN != 12)
+        Redimension/N=12 w
+        if (oldN < 12)
+            w[oldN, 11] = fillVal
+        endif
+    endif
+
+    return 0
+End
+
+Function LJZ_EDCWB_EnsureTextWaveLen12(w, fillStr)
+    Wave/T w
+    String fillStr
+
+    Variable oldN = numpnts(w)
+    if (oldN != 12)
+        Redimension/N=12 w
+        if (oldN < 12)
+            w[oldN, 11] = fillStr
+        endif
+    endif
+
+    return 0
+End
+
+Function LJZ_EDCWB_EnsureNumWaveLen16(w, fillVal)
+    Wave w
+    Variable fillVal
+
+    Variable oldN = numpnts(w)
+    if (oldN != 16)
+        Redimension/N=16 w
+        if (oldN < 16)
+            w[oldN, 15] = fillVal
+        endif
+    endif
+
+    return 0
+End
 // ============================================================================
 //  Section 0. Base state
 // ============================================================================
@@ -110,6 +221,81 @@ Function LJZ_EnsureEDCFitDF()
     if (!WaveExists(wSel))
         Make/O/N=0 root:ARPES_LJZ:EDCFit:LB_Sel = 0
     endif
+    NVAR/Z SmEnable = root:ARPES_LJZ:EDCFit:SmEnable
+    if (!NVAR_Exists(SmEnable))
+        Variable/G root:ARPES_LJZ:EDCFit:SmEnable = 1
+    endif
+
+    NVAR/Z SmMethod = root:ARPES_LJZ:EDCFit:SmMethod
+    if (!NVAR_Exists(SmMethod))
+        Variable/G root:ARPES_LJZ:EDCFit:SmMethod = 1
+    endif
+
+    NVAR/Z SmN = root:ARPES_LJZ:EDCFit:SmN
+    if (!NVAR_Exists(SmN))
+        Variable/G root:ARPES_LJZ:EDCFit:SmN = 11
+    endif
+
+    NVAR/Z SmN2 = root:ARPES_LJZ:EDCFit:SmN2
+    if (!NVAR_Exists(SmN2))
+        Variable/G root:ARPES_LJZ:EDCFit:SmN2 = 7
+    endif
+
+    NVAR/Z SmS = root:ARPES_LJZ:EDCFit:SmS
+    if (!NVAR_Exists(SmS))
+        Variable/G root:ARPES_LJZ:EDCFit:SmS = 4
+    endif
+
+    NVAR/Z SmCutoff = root:ARPES_LJZ:EDCFit:SmCutoff
+    if (!NVAR_Exists(SmCutoff))
+        Variable/G root:ARPES_LJZ:EDCFit:SmCutoff = 0.18
+    endif
+    return 0
+End
+
+Function EDCFIT_ApplySmoothing_All(runDF)
+    String runDF
+
+    NVAR SmEnable = root:ARPES_LJZ:EDCFit:SmEnable
+    NVAR SmMethod = root:ARPES_LJZ:EDCFit:SmMethod
+    NVAR SmN      = root:ARPES_LJZ:EDCFit:SmN
+    NVAR SmN2     = root:ARPES_LJZ:EDCFit:SmN2
+    NVAR SmS      = root:ARPES_LJZ:EDCFit:SmS
+    NVAR SmCutoff = root:ARPES_LJZ:EDCFit:SmCutoff
+
+    Variable t = 0
+    do
+        Wave/Z raw = $(runDF + "edc_raw_" + num2str(t))
+        if (!WaveExists(raw))
+            break
+        endif
+
+        Duplicate/O raw, $(runDF + "edc_show_" + num2str(t))
+        Wave sh = $(runDF + "edc_show_" + num2str(t))
+
+        if (SmEnable)
+            Variable n1 = max(3, round(SmN))
+            Variable n2 = max(3, round(SmN2))
+
+            if (SmMethod == 1)
+                Smooth n1, sh
+                if (SmN2 >= 3)
+                    Smooth n2, sh
+                endif
+            elseif (SmMethod == 2)
+                Variable sg = (SmS <= 2) ? 2 : 4
+                Smooth/S=(sg) n1, sh
+                if (SmN2 >= 3)
+                    Smooth/S=(sg) n2, sh
+                endif
+            elseif (SmMethod == 3)
+                Variable fc = min(max(SmCutoff, 0.001), 0.499)
+                Smooth/BLPF fc, sh
+            endif
+        endif
+
+        t += 1
+    while (1)
 
     return 0
 End
@@ -345,7 +531,7 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
     Variable kEnd   = max(0, min(nK - 1, max(Kindex, Kxe)))
     Variable nAvg   = kEnd - kStart + 1
 
-    String runDF = LJZ_MakeRunDFName(w, kStart, kEnd, "EDC")
+    String runDF = EDCFIT_MakeRunDFName(w, kStart, kEnd, "EDC")
     NewDataFolder/O $(RemoveEnding(runDF, ":"))
     SetDataFolder $(RemoveEnding(runDF, ":"))
 
@@ -363,7 +549,7 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
     endfor
 
     SetDataFolder root:
-    LJZ_ApplySmoothing_All(runDF)
+    EDCFIT_ApplySmoothing_All(runDF)
 
     SVAR bn = root:ARPES_LJZ:EDCFit:gBaseName
     String bnTag = bn
@@ -407,7 +593,50 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
 
     return 0
 End
+Function EDCFIT_ReShowCurrentEDC()
+    LJZ_EnsureEDCFitDF()
 
+    SVAR runDF = root:ARPES_LJZ:EDCFit:RunDF
+    NVAR evary = root:ARPES_LJZ:EDCFit:evary
+    if (strlen(runDF) == 0)
+        return -1
+    endif
+
+    EDCFIT_ApplySmoothing_All(runDF)
+
+    SVAR bn = root:ARPES_LJZ:EDCFit:gBaseName
+    String bnTag = bn
+    if (strlen(bnTag) == 0)
+        bnTag = runDF
+    endif
+
+    String wNameBase = "EDC_Overlapping_" + CleanupName(bnTag, 0)
+    KillWindow/Z $wNameBase
+
+    SetDataFolder $(RemoveEnding(runDF, ":"))
+
+    Variable t = 0
+    do
+        Wave/Z sh = $("edc_show_" + num2str(t))
+        if (!WaveExists(sh))
+            break
+        endif
+
+        if (t == 0)
+            Display/N=$wNameBase sh
+            Label left, "Intensity (a.u.)"
+            Label bottom, "Energy"
+        else
+            AppendToGraph sh
+            ModifyGraph offset($NameOfWave(sh)) = {0, t * evary}
+        endif
+
+        t += 1
+    while (1)
+
+    SetDataFolder root:
+    return 0
+End
 
 // ============================================================================
 //  Section 3. Panel
@@ -456,7 +685,24 @@ Function EDCFit_OpenPanel()
 
     Button btShowEDC,pos={240,180},size={120,26},title="Show EDC",proc=EDCFIT_ButtonProc
     Button btOpenWB,pos={240,215},size={120,26},title="Open EDCWB",proc=EDCFIT_ButtonProc
+    CheckBox cbSm,pos={240,255},title="Smooth",variable=root:ARPES_LJZ:EDCFit:SmEnable,proc=EDCFIT_CheckProc
 
+    PopupMenu pmSm,pos={240,285},size={120,20},title="Method"
+    PopupMenu pmSm,mode=2,popvalue="Smooth",value="0:None;1:Smooth;2:SmoothS;3:BLPF;",proc=EDCFIT_PopupProc
+
+    SetVariable svSmN,pos={240,315},size={150,18},title="N1"
+    SetVariable svSmN,variable=root:ARPES_LJZ:EDCFit:SmN,proc=EDCFIT_SetVarProc
+
+    SetVariable svSmN2,pos={240,345},size={150,18},title="N2"
+    SetVariable svSmN2,variable=root:ARPES_LJZ:EDCFit:SmN2,proc=EDCFIT_SetVarProc
+
+    SetVariable svSmS,pos={240,375},size={150,18},title="S"
+    SetVariable svSmS,variable=root:ARPES_LJZ:EDCFit:SmS,proc=EDCFIT_SetVarProc
+
+    SetVariable svCut,pos={240,405},size={150,18},title="cutoff"
+    SetVariable svCut,variable=root:ARPES_LJZ:EDCFit:SmCutoff,proc=EDCFIT_SetVarProc
+
+    Button btReShowEDC,pos={240,445},size={120,24},title="ReShow EDC",proc=EDCFIT_ButtonProc
     TitleBox tbSel,pos={10,292},size={390,40},title="Selected Wave: "
     TitleBox tbRun,pos={10,342},size={390,60},title="RunDF: "
 
@@ -499,7 +745,10 @@ Function EDCFIT_ButtonProc(ba) : ButtonControl
         EDCFIT_RefreshTitleBoxes()
         return 0
     endif
-
+    if (CmpStr(ctrlName, "btReShowEDC") == 0)
+        EDCFIT_ReShowCurrentEDC()
+        return 0
+    endif
     if (CmpStr(ctrlName, "btShowEDC") == 0)
         EDCPF_ShowEDC_LJZ(ctrlName)
         EDCFIT_RefreshTitleBoxes()
@@ -518,6 +767,25 @@ Function EDCFIT_ButtonProc(ba) : ButtonControl
     return 0
 End
 
+Function EDCFIT_PopupProc(pa) : PopupMenuControl
+    STRUCT WMPopupAction &pa
+
+    if (pa.eventCode != 2)
+        return 0
+    endif
+
+    String ctrlName = pa.ctrlName
+    String popStr   = pa.popStr
+
+    if (CmpStr(ctrlName, "pmSm") == 0)
+        NVAR SmMethod = root:ARPES_LJZ:EDCFit:SmMethod
+        SmMethod = str2num(StringFromList(0, popStr, ":"))
+        EDCFIT_ReShowCurrentEDC()
+        return 0
+    endif
+
+    return 0
+End
 Function EDCFIT_SetVarProc(sva) : SetVariableControl
     STRUCT WMSetVariableAction &sva
 
@@ -532,7 +800,11 @@ Function EDCFIT_SetVarProc(sva) : SetVariableControl
         EDCFIT_RefreshTitleBoxes()
         return 0
     endif
-
+    if ((CmpStr(ctrlName, "svSmN") == 0) || (CmpStr(ctrlName, "svSmN2") == 0) || (CmpStr(ctrlName, "svSmS") == 0) || (CmpStr(ctrlName, "svCut") == 0) || (CmpStr(ctrlName, "svEvary") == 0))
+        EDCFIT_ReShowCurrentEDC()
+        EDCFIT_RefreshTitleBoxes()
+        return 0
+    endif
     if ((CmpStr(ctrlName, "svK0") == 0) || (CmpStr(ctrlName, "svK1") == 0) || (CmpStr(ctrlName, "svEvary") == 0) || (CmpStr(ctrlName, "svBaseName") == 0))
         EDCFIT_RefreshTitleBoxes()
         return 0
@@ -555,7 +827,10 @@ Function EDCFIT_CheckProc(cba) : CheckBoxControl
         EDCFIT_RefreshTitleBoxes()
         return 0
     endif
-
+    if (CmpStr(ctrlName, "cbSm") == 0)
+        EDCFIT_ReShowCurrentEDC()
+        return 0
+    endif
     return 0
 End
 
@@ -3848,7 +4123,7 @@ Function LJZ_EDCWB_SaveFitResultSinglePeak(srcWavePath, wCoefActive, wSigmaActiv
     if (LJZ_EDCWB_GetLastFitROIRange(iLo, iHi) == 0)
         fitinfo16[LJZ_EDCWB_FI_NROI()] = iHi - iLo + 1
     endif
-
+    Variable V_chisq
     fitinfo16[LJZ_EDCWB_FI_ChiSq()] = V_chisq
 
     LJZ_EDCWB_SaveFitCurve(srcWavePath, fitFull, resFull)
@@ -3920,7 +4195,7 @@ Function LJZ_EDCWB_DoFitSinglePeak(srcWavePath)
     endif
     Wave sigmaActive = $(LJZ_EDCWB_TmpDF() + ":sigmaActive")
 
-    Variable fitOK = 1
+    Variable fitOK = 1,V_FitError
     if (V_FitError != 0)
         fitOK = 0
     endif
@@ -4121,8 +4396,11 @@ Function LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, wCoefActive, wSigm
     if (LJZ_EDCWB_GetLastFitROIRange(iLo, iHi) == 0)
         fitinfo16[LJZ_EDCWB_FI_NROI()] = iHi - iLo + 1
     endif
+    
+    variable V_chisq
 
     fitinfo16[LJZ_EDCWB_FI_ChiSq()] = V_chisq
+    
 
     LJZ_EDCWB_SaveFitCurve(srcWavePath, fitFull, resFull)
     LJZ_EDCWB_SaveFitVectors(srcWavePath, fitcoef12, fitsigma12, fitinfo16)
@@ -4196,7 +4474,7 @@ Function LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
     endif
     Wave sigmaActive = $(LJZ_EDCWB_TmpDF() + ":sigmaActive")
 
-    Variable fitOK = 1
+    Variable fitOK = 1,V_FitError
     if (V_FitError != 0)
         fitOK = 0
     endif
@@ -4492,7 +4770,7 @@ Function LJZ_EDCWB_RefreshGraph()
         DoWindow/F $g
     endif
 
-    RemoveFromGraph/Z /W=$g /A
+    RemoveFromGraph/Z /W=$g 
 
     if (shRaw)
         Wave/Z w0 = LJZ_EDCWB_GetDisplayRawWave(curPath)
