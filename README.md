@@ -36,6 +36,9 @@ The codebase includes:
 - `ProcLJZ_MDCWB.ipf`  
   MDC Workbench with a more structured engineering-style state-management approach.
 
+- `ProcLJZ_EDCWB.ipf` + `ProcLJZ_EDCWB_Part2.ipf`  
+  EDC Workbench is split into two procedure files: Part 1 (core/runtime state + result-record IO) and Part 2 (model bank, fit engine, panel callbacks, and summary export) to keep each file easier to maintain.
+
 - `ProcLJZ_2025.ipf`  
   A broader collection of earlier utility and display-related functions.
 
