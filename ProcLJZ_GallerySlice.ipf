@@ -1,4 +1,4 @@
-﻿#pragma TextEncoding = "UTF-8"
+#pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3
 
 //============================================================
@@ -188,6 +188,16 @@ Function sg_init_defaults_if_needed()
     SVAR/Z ctMenuList = root:ARPES_LJZ:SliceGallery:ctMenuList
     if (!SVAR_Exists(ctMenuList))
         String/G ctMenuList = "Current"
+    endif
+    
+    Wave/T/Z CT_LB_Items = root:ARPES_LJZ:SliceGallery:CT_LB_Items
+    if (!WaveExists(CT_LB_Items))
+        Make/O/T/N=0 CT_LB_Items
+    endif
+
+    Wave/U/B/Z CT_LB_Sel = root:ARPES_LJZ:SliceGallery:CT_LB_Sel
+    if (!WaveExists(CT_LB_Sel))
+        Make/O/U/B/N=0 CT_LB_Sel
     endif
     
     SVAR/Z previewWinName = root:ARPES_LJZ:SliceGallery:previewWinName
@@ -1314,6 +1324,7 @@ Function sg_sync_panel_from_state()
     // summaries
     TitleBox sg_layers_txt,win=SLICEGALLERY_LJZ_P,title="Layers: " + sg_layers_to_string()
     TitleBox sg_vals_txt,win=SLICEGALLERY_LJZ_P,title="Dim2: " + sg_values_to_string()
+    TitleBox sg_tb_ct_current,win=SLICEGALLERY_LJZ_P,title=sg_ct_display_string()
 
     sg_sync_popup_states()
     return 0
@@ -1377,11 +1388,9 @@ Function sg_sync_popup_states()
         return 0
     endif
     
-    SVAR renderStyle = root:ARPES_LJZ:SliceGallery:renderStyle
+    SVAR renderStyle   = root:ARPES_LJZ:SliceGallery:renderStyle
     SVAR selectionMode = root:ARPES_LJZ:SliceGallery:selectionMode
     SVAR layoutMode    = root:ARPES_LJZ:SliceGallery:layoutMode
-    SVAR ctPick        = root:ARPES_LJZ:SliceGallery:ctPick
-    SVAR ctMenuList    = root:ARPES_LJZ:SliceGallery:ctMenuList
 
     NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
     NVAR labelMode = root:ARPES_LJZ:SliceGallery:labelMode
@@ -1392,12 +1401,6 @@ Function sg_sync_popup_states()
 
     PopupMenu sg_pm_layout,win=SLICEGALLERY_LJZ_P,mode=sg_layout_mode_to_popup(layoutMode)
     PopupMenu sg_pm_layout,win=SLICEGALLERY_LJZ_P,popvalue=layoutMode
-
-    if (WhichListItem(ctPick, ctMenuList, ";", 0, 0) < 0)
-        ctPick = "Current"
-    endif
-    PopupMenu sg_pm_ct,win=SLICEGALLERY_LJZ_P,value=#"root:ARPES_LJZ:SliceGallery:ctMenuList"
-    PopupMenu sg_pm_ct,win=SLICEGALLERY_LJZ_P,popvalue=ctPick
 
     PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,mode=max(1, min(3, colorMode + 1))
     PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,popvalue=sg_color_mode_to_string(colorMode)
@@ -1814,10 +1817,12 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	SetVariable sg_sv_y1,pos={852.00,201.00},size={162.00,19.80},title="yMax"
 	SetVariable sg_sv_y1,value= root:ARPES_LJZ:SliceGallery:yMax
 	GroupBox sg_gb_color,pos={840.00,246.00},size={186.60,174.00},title="Color Settings"
-	PopupMenu sg_pm_ct,pos={852.00,270.60},size={54.60,20.40},proc=sg_pm_ct_proc
-	PopupMenu sg_pm_ct,mode=1,popvalue="Current",value= #"root:ARPES_LJZ:SliceGallery:ctMenuList"
-	Button sg_btn_ctrefresh,pos={939.00,289.80},size={75.00,105.60},proc=sg_btn_refresh_ct_panel,title="Refresh CT"
-	CheckBox sg_ck_lut,pos={852.00,300.60},size={56.40,18.00},title="Use LUT"
+    TitleBox sg_tb_ct_current,pos={852.00,270.60},size={126.00,18.00},title="CT: Current"
+    TitleBox sg_tb_ct_current,frame=0
+
+    Button sg_btn_browse_ct,pos={984.00,267.60},size={30.00,18.60},proc=sg_btn_open_ct_browser,title="..."
+
+    CheckBox sg_ck_lut,pos={852.00,300.60},size={56.40,18.00},title="Use LUT"
 	CheckBox sg_ck_lut,variable= root:ARPES_LJZ:SliceGallery:useLUT
 	PopupMenu sg_pm_color,pos={852.00,330.60},size={78.60,20.40},proc=sg_pm_color_proc
 	PopupMenu sg_pm_color,mode=2,popvalue="SharedAuto",value= #"\"PerPanelAuto;SharedAuto;Manual\""
@@ -2152,7 +2157,88 @@ Function sg_validate_manual_color_range()
     return 0
 End
 
+//============================================================
+// CT snapshot helpers
+// 每张图 / 每个 image 使用自己的 palette 快照
+// 防止后续修改 CTLUZ 当前 palette 时，旧图被联动改色
+//============================================================
 
+Function/S sg_ct_applied_df()
+    ctluz_ensure_folder()
+    NewDataFolder/O root:ARPES_LJZ:CTLUZ:APPLIED
+    return "root:ARPES_LJZ:CTLUZ:APPLIED:"
+End
+
+Function/S sg_ct_snapshot_key(graphName, imageName)
+    String graphName, imageName
+
+    String g = CleanupName(graphName, 0)
+    String im = CleanupName(imageName, 0)
+    String key = g + "__" + im
+    return CleanupName(key, 0)
+End
+
+Function/S sg_ct_snapshot_ct_path(graphName, imageName)
+    String graphName, imageName
+    return sg_ct_applied_df() + sg_ct_snapshot_key(graphName, imageName) + "_ct"
+End
+
+Function/S sg_ct_snapshot_lut_path(graphName, imageName)
+    String graphName, imageName
+    return sg_ct_applied_df() + sg_ct_snapshot_key(graphName, imageName) + "_lut"
+End
+
+// 根据 SliceGallery 当前 ctPick / useLUT
+// 为 graphName:imageName 生成冻结 palette 快照
+Function sg_prepare_ct_snapshot_for_image(graphName, imageName)
+    String graphName, imageName
+
+    sg_init_defaults_if_needed()
+    ctluz_ensure_folder()
+
+    SVAR ctPick  = root:ARPES_LJZ:SliceGallery:ctPick
+    NVAR useLUT  = root:ARPES_LJZ:SliceGallery:useLUT
+
+    Wave/Z/W/U srcCT = root:ARPES_LJZ:CTLUZ:ct_table
+    Wave/Z srcLUT    = root:ARPES_LJZ:CTLUZ:ct_lut
+
+    if (!StringMatch(ctPick, "Current"))
+        Wave/Z/W/U pickedCT = $("root:ARPES_LJZ:CTLUZ:CTLIB:" + ctPick)
+        if (WaveExists(pickedCT))
+            srcCT = pickedCT
+        endif
+    endif
+
+    if (!WaveExists(srcCT))
+        return -1
+    endif
+
+    String ctPath  = sg_ct_snapshot_ct_path(graphName, imageName)
+    String lutPath = sg_ct_snapshot_lut_path(graphName, imageName)
+
+    Duplicate/O srcCT, $ctPath
+    Wave/W/U snapCT = $ctPath
+
+    Note/K snapCT
+    Note snapCT, "SliceGallery CT snapshot\r" + \
+                 "graph=" + graphName + "\r" + \
+                 "image=" + imageName + "\r" + \
+                 "ctPick=" + ctPick + "\r"
+
+    // LUT: 若不用 LUT，则删掉旧 snapshot lut，避免误用
+    KillWaves/Z $lutPath
+    if (useLUT && WaveExists(srcLUT))
+        Duplicate/O srcLUT, $lutPath
+        Wave snapLUT = $lutPath
+        Note/K snapLUT
+        Note snapLUT, "SliceGallery LUT snapshot\r" + \
+                      "graph=" + graphName + "\r" + \
+                      "image=" + imageName + "\r" + \
+                      "ctPick=" + ctPick + "\r"
+    endif
+
+    return 0
+End
 //============================================================
 // Graph styling
 //============================================================
@@ -2163,40 +2249,39 @@ Function sg_apply_image_style_basic(graphName, imageName, useFixedRange, c0, c1)
 
     sg_init_defaults_if_needed()
 
-    SVAR ctPick    = root:ARPES_LJZ:SliceGallery:ctPick
-    NVAR useLUT    = root:ARPES_LJZ:SliceGallery:useLUT
-    NVAR xUse      = root:ARPES_LJZ:SliceGallery:xUse
-    NVAR xMin      = root:ARPES_LJZ:SliceGallery:xMin
-    NVAR xMax      = root:ARPES_LJZ:SliceGallery:xMax
-    NVAR yUse      = root:ARPES_LJZ:SliceGallery:yUse
-    NVAR yMin      = root:ARPES_LJZ:SliceGallery:yMin
-    NVAR yMax      = root:ARPES_LJZ:SliceGallery:yMax
+    NVAR useLUT = root:ARPES_LJZ:SliceGallery:useLUT
+    NVAR xUse   = root:ARPES_LJZ:SliceGallery:xUse
+    NVAR xMin   = root:ARPES_LJZ:SliceGallery:xMin
+    NVAR xMax   = root:ARPES_LJZ:SliceGallery:xMax
+    NVAR yUse   = root:ARPES_LJZ:SliceGallery:yUse
+    NVAR yMin   = root:ARPES_LJZ:SliceGallery:yMin
+    NVAR yMax   = root:ARPES_LJZ:SliceGallery:yMax
 
-    Wave/Z/W/U ctWave = $"root:ARPES_LJZ:CTLUZ:ct_table"
-    Wave/Z lutWave    = $"root:ARPES_LJZ:CTLUZ:ct_lut"
+    // 先为当前 graph/image 生成 palette 快照
+    Variable rc = sg_prepare_ct_snapshot_for_image(graphName, imageName)
 
-    if (!StringMatch(ctPick, "Current"))
-        Wave/Z/W/U tmpCtWave = $("root:ARPES_LJZ:CTLUZ:CTLIB:" + ctPick)
-        if (WaveExists(tmpCtWave))
-            ctWave = tmpCtWave
-        endif
-    endif
+    String ctPath  = sg_ct_snapshot_ct_path(graphName, imageName)
+    String lutPath = sg_ct_snapshot_lut_path(graphName, imageName)
 
-    if (WaveExists(ctWave))
+    Wave/Z/W/U ctWave = $ctPath
+    Wave/Z lutWave    = $lutPath
+
+    if (rc == 0 && WaveExists(ctWave))
         if (useFixedRange)
             if (useLUT && WaveExists(lutWave))
-                ModifyImage/W=$graphName $imageName ctab={c0,c1,ctWave,0},lookup=lutWave
+                ModifyImage/W=$graphName $imageName ctab={c0,c1,ctWave,0}, lookup=lutWave
             else
                 ModifyImage/W=$graphName $imageName ctab={c0,c1,ctWave,0}
             endif
         else
             if (useLUT && WaveExists(lutWave))
-                ModifyImage/W=$graphName $imageName ctab={*,*,ctWave,0},lookup=lutWave
+                ModifyImage/W=$graphName $imageName ctab={*,*,ctWave,0}, lookup=lutWave
             else
                 ModifyImage/W=$graphName $imageName ctab={*,*,ctWave,0}
             endif
         endif
     else
+        // fallback
         if (useFixedRange)
             ModifyImage/W=$graphName $imageName ctab={c0,c1,YellowHot256,0}
         else
@@ -2933,4 +3018,205 @@ End
 Function sg_btn_export(ctrlName) : ButtonControl
     String ctrlName
     return sg_export_current_preview()
+End
+
+//============================================================
+// CT browser helpers
+//============================================================
+
+Function sg_rebuild_ct_list()
+    sg_init_defaults_if_needed()
+
+    Wave/T ctItems = root:ARPES_LJZ:SliceGallery:CT_LB_Items
+    Wave/U/B ctSel = root:ARPES_LJZ:SliceGallery:CT_LB_Sel
+    SVAR ctMenuList = root:ARPES_LJZ:SliceGallery:ctMenuList
+
+    ctluz_ensure_folder()
+    ctluz_refresh_ctlib_menu()
+
+    SVAR/Z libMenu = root:ARPES_LJZ:CTLUZ:ctlib_menu_list
+
+    String s = ""
+    if (SVAR_Exists(libMenu))
+        s = libMenu
+    endif
+
+    Variable n = ItemsInList(s, ";")
+    Variable i, outN = 0
+    String nm
+
+    // 先数有效项（去掉空串和 None）
+    for (i=0; i<n; i+=1)
+        nm = StringFromList(i, s, ";")
+        if (strlen(nm) == 0)
+            continue
+        endif
+        if (StringMatch(nm, "None"))
+            continue
+        endif
+        outN += 1
+    endfor
+
+    Redimension/N=(outN) ctItems, ctSel
+    ctSel = 0
+
+    Variable j = 0
+    for (i=0; i<n; i+=1)
+        nm = StringFromList(i, s, ";")
+        if (strlen(nm) == 0)
+            continue
+        endif
+        if (StringMatch(nm, "None"))
+            continue
+        endif
+
+        ctItems[j] = nm
+        ctSel[j] = 0
+        j += 1
+    endfor
+
+    ctMenuList = s
+    return 0
+End
+
+
+
+
+Function/S sg_ct_display_string()
+    sg_init_defaults_if_needed()
+
+    SVAR ctPick = root:ARPES_LJZ:SliceGallery:ctPick
+
+    if (strlen(ctPick) == 0)
+        return "CT: Current"
+    endif
+
+    if (StringMatch(ctPick, "Current"))
+        return "CT: Current"
+    endif
+
+    return "CT: " + ctPick
+End
+
+
+Function sg_btn_open_ct_browser(ctrlName) : ButtonControl
+    String ctrlName
+
+    String winName = "SG_CT_Browser_Panel"
+
+    DoWindow/F $winName
+    if (V_flag != 0)
+        return 0
+    endif
+
+    sg_rebuild_ct_list()
+
+    Wave/T wList = root:ARPES_LJZ:SliceGallery:CT_LB_Items
+    Wave/U/B wSel = root:ARPES_LJZ:SliceGallery:CT_LB_Sel
+    SVAR curName = root:ARPES_LJZ:SliceGallery:ctPick
+
+    wSel = 0
+
+    Variable findIdx = -1
+    if (!StringMatch(curName, "Current"))
+        FindValue/TEXT=curName/TXOP=4 wList
+        if (V_Value >= 0)
+            wSel[V_Value] = 1
+            findIdx = V_Value
+        endif
+    endif
+
+    NewPanel/K=1/W=(500,200,760,610) as "Select Color Table"
+    DoWindow/C $winName
+
+    ListBox lb_ct,pos={10,10},size={240,350},proc=sg_ct_browser_lb_proc
+    ListBox lb_ct,listWave=root:ARPES_LJZ:SliceGallery:CT_LB_Items
+    ListBox lb_ct,selWave=root:ARPES_LJZ:SliceGallery:CT_LB_Sel
+    ListBox lb_ct,mode=1
+
+    if (findIdx >= 0)
+        ListBox lb_ct,row=findIdx
+    endif
+
+    Button btn_refresh,pos={10,372},size={60,20},title="Refresh",proc=sg_ct_browser_refresh
+    Button btn_current,pos={92,372},size={78,20},title="Use Current",proc=sg_ct_browser_use_current
+    Button btn_close,pos={190,372},size={60,20},title="Close",proc=sg_ct_browser_close
+
+    return 0
+End
+
+
+Function sg_ct_browser_refresh(ctrlName) : ButtonControl
+    String ctrlName
+
+    sg_rebuild_ct_list()
+
+    ListBox lb_ct,win=SG_CT_Browser_Panel,listWave=root:ARPES_LJZ:SliceGallery:CT_LB_Items
+    ListBox lb_ct,win=SG_CT_Browser_Panel,selWave=root:ARPES_LJZ:SliceGallery:CT_LB_Sel
+
+    return 0
+End
+
+
+Function sg_ct_browser_use_current(ctrlName) : ButtonControl
+    String ctrlName
+
+    SVAR ctPick = root:ARPES_LJZ:SliceGallery:ctPick
+    Wave/U/B wSel = root:ARPES_LJZ:SliceGallery:CT_LB_Sel
+
+    ctPick = "Current"
+    wSel = 0
+
+    DoWindow SLICEGALLERY_LJZ_P
+    if (V_flag)
+        TitleBox sg_tb_ct_current,win=SLICEGALLERY_LJZ_P,title=sg_ct_display_string()
+    endif
+
+    DoWindow/K SG_CT_Browser_Panel
+    return 0
+End
+
+
+Function sg_ct_browser_lb_proc(ctrlName, row, col, eventCode) : ListBoxControl
+    String ctrlName
+    Variable row, col, eventCode
+
+    if (eventCode != 1 && eventCode != 3 && eventCode != 4)
+        return 0
+    endif
+
+    if (row < 0)
+        return 0
+    endif
+
+    Wave/T wList = root:ARPES_LJZ:SliceGallery:CT_LB_Items
+    Wave/U/B wSel = root:ARPES_LJZ:SliceGallery:CT_LB_Sel
+    SVAR ctPick = root:ARPES_LJZ:SliceGallery:ctPick
+
+    if (row >= DimSize(wList, 0))
+        return 0
+    endif
+
+    wSel = 0
+    wSel[row] = 1
+
+    ctPick = wList[row]
+
+    DoWindow SLICEGALLERY_LJZ_P
+    if (V_flag)
+        TitleBox sg_tb_ct_current,win=SLICEGALLERY_LJZ_P,title=sg_ct_display_string()
+    endif
+
+    if (eventCode == 4)
+        DoWindow/K SG_CT_Browser_Panel
+    endif
+
+    return 0
+End
+
+
+Function sg_ct_browser_close(ctrlName) : ButtonControl
+    String ctrlName
+    DoWindow/K SG_CT_Browser_Panel
+    return 0
 End
