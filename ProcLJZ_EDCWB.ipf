@@ -1523,12 +1523,16 @@ Function LJZ_EDCWB_LoadFitRecordToEditState(srcWavePath)
 
     Wave ePar   = $(LJZ_EDCWB_BaseDF() + ":EditPar")
 
-    LJZ_EDCWB_EnsureNumWaveLen12(ePar, NaN)
-    ePar = wCoef[p]
-
     if (numtype(wInfo[LJZ_EDCWB_FI_ModelID()]) == 0)
         eModel = wInfo[LJZ_EDCWB_FI_ModelID()]
     endif
+
+    LJZ_EDCWB_SetParamLayout(eModel)
+    LJZ_EDCWB_EnsureNumWaveLen12(ePar, NaN)
+    ePar = wCoef[p]
+    LJZ_EDCWB_FillNaNParsWithDefaults(eModel)
+    LJZ_EDCWB_SanitizeParamWave(eModel, ePar)
+
     if (numtype(wInfo[LJZ_EDCWB_FI_XLo()]) == 0)
         eXLo = wInfo[LJZ_EDCWB_FI_XLo()]
     endif
@@ -1551,6 +1555,7 @@ Function LJZ_EDCWB_LoadFitRecordToEditState(srcWavePath)
         fitOnSm = wInfo[LJZ_EDCWB_FI_SmoothUsed()]
     endif
 
+    LJZ_EDCWB_SyncParToAuxState()
     LJZ_EDCWB_MarkDirty(0)
     return 0
 End
@@ -1563,14 +1568,16 @@ End
 Function LJZ_EDCWB_HasFitRecord(srcWavePath)
     String srcWavePath
 
-    Wave/Z wCoef = $(LJZ_EDCWB_ResultFitCoefPath(srcWavePath))
     Wave/Z wInfo = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
-
-    if (!WaveExists(wCoef) || !WaveExists(wInfo))
+    if (!WaveExists(wInfo))
         return 0
     endif
 
     if (numtype(wInfo[LJZ_EDCWB_FI_ModelID()]) != 0)
+        return 0
+    endif
+
+    if (numtype(wInfo[LJZ_EDCWB_FI_FitOK()]) != 0)
         return 0
     endif
 
@@ -2269,6 +2276,7 @@ Function LJZ_EDCWB_SyncAuxStateToPar()
         LJZ_EDCWB_SetParValue(eModel, wPar, "res", eRes)
     endif
 
+    LJZ_EDCWB_MarkDirty(1)
     return 0
 End
 
@@ -3693,10 +3701,6 @@ Function LJZ_EDCWB_AutoGuessAndSave(srcWavePath, modelID)
         return ok
     endif
 
-    // 同时把当前 edit 参数写入 fitcoef / fitinfo，方便 panel 直接载入
-    LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
-    LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
-
     return 0
 End
 
@@ -4056,12 +4060,10 @@ Function LJZ_EDCWB_SaveFitResultSinglePeak(srcWavePath, wCoefActive, wSigmaActiv
     Wave wEditPar = $(LJZ_EDCWB_BaseDF() + ":EditPar")
     Wave wEditHold = $(LJZ_EDCWB_BaseDF() + ":EditHold")
 
-    // 1) active coef -> edit par
     LJZ_EDCWB_CopyActiveCoefToEditPar(modelID, wCoefActive, wEditPar)
     LJZ_EDCWB_SanitizeParamWave(modelID, wEditPar)
     LJZ_EDCWB_SyncParToAuxState()
 
-    // 2) save coef/sigma/info
     Make/D/O/N=12 $(LJZ_EDCWB_TmpDF() + ":fitcoef12")
     Make/D/O/N=12 $(LJZ_EDCWB_TmpDF() + ":fitsigma12")
     Make/D/O/N=16 $(LJZ_EDCWB_TmpDF() + ":fitinfo16")
@@ -4094,7 +4096,6 @@ Function LJZ_EDCWB_SaveFitResultSinglePeak(srcWavePath, wCoefActive, wSigmaActiv
     fitinfo16[LJZ_EDCWB_FI_NormMode()]    = eNorm
     fitinfo16[LJZ_EDCWB_FI_SmoothUsed()]  = fitOnSm
 
-    // 3) build full fit/res wave on fitInput scale
     Wave wFitIn = LJZ_EDCWB_GetFitInputWave(srcWavePath)
     Duplicate/O wFitIn, $(LJZ_EDCWB_TmpDF() + ":fitFull")
     Duplicate/O wFitIn, $(LJZ_EDCWB_TmpDF() + ":resFull")
@@ -4111,8 +4112,9 @@ Function LJZ_EDCWB_SaveFitResultSinglePeak(srcWavePath, wCoefActive, wSigmaActiv
     if (LJZ_EDCWB_GetLastFitROIRange(iLo, iHi) == 0)
         fitinfo16[LJZ_EDCWB_FI_NROI()] = iHi - iLo + 1
     endif
-    Variable V_chisq
-    fitinfo16[LJZ_EDCWB_FI_ChiSq()] = V_chisq
+    if (numtype(V_chisq) == 0)
+        fitinfo16[LJZ_EDCWB_FI_ChiSq()] = V_chisq
+    endif
 
     LJZ_EDCWB_SaveFitCurve(srcWavePath, fitFull, resFull)
     LJZ_EDCWB_SaveFitVectors(srcWavePath, fitcoef12, fitsigma12, fitinfo16)
@@ -4384,11 +4386,10 @@ Function LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, wCoefActive, wSigm
     if (LJZ_EDCWB_GetLastFitROIRange(iLo, iHi) == 0)
         fitinfo16[LJZ_EDCWB_FI_NROI()] = iHi - iLo + 1
     endif
-    
-    variable V_chisq
 
-    fitinfo16[LJZ_EDCWB_FI_ChiSq()] = V_chisq
-    
+    if (numtype(V_chisq) == 0)
+        fitinfo16[LJZ_EDCWB_FI_ChiSq()] = V_chisq
+    endif
 
     LJZ_EDCWB_SaveFitCurve(srcWavePath, fitFull, resFull)
     LJZ_EDCWB_SaveFitVectors(srcWavePath, fitcoef12, fitsigma12, fitinfo16)
@@ -4505,7 +4506,6 @@ Function LJZ_EDCWB_DoFitWave(srcWavePath, modelID)
         return -1
     endif
 
-    LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
     return LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
 End
 
@@ -4576,13 +4576,32 @@ Function/S LJZ_EDCWB_StatusTagForWave(wPath)
     String wPath
 
     Variable acc = LJZ_EDCWB_ReadAcceptState(wPath)
+    String reviewTag = "[ ]"
     if (acc > 0)
-        return "[A]"
+        reviewTag = "[A]"
+    elseif (acc < 0)
+        reviewTag = "[R]"
     endif
-    if (acc < 0)
-        return "[R]"
+
+    Wave/Z wInfo = $(LJZ_EDCWB_ResultFitInfoPath(wPath))
+    Wave/Z wGuess = $(LJZ_EDCWB_ResultGuessPath(wPath))
+
+    if (WaveExists(wInfo) && numtype(wInfo[LJZ_EDCWB_FI_FitOK()]) == 0)
+        if (wInfo[LJZ_EDCWB_FI_FitOK()] > 0)
+            return reviewTag + "[Fit]"
+        else
+            return reviewTag + "[FitFail]"
+        endif
     endif
-    return "[ ]"
+
+    if (WaveExists(wGuess))
+        WaveStats/Q wGuess
+        if (numtype(V_numNaNs) == 0 && V_numNaNs < numpnts(wGuess))
+            return reviewTag + "[Guess]"
+        endif
+    endif
+
+    return reviewTag + "[New]"
 End
 
 Function LJZ_EDCWB_RebuildListWaves()
@@ -4616,14 +4635,18 @@ Function LJZ_EDCWB_RebuildListWaves()
         return 0
     endif
 
-    if (curRow < 0 || curRow >= n)
-        curRow = 0
-        curPath = StringFromList(0, listStr, ";")
+    Variable targetRow = WhichListItem(curPath, listStr, ";", 0, 0)
+    if (targetRow < 0 && curRow >= 0 && curRow < n)
+        targetRow = curRow
+    endif
+    if (targetRow < 0)
+        targetRow = 0
     endif
 
-    if (curRow >= 0 && curRow < n)
-        wSel[curRow] = 1
-    endif
+    targetRow = LJZ_EDCWB_ClampIndex(targetRow, n)
+    curRow = targetRow
+    curPath = StringFromList(targetRow, listStr, ";")
+    wSel[targetRow] = 1
 
     return 0
 End
@@ -4686,8 +4709,10 @@ End
 
 Function LJZ_EDCWB_LoadCurrentWave()
     LJZ_EDCWB_EnsureDF()
+    LJZ_EDCWB_EnsurePanelState()
 
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
+    NVAR curRow  = $(LJZ_EDCWB_BaseDF() + ":CurRow")
     NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
 
     if (strlen(curPath) == 0)
@@ -4707,20 +4732,34 @@ Function LJZ_EDCWB_LoadCurrentWave()
         endif
     else
         LJZ_EDCWB_SetModel(eModel)
-        ok = LJZ_EDCWB_AutoInitGuess(curPath, eModel)
-        if (ok != 0)
-            return -1
-        endif
+        LJZ_EDCWB_FillNaNParsWithDefaults(eModel)
+        LJZ_EDCWB_SyncParToAuxState()
         ok = LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
         if (ok != 0)
-            return -1
+            ok = LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
+            if (ok != 0)
+                return -1
+            endif
         endif
+        LJZ_EDCWB_MarkDirty(0)
     endif
 
     LJZ_EDCWB_RebuildAllWorkWaves(curPath)
     LJZ_EDCWB_RefreshGraph()
-    LJZ_EDCWB_RefreshPanelTitles()
 
+    String listStr = LJZ_EDCWB_CurrentListStr()
+    Variable n = ItemsInList(listStr, ";")
+    if (n > 0)
+        Wave wSel = $(LJZ_EDCWB_BaseDF() + ":LB_Sel")
+        if (numpnts(wSel) != n)
+            Redimension/N=(n) wSel
+        endif
+        wSel = 0
+        curRow = LJZ_EDCWB_ClampIndex(curRow, n)
+        wSel[curRow] = 1
+    endif
+
+    LJZ_EDCWB_RefreshPanelTitles()
     return 0
 End
 
@@ -4755,51 +4794,65 @@ Function LJZ_EDCWB_RefreshGraph()
     if (V_flag == 0)
         KillWindow/Z $g
         Display/N=$g
-    else
-        DoWindow/F $g
     endif
 
-    RemoveFromGraph/Z /W=$g 
+    RemoveFromGraph/Z /W=$g *
 
     if (shRaw)
         Wave/Z w0 = LJZ_EDCWB_GetDisplayRawWave(curPath)
         if (WaveExists(w0))
-            AppendToGraph/W=$g w0
+            WaveStats/Q w0
+            if (V_numNaNs < numpnts(w0))
+                AppendToGraph/W=$g w0
+            endif
         endif
     endif
 
     if (shSm)
         Wave/Z w1 = LJZ_EDCWB_GetDisplaySmoothWave(curPath)
         if (WaveExists(w1))
-            AppendToGraph/W=$g w1
+            WaveStats/Q w1
+            if (V_numNaNs < numpnts(w1))
+                AppendToGraph/W=$g w1
+            endif
         endif
     endif
 
     if (shGuess)
         Wave/Z wGuess = $(LJZ_EDCWB_ResultGuessPath(curPath))
         if (WaveExists(wGuess))
-            AppendToGraph/W=$g wGuess
+            WaveStats/Q wGuess
+            if (V_numNaNs < numpnts(wGuess))
+                AppendToGraph/W=$g wGuess
+            endif
         endif
     endif
 
     if (shFit)
         Wave/Z wFit = $(LJZ_EDCWB_ResultFitPath(curPath))
         if (WaveExists(wFit))
-            AppendToGraph/W=$g wFit
+            WaveStats/Q wFit
+            if (V_numNaNs < numpnts(wFit))
+                AppendToGraph/W=$g wFit
+            endif
         endif
     endif
 
     if (shRes)
         Wave/Z wRes = $(LJZ_EDCWB_ResultResPath(curPath))
         if (WaveExists(wRes))
-            AppendToGraph/R/W=$g wRes
+            WaveStats/Q wRes
+            if (V_numNaNs < numpnts(wRes))
+                AppendToGraph/R/W=$g wRes
+            endif
         endif
     endif
 
-    ModifyGraph/W=$g mirror=1
+    ModifyGraph/W=$g mirror=1,grid(left)=1,gridRGB(left)=(56576,56576,56576),axThick=1.2
     Label/W=$g left "Intensity"
     Label/W=$g right "Residual"
-    Label/W=$g bottom "Energy"
+    Label/W=$g bottom "Energy (eV)"
+    DoWindow/T $g, "EDC Graph : " + LJZ_EDCWB_WaveNameFromPath(curPath)
 
     return 0
 End
@@ -4808,12 +4861,17 @@ Function LJZ_EDCWB_RefreshPanelTitles()
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
     String p = LJZ_EDCWB_PanelName()
     String g = LJZ_EDCWB_GraphName()
+    String dirtySuffix = ""
+
+    if (LJZ_EDCWB_IsDirty())
+        dirtySuffix = " *"
+    endif
 
     if (strlen(curPath) > 0)
-        DoWindow/T $p, "EDC Workbench : " + LJZ_EDCWB_WaveNameFromPath(curPath)
+        DoWindow/T $p, "EDC Workbench" + dirtySuffix + " : " + LJZ_EDCWB_WaveNameFromPath(curPath)
         DoWindow/T $g, "EDC Graph : " + LJZ_EDCWB_WaveNameFromPath(curPath)
     else
-        DoWindow/T $p, "EDC Workbench"
+        DoWindow/T $p, "EDC Workbench" + dirtySuffix
         DoWindow/T $g, "EDC Graph"
     endif
 
@@ -5065,6 +5123,7 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
     if (CmpStr(name, "btRebuild") == 0)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+            LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
             LJZ_EDCWB_RefreshGraph()
         endif
         return 0
@@ -5095,15 +5154,24 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
             LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
             LJZ_EDCWB_RefreshGraph()
         endif
+        LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
 
-    if ((CmpStr(name, "svXLo") == 0) || (CmpStr(name, "svXHi") == 0) || (CmpStr(name, "svSmP1") == 0) || (CmpStr(name, "svSmP2") == 0))
+    if ((CmpStr(name, "svSmP1") == 0) || (CmpStr(name, "svSmP2") == 0))
+        LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
             LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
             LJZ_EDCWB_RefreshGraph()
         endif
+        LJZ_EDCWB_RefreshPanelTitles()
+        return 0
+    endif
+
+    if ((CmpStr(name, "svXLo") == 0) || (CmpStr(name, "svXHi") == 0))
+        LJZ_EDCWB_MarkDirty(1)
+        LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
 
@@ -5138,26 +5206,31 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
             LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
         endif
         LJZ_EDCWB_RefreshGraph()
+        LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
 
     if (CmpStr(name, "pmSmMethod") == 0)
         smMethod = pa.popNum - 1
+        LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
             LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
             LJZ_EDCWB_RefreshGraph()
         endif
+        LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
 
     if (CmpStr(name, "pmNorm") == 0)
         eNorm = pa.popNum - 1
+        LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
+            LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
             LJZ_EDCWB_RefreshGraph()
         endif
+        LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
 
@@ -5172,22 +5245,21 @@ Function LJZ_EDCWB_CheckProc(cba) : CheckBoxControl
     endif
 
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
-    NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
 
-    if (strlen(curPath) <= 0)
-        return 0
-    endif
-
-    // display toggles only refresh graph
     if ((CmpStr(cba.ctrlName, "cbShowRaw") == 0) || (CmpStr(cba.ctrlName, "cbShowSm") == 0) || (CmpStr(cba.ctrlName, "cbShowGuess") == 0) || (CmpStr(cba.ctrlName, "cbShowFit") == 0) || (CmpStr(cba.ctrlName, "cbShowRes") == 0))
-        LJZ_EDCWB_RefreshGraph()
+        if (strlen(curPath) > 0)
+            LJZ_EDCWB_RefreshGraph()
+        endif
         return 0
     endif
 
-    // preprocess toggles rebuild waves + guess
-    LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-    LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-    LJZ_EDCWB_RefreshGraph()
+    LJZ_EDCWB_MarkDirty(1)
+    if (strlen(curPath) > 0)
+        LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+        LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
+        LJZ_EDCWB_RefreshGraph()
+    endif
+    LJZ_EDCWB_RefreshPanelTitles()
 
     return 0
 End
