@@ -16,7 +16,180 @@
 //    - fitmeta 文本主存储
 // ============================================================================
 
+#pragma TextEncoding = "UTF-8"
+#pragma rtGlobals=3
 
+// ============================================================================
+// EDCFIT runtime state
+// 复用你现有的 3D wave 选择思路，但独立放在 root:ARPES_LJZ:EDCFit
+// ============================================================================
+
+Function LJZ_EnsureEDCFitDF()
+    NewDataFolder/O root:ARPES_LJZ
+    NewDataFolder/O root:ARPES_LJZ:EDCFit
+
+    SVAR/Z sWave = root:ARPES_LJZ:EDCFit:EDCWaveSel
+    if (!SVAR_Exists(sWave))
+        String/G root:ARPES_LJZ:EDCFit:EDCWaveSel = ""
+    endif
+
+    NVAR/Z Kindex = root:ARPES_LJZ:EDCFit:Kindex
+    if (!NVAR_Exists(Kindex))
+        Variable/G root:ARPES_LJZ:EDCFit:Kindex = 0
+    endif
+
+    NVAR/Z Kxe = root:ARPES_LJZ:EDCFit:Kxe
+    if (!NVAR_Exists(Kxe))
+        Variable/G root:ARPES_LJZ:EDCFit:Kxe = 0
+    endif
+
+    NVAR/Z evary = root:ARPES_LJZ:EDCFit:evary
+    if (!NVAR_Exists(evary))
+        Variable/G root:ARPES_LJZ:EDCFit:evary = 0.2
+    endif
+
+    SVAR/Z bn = root:ARPES_LJZ:EDCFit:gBaseName
+    if (!SVAR_Exists(bn))
+        String/G root:ARPES_LJZ:EDCFit:gBaseName = ""
+    endif
+
+    SVAR/Z runDF = root:ARPES_LJZ:EDCFit:RunDF
+    if (!SVAR_Exists(runDF))
+        String/G root:ARPES_LJZ:EDCFit:RunDF = ""
+    endif
+
+    NVAR/Z Run_kStart = root:ARPES_LJZ:EDCFit:Run_kStart
+    if (!NVAR_Exists(Run_kStart))
+        Variable/G root:ARPES_LJZ:EDCFit:Run_kStart = NaN
+    endif
+
+    NVAR/Z Run_kEnd = root:ARPES_LJZ:EDCFit:Run_kEnd
+    if (!NVAR_Exists(Run_kEnd))
+        Variable/G root:ARPES_LJZ:EDCFit:Run_kEnd = NaN
+    endif
+
+    NVAR/Z Run_t0 = root:ARPES_LJZ:EDCFit:Run_t0
+    if (!NVAR_Exists(Run_t0))
+        Variable/G root:ARPES_LJZ:EDCFit:Run_t0 = NaN
+    endif
+
+    NVAR/Z Run_dt = root:ARPES_LJZ:EDCFit:Run_dt
+    if (!NVAR_Exists(Run_dt))
+        Variable/G root:ARPES_LJZ:EDCFit:Run_dt = NaN
+    endif
+
+    return 0
+End
+
+
+// ============================================================================
+// Show EDC
+// 逻辑：沿 dim1 (k/angle) 做区间平均，生成每个 t 对应的一条 EDC
+// 输出：runDF 下 edc_raw_i, 然后交给 LJZ_ApplySmoothing_All 生成 edc_show_i
+//
+// 依赖：
+//   1) 你已有的 LJZ_MakeRunDFName(w, start, end, tag)
+//   2) 你已有的 LJZ_ApplySmoothing_All(runDF)
+//   3) 默认 3D wave 维度为 [E][K][T]
+// ============================================================================
+
+Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
+    String ctrlName
+
+    LJZ_EnsureEDCFitDF()
+
+    SVAR/Z sWave = root:ARPES_LJZ:EDCFit:EDCWaveSel
+    if (!SVAR_Exists(sWave) || strlen(sWave) == 0)
+        DoAlert 0, "请先选择一个 3D 波形。"
+        return -1
+    endif
+
+    Wave/Z w = $sWave
+    if (!WaveExists(w) || WaveDims(w) < 3)
+        DoAlert 0, "无效的 3D 波形: " + sWave
+        return -1
+    endif
+
+    NVAR Kindex = root:ARPES_LJZ:EDCFit:Kindex
+    NVAR Kxe    = root:ARPES_LJZ:EDCFit:Kxe
+    NVAR evary  = root:ARPES_LJZ:EDCFit:evary
+
+    Variable nE = DimSize(w, 0)
+    Variable nK = DimSize(w, 1)
+    Variable nT = DimSize(w, 2)
+
+    Variable e0 = DimOffset(w, 0)
+    Variable de = DimDelta(w, 0)
+
+    Variable kStart = max(0, min(nK - 1, min(Kindex, Kxe)))
+    Variable kEnd   = max(0, min(nK - 1, max(Kindex, Kxe)))
+    Variable nAvg   = kEnd - kStart + 1
+
+    String runDF = LJZ_MakeRunDFName(w, kStart, kEnd, "EDC")
+    NewDataFolder/O $(RemoveEnding(runDF, ":"))
+    SetDataFolder $(RemoveEnding(runDF, ":"))
+
+    Variable t, k
+    for (t = 0; t < nT; t += 1)
+
+        Make/O/N=(nE) $("edc_raw_" + num2str(t)) = 0
+        Wave edc = $("edc_raw_" + num2str(t))
+        SetScale/P x, e0, de, edc
+
+        for (k = kStart; k <= kEnd; k += 1)
+            edc += w[p][k][t]
+        endfor
+
+        edc /= nAvg
+    endfor
+
+    SetDataFolder root:
+
+    // 这里假设你已有这个函数，并且它会把 edc_raw_i 变成 edc_show_i
+    LJZ_ApplySmoothing_All(runDF)
+
+    SVAR bn = root:ARPES_LJZ:EDCFit:gBaseName
+    String bnTag = bn
+    if (strlen(bnTag) == 0)
+        bnTag = NameOfWave(w)
+    endif
+
+    String wNameBase = "EDC_Overlapping_" + CleanupName(bnTag, 0)
+    KillWindow/Z $wNameBase
+    String wOlap = wNameBase
+
+    SetDataFolder $(RemoveEnding(runDF, ":"))
+    for (t = 0; t < nT; t += 1)
+        Wave/Z sh = $("edc_show_" + num2str(t))
+        if (!WaveExists(sh))
+            break
+        endif
+
+        if (t == 0)
+            Display/N=$wOlap sh
+            Label left, "Intensity (a.u.)"
+            Label bottom, "Energy"
+        else
+            AppendToGraph sh
+            ModifyGraph offset($NameOfWave(sh)) = {0, t * evary}
+        endif
+    endfor
+    SetDataFolder root:
+
+    String/G   root:ARPES_LJZ:EDCFit:RunDF      = runDF
+    Variable/G root:ARPES_LJZ:EDCFit:Run_kStart = kStart
+    Variable/G root:ARPES_LJZ:EDCFit:Run_kEnd   = kEnd
+    Variable/G root:ARPES_LJZ:EDCFit:Run_t0     = DimOffset(w, 2)
+    Variable/G root:ARPES_LJZ:EDCFit:Run_dt     = DimDelta(w, 2)
+
+    // 直接把 EDCWB 接到这个 runDF，方便后续拟合
+    NewDataFolder/O root:Packages
+    NewDataFolder/O root:Packages:ARPES_LJZ
+    NewDataFolder/O root:Packages:ARPES_LJZ:EDCWB
+    String/G root:Packages:ARPES_LJZ:EDCWB:TargetDF = runDF
+
+    return 0
+End
 // ============================================================================
 //  Section 0. Shared path helpers
 // ============================================================================
