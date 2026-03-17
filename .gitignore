@@ -1,0 +1,26 @@
+# System
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Temporary / backup
+*.bak
+*.tmp
+*.log
+*.old
+
+# Igor binary / large files
+*.pxp
+*.pxt
+*.ibw
+
+# Data / output folders
+data/
+output/
+results/
+temp/
+tmp/
+cache/
