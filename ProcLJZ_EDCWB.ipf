@@ -55,13 +55,12 @@ End
 Function/S LJZ_EDCWB_WaveNameFromPath(wPath)
     String wPath
 
-    Variable p
-    p = strsearch(wPath, ":", Inf)
-    if (p < 0)
+    Variable n = ItemsInList(wPath, ":")
+    if (n < 2)
         return ""
     endif
 
-    return wPath[p + 1, Inf]
+    return StringFromList(n - 1, wPath, ":")
 End
 
 
@@ -77,13 +76,18 @@ End
 Function/S LJZ_EDCWB_WaveDFFromPath(wPath)
     String wPath
 
-    Variable p
-    p = strsearch(wPath, ":", Inf)
-    if (p < 0)
+    Variable n = ItemsInList(wPath, ":")
+    if (n < 2)
         return ""
     endif
 
-    return wPath[0, p]
+    Variable i
+    String df = ""
+    for (i = 0; i < n - 1; i += 1)
+        df += StringFromList(i, wPath, ":") + ":"
+    endfor
+
+    return df
 End
 
 Function LJZ_EDCWB_Is1DWave(w)
@@ -93,11 +97,7 @@ Function LJZ_EDCWB_Is1DWave(w)
         return 0
     endif
 
-    if (DimSize(w, 1) > 0 || DimSize(w, 2) > 0 || DimSize(w, 3) > 0)
-        return 0
-    endif
-
-    return 1
+    return (WaveDims(w) == 1)
 End
 
 Function LJZ_EDCWB_EnsureNumWaveLen12(w, fillVal)
@@ -341,18 +341,7 @@ Function EDCFIT_Is3DWave(w)
         return 0
     endif
 
-    // 至少有 dim0 dim1 dim2
-    if (DimSize(w, 0) <= 0)
-        return 0
-    endif
-    if (DimSize(w, 1) <= 0)
-        return 0
-    endif
-    if (DimSize(w, 2) <= 0)
-        return 0
-    endif
-
-    return 1
+    return (WaveDims(w) == 3)
 End
 
 Function/S EDCFIT_WaveShortLabel(wPath)
@@ -653,16 +642,15 @@ Function EDCFit_OpenPanel()
     LJZ_EnsureEDCFitDF()
 
     String p = EDCFIT_PanelName()
-    DoWindow/F $p
-    if (V_flag == 0)
-        NewPanel/N=$p /W=(80,80,510,520)
-    else
+    if (WinType(p) != 0)
         DoWindow/F $p
         return 0
     endif
+    KillWindow/Z $p
+    NewPanel/N=$p /W=(80,80,510,520)
 
     SetVariable svBaseDF,pos={10,10},size={250,18},title="Base DF"
-    SetVariable svBaseDF,variable=root:ARPES_LJZ:EDCFit:BaseDF,proc=EDCFIT_SetVarProc
+    SetVariable svBaseDF,value=_STR:"root:ARPES_LJZ:EDCFit:BaseDF",proc=EDCFIT_SetVarProc
 
     CheckBox cbRecursive,pos={270,10},title="Recursive"
     CheckBox cbRecursive,variable=root:ARPES_LJZ:EDCFit:Recursive,proc=EDCFIT_CheckProc
@@ -681,7 +669,7 @@ Function EDCFit_OpenPanel()
     SetVariable svEvary,variable=root:ARPES_LJZ:EDCFit:evary,proc=EDCFIT_SetVarProc
 
     SetVariable svBaseName,pos={240,140},size={170,18},title="BaseName"
-    SetVariable svBaseName,variable=root:ARPES_LJZ:EDCFit:gBaseName,proc=EDCFIT_SetVarProc
+    SetVariable svBaseName,value=_STR:"root:ARPES_LJZ:EDCFit:gBaseName",proc=EDCFIT_SetVarProc
 
     Button btShowEDC,pos={240,180},size={120,26},title="Show EDC",proc=EDCFIT_ButtonProc
     Button btOpenWB,pos={240,215},size={120,26},title="Open EDCWB",proc=EDCFIT_ButtonProc
@@ -779,7 +767,7 @@ Function EDCFIT_PopupProc(pa) : PopupMenuControl
 
     if (CmpStr(ctrlName, "pmSm") == 0)
         NVAR SmMethod = root:ARPES_LJZ:EDCFit:SmMethod
-        SmMethod = str2num(StringFromList(0, popStr, ":"))
+        SmMethod = pa.popNum - 1
         EDCFIT_ReShowCurrentEDC()
         return 0
     endif
@@ -805,7 +793,7 @@ Function EDCFIT_SetVarProc(sva) : SetVariableControl
         EDCFIT_RefreshTitleBoxes()
         return 0
     endif
-    if ((CmpStr(ctrlName, "svK0") == 0) || (CmpStr(ctrlName, "svK1") == 0) || (CmpStr(ctrlName, "svEvary") == 0) || (CmpStr(ctrlName, "svBaseName") == 0))
+    if ((CmpStr(ctrlName, "svK0") == 0) || (CmpStr(ctrlName, "svK1") == 0) || (CmpStr(ctrlName, "svBaseName") == 0))
         EDCFIT_RefreshTitleBoxes()
         return 0
     endif
@@ -928,7 +916,7 @@ End
 Function LJZ_EDCWB_EnsureDF()
     NewDataFolder/O root:Packages
     NewDataFolder/O root:Packages:ARPES_LJZ
-    NewDataFolder/O $(LJZ_EDCWB_BaseDF())
+    NewDataFolder/O $(RemoveEnding(LJZ_EDCWB_BaseDF(), ":"))
 
     LJZ_EDCWB_EnsureRuntimeState()
 
@@ -4765,6 +4753,7 @@ Function LJZ_EDCWB_RefreshGraph()
     String g = LJZ_EDCWB_GraphName()
     DoWindow/F $g
     if (V_flag == 0)
+        KillWindow/Z $g
         Display/N=$g
     else
         DoWindow/F $g
@@ -4837,6 +4826,7 @@ Function LJZ_EDCWB_OpenParamTable()
     String t = LJZ_EDCWB_ParamTableName()
     DoWindow/F $t
     if (V_flag == 0)
+        KillWindow/Z $t
         Edit/N=$t/K=1 $(LJZ_EDCWB_BaseDF() + ":EditParName"), $(LJZ_EDCWB_BaseDF() + ":EditParEnable"), $(LJZ_EDCWB_BaseDF() + ":EditHold"), $(LJZ_EDCWB_BaseDF() + ":EditPar")
         ModifyTable/W=$t width(Point)=40
     endif
@@ -4871,16 +4861,15 @@ Function LJZ_EDCWB_OpenPanel()
     LJZ_EDCWB_EnsurePanelState()
 
     String p = LJZ_EDCWB_PanelName()
-    DoWindow/F $p
-    if (V_flag == 0)
-        NewPanel/N=$p /W=(40,60,520,690)
-    else
+    if (WinType(p) != 0)
         DoWindow/F $p
         return 0
     endif
+    KillWindow/Z $p
+    NewPanel/N=$p /W=(40,60,520,690)
 
     SetVariable svTarget,pos={10,10},size={240,18},title="Base DF"
-    SetVariable svTarget,variable=$(LJZ_EDCWB_BaseDF() + ":TargetDF"),proc=LJZ_EDCWB_SetVarProc
+    SetVariable svTarget,value=_STR:"root:Packages:ARPES_LJZ:EDCWB:TargetDF",proc=LJZ_EDCWB_SetVarProc
 
     Button btScan,pos={260,8},size={60,20},title="Scan",proc=LJZ_EDCWB_ButtonProc
     Button btParam,pos={330,8},size={70,20},title="Params",proc=LJZ_EDCWB_ButtonProc
@@ -4962,7 +4951,6 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
     endif
 
     String name = ba.ctrlName
-    SVAR sTarget = $(LJZ_EDCWB_BaseDF() + ":TargetDF")
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
     NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
 
@@ -5093,7 +5081,6 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
     endif
 
     String name = sva.ctrlName
-    SVAR sTarget = $(LJZ_EDCWB_BaseDF() + ":TargetDF")
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
 
     if (CmpStr(name, "svTarget") == 0)
@@ -5155,7 +5142,7 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
     endif
 
     if (CmpStr(name, "pmSmMethod") == 0)
-        smMethod = str2num(StringFromList(0, ps, ":"))
+        smMethod = pa.popNum - 1
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
             LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
@@ -5165,7 +5152,7 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
     endif
 
     if (CmpStr(name, "pmNorm") == 0)
-        eNorm = str2num(StringFromList(0, ps, ":"))
+        eNorm = pa.popNum - 1
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
             LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
@@ -5233,7 +5220,6 @@ End
 Function LJZ_EDCWB_ExportSummaryToTargetDF()
     LJZ_EDCWB_EnsureDF()
 
-    SVAR sTarget = $(LJZ_EDCWB_BaseDF() + ":TargetDF")
     sTarget = LJZ_EDCWB_NormDFPath(sTarget)
     if (strlen(sTarget) == 0)
         Print "EDCWB export: invalid target DF."
