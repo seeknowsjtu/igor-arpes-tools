@@ -19,14 +19,37 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3
 
+Menu "ARPES_LJZ"
+    "EDC Fit Panel", EDCFit_LJZ()
+End
+
+
 // ============================================================================
-// EDCFIT runtime state
-// 复用你现有的 3D wave 选择思路，但独立放在 root:ARPES_LJZ:EDCFit
+//  EDCFIT : panel + state + scan + show EDC
+//  依赖：
+//    1) LJZ_MakeRunDFName(w, start, end, tag)
+//    2) LJZ_ApplySmoothing_All(runDF)
+//    3) 若你已加入 EDCWB，则可用 Open EDCWB
+// ============================================================================
+
+
+// ============================================================================
+//  Section 0. Base state
 // ============================================================================
 
 Function LJZ_EnsureEDCFitDF()
     NewDataFolder/O root:ARPES_LJZ
     NewDataFolder/O root:ARPES_LJZ:EDCFit
+
+    SVAR/Z sBase = root:ARPES_LJZ:EDCFit:BaseDF
+    if (!SVAR_Exists(sBase))
+        String/G root:ARPES_LJZ:EDCFit:BaseDF = "root:"
+    endif
+
+    NVAR/Z rec = root:ARPES_LJZ:EDCFit:Recursive
+    if (!NVAR_Exists(rec))
+        Variable/G root:ARPES_LJZ:EDCFit:Recursive = 0
+    endif
 
     SVAR/Z sWave = root:ARPES_LJZ:EDCFit:EDCWaveSel
     if (!SVAR_Exists(sWave))
@@ -78,19 +101,216 @@ Function LJZ_EnsureEDCFitDF()
         Variable/G root:ARPES_LJZ:EDCFit:Run_dt = NaN
     endif
 
+    Wave/T/Z wDisp = root:ARPES_LJZ:EDCFit:LB_Disp
+    if (!WaveExists(wDisp))
+        Make/O/T/N=0 root:ARPES_LJZ:EDCFit:LB_Disp
+    endif
+
+    Wave/Z wSel = root:ARPES_LJZ:EDCFit:LB_Sel
+    if (!WaveExists(wSel))
+        Make/O/N=0 root:ARPES_LJZ:EDCFit:LB_Sel = 0
+    endif
+
+    return 0
+End
+
+Function/S EDCFIT_df_with_colon(inStr)
+    String inStr
+    String s = inStr
+
+    if (strlen(s) == 0)
+        return "root:"
+    endif
+
+    if (StringMatch(s, "root"))
+        s = "root:"
+    endif
+
+    if (!StringMatch(s, "*:"))
+        s += ":"
+    endif
+
+    return s
+End
+
+Function EDCFIT_df_exists(dfStr)
+    String dfStr
+    String s = EDCFIT_df_with_colon(dfStr)
+    return DataFolderExists(s)
+End
+
+Function/S EDCFIT_PanelName()
+    return "EDCFit_LJZ_Panel"
+End
+
+
+// ============================================================================
+//  Section 1. 3D wave scan
+// ============================================================================
+
+Function EDCFIT_Is3DWave(w)
+    Wave/Z w
+
+    if (!WaveExists(w))
+        return 0
+    endif
+
+    // 至少有 dim0 dim1 dim2
+    if (DimSize(w, 0) <= 0)
+        return 0
+    endif
+    if (DimSize(w, 1) <= 0)
+        return 0
+    endif
+    if (DimSize(w, 2) <= 0)
+        return 0
+    endif
+
+    return 1
+End
+
+Function/S EDCFIT_WaveShortLabel(wPath)
+    String wPath
+
+    String nm = NameOfWave($wPath)
+    if (strlen(nm) == 0)
+        nm = wPath
+    endif
+
+    return nm
+End
+
+Function/S EDCFIT_List3DWaves_OneDF(dfStr)
+    String dfStr
+
+    String out = ""
+    Variable iObj, nObj
+    nObj = CountObjects(dfStr, 1)
+
+    for (iObj = 0; iObj < nObj; iObj += 1)
+        String nm = GetIndexedObjName(dfStr, 1, iObj)
+        Wave/Z w = $(dfStr + nm)
+        if (!WaveExists(w))
+            continue
+        endif
+        if (!EDCFIT_Is3DWave(w))
+            continue
+        endif
+
+        out = AddListItem(dfStr + nm, out, ";", Inf)
+    endfor
+
+    return out
+End
+
+Function/S EDCFIT_List3DWaves(dfStr, recursive)
+    String dfStr
+    Variable recursive
+
+    dfStr = EDCFIT_df_with_colon(dfStr)
+    if (!DataFolderExists(dfStr))
+        return ""
+    endif
+
+    String out = ""
+    out = EDCFIT_List3DWaves_OneDF(dfStr)
+
+    if (!recursive)
+        return out
+    endif
+
+    Variable iObj, nObj
+    nObj = CountObjects(dfStr, 4)
+
+    for (iObj = 0; iObj < nObj; iObj += 1)
+        String subDF = GetIndexedObjName(dfStr, 4, iObj)
+        if (strlen(subDF) == 0)
+            continue
+        endif
+
+        out += EDCFIT_List3DWaves(dfStr + subDF + ":", 1)
+    endfor
+
+    return out
+End
+
+Function EDCFIT_RebuildWaveList()
+    LJZ_EnsureEDCFitDF()
+
+    SVAR sBase = root:ARPES_LJZ:EDCFit:BaseDF
+    NVAR rec   = root:ARPES_LJZ:EDCFit:Recursive
+    SVAR sWave = root:ARPES_LJZ:EDCFit:EDCWaveSel
+
+    String dfStr = EDCFIT_df_with_colon(sBase)
+    if (!DataFolderExists(dfStr))
+        Make/O/T/N=0 root:ARPES_LJZ:EDCFit:LB_Disp
+        Make/O/N=0 root:ARPES_LJZ:EDCFit:LB_Sel
+        sWave = ""
+        return -1
+    endif
+
+    String listStr = EDCFIT_List3DWaves(dfStr, rec)
+    Variable n = ItemsInList(listStr, ";")
+
+    Make/O/T/N=(n) root:ARPES_LJZ:EDCFit:LB_Disp
+    Make/O/N=(n)   root:ARPES_LJZ:EDCFit:LB_Sel = 0
+
+    Wave/T wDisp = root:ARPES_LJZ:EDCFit:LB_Disp
+    Wave   wSel  = root:ARPES_LJZ:EDCFit:LB_Sel
+
+    Variable i
+    String wPath
+    for (i = 0; i < n; i += 1)
+        wPath = StringFromList(i, listStr, ";")
+        wDisp[i] = EDCFIT_WaveShortLabel(wPath)
+    endfor
+
+    if (n > 0)
+        wSel[0] = 1
+        sWave = StringFromList(0, listStr, ";")
+    else
+        sWave = ""
+    endif
+
+    return 0
+End
+
+Function/S EDCFIT_CurrentWaveList()
+    SVAR sBase = root:ARPES_LJZ:EDCFit:BaseDF
+    NVAR rec   = root:ARPES_LJZ:EDCFit:Recursive
+    return EDCFIT_List3DWaves(EDCFIT_df_with_colon(sBase), rec)
+End
+
+Function EDCFIT_SelectWaveRow(row)
+    Variable row
+
+    LJZ_EnsureEDCFitDF()
+
+    String listStr = EDCFIT_CurrentWaveList()
+    Variable n = ItemsInList(listStr, ";")
+    if (n <= 0)
+        return -1
+    endif
+
+    row = max(0, min(n - 1, row))
+
+    Wave wSel = root:ARPES_LJZ:EDCFit:LB_Sel
+    if (numpnts(wSel) != n)
+        Redimension/N=(n) wSel
+    endif
+    wSel = 0
+    wSel[row] = 1
+
+    SVAR sWave = root:ARPES_LJZ:EDCFit:EDCWaveSel
+    sWave = StringFromList(row, listStr, ";")
+
     return 0
 End
 
 
 // ============================================================================
-// Show EDC
-// 逻辑：沿 dim1 (k/angle) 做区间平均，生成每个 t 对应的一条 EDC
-// 输出：runDF 下 edc_raw_i, 然后交给 LJZ_ApplySmoothing_All 生成 edc_show_i
-//
-// 依赖：
-//   1) 你已有的 LJZ_MakeRunDFName(w, start, end, tag)
-//   2) 你已有的 LJZ_ApplySmoothing_All(runDF)
-//   3) 默认 3D wave 维度为 [E][K][T]
+//  Section 2. Show EDC
+//  默认维度约定：w[E][K][T]
 // ============================================================================
 
 Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
@@ -105,7 +325,7 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
     endif
 
     Wave/Z w = $sWave
-    if (!WaveExists(w) || WaveDims(w) < 3)
+    if (!WaveExists(w) || !EDCFIT_Is3DWave(w))
         DoAlert 0, "无效的 3D 波形: " + sWave
         return -1
     endif
@@ -131,7 +351,6 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
 
     Variable t, k
     for (t = 0; t < nT; t += 1)
-
         Make/O/N=(nE) $("edc_raw_" + num2str(t)) = 0
         Wave edc = $("edc_raw_" + num2str(t))
         SetScale/P x, e0, de, edc
@@ -144,8 +363,6 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
     endfor
 
     SetDataFolder root:
-
-    // 这里假设你已有这个函数，并且它会把 edc_raw_i 变成 edc_show_i
     LJZ_ApplySmoothing_All(runDF)
 
     SVAR bn = root:ARPES_LJZ:EDCFit:gBaseName
@@ -182,7 +399,7 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
     Variable/G root:ARPES_LJZ:EDCFit:Run_t0     = DimOffset(w, 2)
     Variable/G root:ARPES_LJZ:EDCFit:Run_dt     = DimDelta(w, 2)
 
-    // 直接把 EDCWB 接到这个 runDF，方便后续拟合
+    // 自动把 EDCWB 指向这个 runDF
     NewDataFolder/O root:Packages
     NewDataFolder/O root:Packages:ARPES_LJZ
     NewDataFolder/O root:Packages:ARPES_LJZ:EDCWB
@@ -190,106 +407,159 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
 
     return 0
 End
+
+
 // ============================================================================
-//  Section 0. Shared path helpers
+//  Section 3. Panel
 // ============================================================================
 
-Function/S LJZ_EDCWB_BaseDF()
-    return "root:Packages:ARPES_LJZ:EDCWB"
-End
-
-Function/S LJZ_EDCWB_NormDFPath(df)
-    String df
-
-    if (strlen(df) == 0)
-        return ""
-    endif
-
-    df = RemoveEnding(df, ":") + ":"
-    if (!DataFolderExists(df))
-        return ""
-    endif
-
-    return df
-End
-
-Function/S LJZ_EDCWB_WaveNameFromPath(wPath)
-    String wPath
-
-    Variable p
-    p = strsearch(wPath, ":", Inf)
-    if (p < 0)
-        return ""
-    endif
-
-    return wPath[p + 1, Inf]
-End
-
-Function/S LJZ_EDCWB_WaveDFFromPath(wPath)
-    String wPath
-
-    Variable p
-    p = strsearch(wPath, ":", Inf)
-    if (p < 0)
-        return ""
-    endif
-
-    return wPath[0, p]
-End
-
-Function LJZ_EDCWB_Is1DWave(w)
-    Wave/Z w
-
-    if (!WaveExists(w))
-        return 0
-    endif
-
-    if (DimSize(w, 1) > 0 || DimSize(w, 2) > 0 || DimSize(w, 3) > 0)
-        return 0
-    endif
-
-    return 1
-End
-
-Function LJZ_EDCWB_EnsureNumWaveLen12(w, fillVal)
-    Wave w
-    Variable fillVal
-
-    Variable oldN = numpnts(w)
-    if (oldN != 12)
-        Redimension/N=12 w
-        if (oldN < 12)
-            w[oldN, 11] = fillVal
-        endif
-    endif
+Function EDCFit_LJZ()
+    LJZ_EnsureEDCFitDF()
+    EDCFIT_RebuildWaveList()
+    EDCFit_OpenPanel()
     return 0
 End
 
-Function LJZ_EDCWB_EnsureTextWaveLen12(w, fillStr)
-    Wave/T w
-    String fillStr
+Function EDCFit_OpenPanel()
+    LJZ_EnsureEDCFitDF()
 
-    Variable oldN = numpnts(w)
-    if (oldN != 12)
-        Redimension/N=12 w
-        if (oldN < 12)
-            w[oldN, 11] = fillStr
-        endif
+    String p = EDCFIT_PanelName()
+    DoWindow/F $p
+    if (V_flag == 0)
+        NewPanel/N=$p /W=(80,80,510,520)
+    else
+        DoWindow/F $p
+        return 0
     endif
+
+    SetVariable svBaseDF,pos={10,10},size={250,18},title="Base DF"
+    SetVariable svBaseDF,variable=root:ARPES_LJZ:EDCFit:BaseDF,proc=EDCFIT_SetVarProc
+
+    CheckBox cbRecursive,pos={270,10},title="Recursive"
+    CheckBox cbRecursive,variable=root:ARPES_LJZ:EDCFit:Recursive,proc=EDCFIT_CheckProc
+
+    Button btScan,pos={360,8},size={55,20},title="Scan",proc=EDCFIT_ButtonProc
+
+    ListBox lbWave,pos={10,40},size={210,240},listWave=root:ARPES_LJZ:EDCFit:LB_Disp,selWave=root:ARPES_LJZ:EDCFit:LB_Sel,proc=EDCFIT_ListBoxProc
+
+    SetVariable svK0,pos={240,50},size={150,18},title="Kindex"
+    SetVariable svK0,variable=root:ARPES_LJZ:EDCFit:Kindex,proc=EDCFIT_SetVarProc
+
+    SetVariable svK1,pos={240,80},size={150,18},title="Kxe"
+    SetVariable svK1,variable=root:ARPES_LJZ:EDCFit:Kxe,proc=EDCFIT_SetVarProc
+
+    SetVariable svEvary,pos={240,110},size={150,18},title="evary"
+    SetVariable svEvary,variable=root:ARPES_LJZ:EDCFit:evary,proc=EDCFIT_SetVarProc
+
+    SetVariable svBaseName,pos={240,140},size={170,18},title="BaseName"
+    SetVariable svBaseName,variable=root:ARPES_LJZ:EDCFit:gBaseName,proc=EDCFIT_SetVarProc
+
+    Button btShowEDC,pos={240,180},size={120,26},title="Show EDC",proc=EDCFIT_ButtonProc
+    Button btOpenWB,pos={240,215},size={120,26},title="Open EDCWB",proc=EDCFIT_ButtonProc
+
+    TitleBox tbSel,pos={10,292},size={390,40},title="Selected Wave: "
+    TitleBox tbRun,pos={10,342},size={390,60},title="RunDF: "
+
+    EDCFIT_RefreshTitleBoxes()
+
     return 0
 End
 
-Function LJZ_EDCWB_EnsureNumWaveLen16(w, fillVal)
-    Wave w
-    Variable fillVal
+Function EDCFIT_RefreshTitleBoxes()
+    SVAR sWave = root:ARPES_LJZ:EDCFit:EDCWaveSel
+    SVAR runDF = root:ARPES_LJZ:EDCFit:RunDF
 
-    Variable oldN = numpnts(w)
-    if (oldN != 16)
-        Redimension/N=16 w
-        if (oldN < 16)
-            w[oldN, 15] = fillVal
+    String p = EDCFIT_PanelName()
+    if (WinType(p) == 0)
+        return 0
+    endif
+
+    TitleBox tbSel win=$p, title="Selected Wave: " + sWave
+    TitleBox tbRun win=$p, title="RunDF: " + runDF
+
+    return 0
+End
+
+
+// ============================================================================
+//  Section 4. Panel callbacks
+// ============================================================================
+
+Function EDCFIT_ButtonProc(ctrlName) : ButtonControl
+    String ctrlName
+
+    if (CmpStr(ctrlName, "btScan") == 0)
+        EDCFIT_RebuildWaveList()
+        EDCFIT_RefreshTitleBoxes()
+        return 0
+    endif
+
+    if (CmpStr(ctrlName, "btShowEDC") == 0)
+        EDCPF_ShowEDC_LJZ(ctrlName)
+        EDCFIT_RefreshTitleBoxes()
+        return 0
+    endif
+
+    if (CmpStr(ctrlName, "btOpenWB") == 0)
+        if (Exists("LJZ_EDCWB") == 6)
+            Execute "LJZ_EDCWB()"
+        else
+            DoAlert 0, "还没有加载 LJZ_EDCWB。"
+        endif
+        return 0
+    endif
+
+    return 0
+End
+
+Function EDCFIT_SetVarProc(ctrlName,varNum,varStr,varName) : SetVariableControl
+    String ctrlName
+    Variable varNum
+    String varStr
+    String varName
+
+    if (CmpStr(ctrlName, "svBaseDF") == 0)
+        EDCFIT_RebuildWaveList()
+        EDCFIT_RefreshTitleBoxes()
+        return 0
+    endif
+
+    if ((CmpStr(ctrlName, "svK0") == 0) || (CmpStr(ctrlName, "svK1") == 0) || (CmpStr(ctrlName, "svEvary") == 0) || (CmpStr(ctrlName, "svBaseName") == 0))
+        EDCFIT_RefreshTitleBoxes()
+        return 0
+    endif
+
+    return 0
+End
+
+Function EDCFIT_CheckProc(ctrlName,checked) : CheckBoxControl
+    String ctrlName
+    Variable checked
+
+    if (CmpStr(ctrlName, "cbRecursive") == 0)
+        EDCFIT_RebuildWaveList()
+        EDCFIT_RefreshTitleBoxes()
+        return 0
+    endif
+
+    return 0
+End
+
+Function EDCFIT_ListBoxProc(ctrlName,row,col,event) : ListBoxControl
+    String ctrlName
+    Variable row,col,event
+
+    if ((event != 1) && (event != 4))
+        return 0
+    endif
+
+    if (CmpStr(ctrlName, "lbWave") == 0)
+        if (row >= 0)
+            EDCFIT_SelectWaveRow(row)
+            EDCFIT_RefreshTitleBoxes()
         endif
     endif
+
     return 0
 End
 
