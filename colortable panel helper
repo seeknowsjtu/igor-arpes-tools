@@ -1,0 +1,476 @@
+当然可以。下面我给你写一份**面向你自己和后续调用程序的“CTLUZ 工作流程说明 + 命名规范”**。
+你可以把它直接放进这个 `.ipf` 文件头部注释里，或者单独存成一个开发说明。
+
+---
+
+# CTLUZ_LJZ 使用流程与命名规范说明
+
+## 1. 模块定位
+
+`CTLUZ_LJZ` 是一个**colortable 编辑与分发模块**，它现在承担三类职责：
+
+1. **编辑器工作区**
+   维护当前正在编辑的 colortable 和 lookup table。
+
+2. **内置 / 保存 palette 库（CTLIB）**
+   以名字管理一组稳定可复用的 palette。
+
+3. **应用快照（APPLIED）**
+   当把 palette 真正应用到某张图时，不再直接引用全局工作区，而是复制一份 **冻结快照**，避免旧图被后续修改联动改变。
+
+---
+
+## 2. 总体工作流
+
+### 2.1 当前推荐工作流
+
+程序和用户都应当按下面的逻辑理解 CTLUZ：
+
+### A. 编辑阶段
+
+用户打开 `CTLUZ_LJZ()` 面板，修改：
+
+* `ct_p0 ... ct_p4`
+* `ct_rgb0_* ... ct_rgb4_*`
+* `ct_table`
+* `ct_lut`
+
+这些都属于：
+
+## **当前编辑器工作区（workspace）**
+
+它们可以反复改，代表“当前正在调的颜色方案”。
+
+---
+
+### B. 保存阶段
+
+如果当前 palette 想长期复用，就执行：
+
+* `ctluz_save_current_ct()`
+
+它会把当前 `ct_table` 保存到：
+
+```text
+root:ARPES_LJZ:CTLUZ:CTLIB:<PaletteName>
+```
+
+这代表：
+
+## **稳定 palette 库**
+
+这里的 palette 名字是后续别的程序最应该识别和调用的“正式名字”。
+
+---
+
+### C. 应用阶段
+
+如果要把颜色真正上到某张图，不应该让图直接引用 workspace 的：
+
+* `root:ARPES_LJZ:CTLUZ:ct_table`
+* `root:ARPES_LJZ:CTLUZ:ct_lut`
+
+而应该调用：
+
+* `ctluz_apply_to_top_graph()`
+* 或 `ctluz_apply_picked_ct()`
+* 或底层的 `ctluz_apply_snapshot_to_image(...)`
+
+这样程序会在：
+
+```text
+root:ARPES_LJZ:CTLUZ:APPLIED:
+```
+
+里生成这张图专属的：
+
+* `..._ct`
+* `..._lut`
+
+这代表：
+
+## **冻结后的应用快照**
+
+所以后续再改 CT 编辑器，旧图不会变。
+
+---
+
+## 3. 数据结构说明
+
+---
+
+### 3.1 工作区（workspace）
+
+位置：
+
+```text
+root:ARPES_LJZ:CTLUZ:
+```
+
+主要内容：
+
+#### 变量
+
+* `ct_p0 ... ct_p4`
+  五个控制点位置，范围在 `[0,1]`
+* `ct_rgb0_r/g/b ... ct_rgb4_r/g/b`
+  五个控制点的 RGB 值，范围 `0..255`
+* `ct_swap_x`, `ct_swap_y`
+  用于交换两个控制点 RGB
+
+#### 波形
+
+* `ct_table`
+  大小为 `65536 x 4` 的 `U16` 波形
+  含义：RGBA colortable，A 固定为 `65535`
+* `ct_lut`
+  大小为 `65536` 的数值波形
+  含义：将显示空间 `t` 映射回基础色表空间 `s`
+
+#### UI 状态
+
+* `ct_save_name`
+* `ct_pick_name`
+* `ctlib_menu_list`
+
+---
+
+### 3.2 CTLIB（正式 palette 库）
+
+位置：
+
+```text
+root:ARPES_LJZ:CTLUZ:CTLIB:
+```
+
+每个 palette 是一个：
+
+* `65536 x 4`
+* `U16`
+* RGBA 格式
+
+例如：
+
+```text
+root:ARPES_LJZ:CTLUZ:CTLIB:Mualani
+root:ARPES_LJZ:CTLUZ:CTLIB:NavyBurgundy
+root:ARPES_LJZ:CTLUZ:CTLIB:Nilou
+```
+
+这里的 palette 是：
+
+## **给别的模块调用的正式 palette 源**
+
+注意：
+CTLIB 里目前只保存 **CT 本身**，**不保存独立 LUT**。
+调用时默认配合当前 workspace 中的 `ct_lut` 使用。
+
+---
+
+### 3.3 APPLIED（已应用快照）
+
+位置：
+
+```text
+root:ARPES_LJZ:CTLUZ:APPLIED:
+```
+
+命名规则自动生成：
+
+```text
+<GraphName>__<ImageName>_ct
+<GraphName>__<ImageName>_lut
+```
+
+例如：
+
+```text
+MyHeatMap__image0_ct
+MyHeatMap__image0_lut
+```
+
+含义：
+
+* `_ct`：该图像冻结后的 colortable 副本
+* `_lut`：该图像冻结后的 lookup 副本
+
+这里的数据是：
+
+## **图像级别的最终应用副本**
+
+别的模块不应该手工修改这里的波形；它们应被视为只读快照。
+
+---
+
+## 4. 命名规范（非常重要）
+
+---
+
+### 4.1 palette 名（CTLIB 中的 wave 名）
+
+推荐规范：
+
+* 使用 **英文 CamelCase** 或简洁 PascalCase
+* 不要带空格
+* 不要带中文
+* 不要带特殊符号
+* 保证 `CleanupName(name,0)` 后仍可读
+
+推荐例子：
+
+```text
+Mualani
+NavyBurgundy
+Citlali
+MyBlueOrange
+PaperSoft01
+```
+
+不推荐：
+
+```text
+blue orange
+我的配色
+ct-1
+palette#3
+```
+
+---
+
+### 4.2 自定义 palette 命名建议
+
+如果你后面自己保存 palette，建议用下面三类前缀：
+
+#### A. 论文 / 图组长期通用
+
+```text
+PaperSoft01
+PaperWarm02
+PaperBlueGold
+```
+
+#### B. 项目专用
+
+```text
+A2K1D_Default
+SliceGallery_Warm
+MDCFit_LightBlue
+```
+
+#### C. 试验版
+
+```text
+Test01
+Test02
+TmpBlueRed
+```
+
+这样别的程序一眼就知道这个 palette 是干什么的。
+
+---
+
+### 4.3 APPLIED 快照命名
+
+APPLIED 名字由程序自动生成，不建议人工创建。
+
+规则：
+
+```text
+CleanupName(GraphName + "__" + ImageName, 0) + "_ct"
+CleanupName(GraphName + "__" + ImageName, 0) + "_lut"
+```
+
+所以别的模块：
+
+* **不要假设 APPLIED 名字恒定**
+* **不要手工拼错图名**
+* 最好总是通过 `ctluz_apply_snapshot_to_image(...)` 来生成
+
+---
+
+## 5. 对其他程序的调用规范
+
+这一节最关键，直接决定别的模块能不能正确理解你的操作。
+
+---
+
+### 5.1 如果别的程序只想“读取一个 palette 名并使用它”
+
+推荐流程：
+
+1. 调用 `ctluz_init_defaults_if_needed()`
+2. 调用 `ctluz_refresh_ctlib_menu()`
+3. 从 `root:ARPES_LJZ:CTLUZ:CTLIB:<PaletteName>` 取出 palette wave
+4. 与当前 `root:ARPES_LJZ:CTLUZ:ct_lut` 配合
+5. 用 `ctluz_apply_snapshot_to_image(...)` 应用到自己的图像
+
+也就是说：
+
+## **外部程序优先从 CTLIB 取 palette**
+
+而不是直接读 editor workspace。
+
+---
+
+### 5.2 如果别的程序想使用“当前编辑器正在调的 palette”
+
+可以直接读取：
+
+```text
+root:ARPES_LJZ:CTLUZ:ct_table
+root:ARPES_LJZ:CTLUZ:ct_lut
+```
+
+但必须明确区分两种场景：
+
+#### 临时预览
+
+可以直接引用 workspace
+
+#### 最终上图 / 导出
+
+必须先做快照复制，再应用
+
+也就是说：
+
+## **workspace 只适合预览，不适合最终冻结输出**
+
+---
+
+### 5.3 对外部程序的推荐底层调用方式
+
+#### 推荐函数
+
+* `ctluz_init_defaults_if_needed()`
+* `ctluz_refresh_ctlib_menu()`
+* `ctluz_rebuild()`
+* `ctluz_apply_snapshot_to_image(graphName, imageName, srcCT, srcLUT, useLookup)`
+
+#### 不推荐直接依赖
+
+* 手工写死 `ct_table`
+* 手工写死 `ct_lut`
+* 假设旧图一直引用共享 CT 仍然安全
+
+---
+
+## 6. 给其他模块的接口理解建议
+
+---
+
+### 6.1 A2K1D / SliceGallery / Heatmap 模块应该怎么理解 CTLUZ
+
+这些模块最好把 CTLUZ 理解成三层：
+
+### 第一层：palette source
+
+```text
+CTLIB:<name>
+```
+
+稳定 palette 源
+
+### 第二层：workspace
+
+```text
+ct_table + ct_lut
+```
+
+当前编辑器调试态
+
+### 第三层：applied snapshot
+
+```text
+APPLIED:<graph>__<image>_ct/lut
+```
+
+图像最终冻结态
+
+---
+
+### 6.2 推荐策略
+
+#### 对预览窗口
+
+可以允许使用 workspace
+因为用户可能希望“调色时实时看变化”
+
+#### 对导出窗口 / 成品图
+
+必须使用 snapshot
+因为成品图不能被后续调色联动污染
+
+---
+
+## 7. 推荐给别的程序的最小调用模板
+
+下面是给其他模块的建议逻辑，不一定非得逐字照搬，但思想应该一样。
+
+### 7.1 用某个正式 palette 名
+
+```igorpro
+ctluz_init_defaults_if_needed()
+Wave/Z/W/U myCT = $("root:ARPES_LJZ:CTLUZ:CTLIB:Mualani")
+Wave/Z myLUT = root:ARPES_LJZ:CTLUZ:ct_lut
+ctluz_apply_snapshot_to_image(winName, imgName, myCT, myLUT, 1)
+```
+
+### 7.2 用当前 workspace
+
+```igorpro
+ctluz_init_defaults_if_needed()
+ctluz_rebuild()
+Wave/W/U myCT = root:ARPES_LJZ:CTLUZ:ct_table
+Wave myLUT = root:ARPES_LJZ:CTLUZ:ct_lut
+ctluz_apply_snapshot_to_image(winName, imgName, myCT, myLUT, 1)
+```
+
+---
+
+## 8. 用户操作约定
+
+为了让别的程序能够“猜对”你的意图，建议以后操作上遵循以下约定：
+
+### 8.1 想长期保存的 palette 一定存入 CTLIB
+
+不要只停留在 workspace。
+
+### 8.2 正式图上色尽量用 CTLIB 名称
+
+比如：
+
+* `Mualani`
+* `A2K1D_Default`
+* `SliceGallery_Warm`
+
+这样别的程序和以后你自己都知道当时用的是哪套正式 palette。
+
+### 8.3 workspace 仅表示“当前正在编辑的版本”
+
+它不应被当作“唯一真源”。
+
+---
+
+## 9. 一句话总结
+
+这个模块现在应该被理解为：
+
+## **CTLUZ = palette 编辑器 + palette 库 + 冻结应用器**
+
+其中：
+
+* `ct_table / ct_lut` 是**工作区**
+* `CTLIB:<name>` 是**正式 palette 库**
+* `APPLIED:*_ct / *_lut` 是**图像冻结快照**
+
+别的程序如果想安全调用颜色，应该：
+
+## **优先使用 CTLIB，最终应用时写快照，不要长期共享 workspace 引用。**
+
+---
+
+如果你愿意，我下一条可以继续帮你把这份说明整理成：
+
+1. **适合直接贴在 `.ipf` 文件头部的英文版注释**
+   或
+2. **更短的“给 A2K1D / SliceGallery 调用者看的 API 说明版”**
