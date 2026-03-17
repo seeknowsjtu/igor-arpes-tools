@@ -1320,6 +1320,7 @@ Function sg_sync_panel_from_state()
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tbf
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tbx
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tby
+    ControlUpdate/W=SLICEGALLERY_LJZ_P sg_pm_rstyle
 
     // summaries
     TitleBox sg_layers_txt,win=SLICEGALLERY_LJZ_P,title="Layers: " + sg_layers_to_string()
@@ -1364,13 +1365,6 @@ Function sg_refresh_ct_menu_list()
         ctPick = "Current"
     endif
 
-    DoWindow SLICEGALLERY_LJZ_P
-    if (V_flag)
-        PopupMenu sg_pm_ct,win=SLICEGALLERY_LJZ_P,value=#"root:ARPES_LJZ:SliceGallery:ctMenuList"
-        PopupMenu sg_pm_ct,win=SLICEGALLERY_LJZ_P,popvalue=ctPick
-        ControlUpdate/W=SLICEGALLERY_LJZ_P sg_pm_ct
-    endif
-
     return 0
 End
 
@@ -1401,6 +1395,9 @@ Function sg_sync_popup_states()
 
     PopupMenu sg_pm_layout,win=SLICEGALLERY_LJZ_P,mode=sg_layout_mode_to_popup(layoutMode)
     PopupMenu sg_pm_layout,win=SLICEGALLERY_LJZ_P,popvalue=layoutMode
+
+    PopupMenu sg_pm_rstyle,win=SLICEGALLERY_LJZ_P,mode=sg_render_style_to_popup(renderStyle)
+    PopupMenu sg_pm_rstyle,win=SLICEGALLERY_LJZ_P,popvalue=renderStyle
 
     PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,mode=max(1, min(3, colorMode + 1))
     PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,popvalue=sg_color_mode_to_string(colorMode)
@@ -1804,6 +1801,8 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	GroupBox sg_gb_render,pos={840.00,57.00},size={187.80,180.60},title="Rendering Options"
 	PopupMenu sg_pm_layout,pos={852.00,84.00},size={40.20,20.40},proc=sg_pm_layout_proc
 	PopupMenu sg_pm_layout,mode=1,popvalue="Auto",value= #"\"Auto;1xN;2x3;2x4;3x3\""
+	PopupMenu sg_pm_rstyle,pos={852.00,60.00},size={162.00,20.40},proc=sg_pm_rstyle_proc
+	PopupMenu sg_pm_rstyle,mode=1,popvalue="LegacyTight",value= #"\"LegacyTight;EqualPlot\""
 	CheckBox sg_ck_xuse,pos={906.60,84.60},size={42.60,18.00},title="Use X"
 	CheckBox sg_ck_xuse,variable= root:ARPES_LJZ:SliceGallery:xUse
 	SetVariable sg_sv_x0,pos={852.00,114.00},size={162.00,19.80},title="xMin"
