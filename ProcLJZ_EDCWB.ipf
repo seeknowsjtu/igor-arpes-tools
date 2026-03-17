@@ -1569,7 +1569,8 @@ Function LJZ_EDCWB_HasFitRecord(srcWavePath)
     String srcWavePath
 
     Wave/Z wInfo = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
-    if (!WaveExists(wInfo))
+    Wave/Z wCoef = $(LJZ_EDCWB_ResultFitCoefPath(srcWavePath))
+    if (!WaveExists(wInfo) || !WaveExists(wCoef))
         return 0
     endif
 
@@ -1578,6 +1579,15 @@ Function LJZ_EDCWB_HasFitRecord(srcWavePath)
     endif
 
     if (numtype(wInfo[LJZ_EDCWB_FI_FitOK()]) != 0)
+        return 0
+    endif
+
+    if (numpnts(wCoef) < 12)
+        return 0
+    endif
+
+    WaveStats/Q wCoef
+    if (V_numNaNs >= numpnts(wCoef))
         return 0
     endif
 
@@ -2385,7 +2395,9 @@ Function/S LJZ_EDCWB_TmpDF()
 End
 
 Function LJZ_EDCWB_EnsureTmpDF()
-    NewDataFolder/O $(LJZ_EDCWB_TmpDF())
+    String oldDf = GetDataFolder(1)
+    NewDataFolder/O/S $(LJZ_EDCWB_TmpDF())
+    SetDataFolder $oldDf
     return 0
 End
 
@@ -3005,8 +3017,10 @@ Function LJZ_EDCWB_KillTmpForWave(srcWavePath)
 End
 
 Function LJZ_EDCWB_KillAllTmp()
-    LJZ_EDCWB_EnsureTmpDF()
-    KillDataFolder/Z $(LJZ_EDCWB_TmpDF())
+    String tmpPath = LJZ_EDCWB_TmpDF()
+    if (DataFolderExists(tmpPath))
+        KillDataFolder/Z $tmpPath
+    endif
     LJZ_EDCWB_EnsureTmpDF()
     return 0
 End
@@ -4185,7 +4199,7 @@ Function LJZ_EDCWB_DoFitSinglePeak(srcWavePath)
     endif
     Wave sigmaActive = $(LJZ_EDCWB_TmpDF() + ":sigmaActive")
 
-    Variable fitOK = 1,V_FitError
+    Variable fitOK = 1
     if (V_FitError != 0)
         fitOK = 0
     endif
@@ -4463,7 +4477,7 @@ Function LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
     endif
     Wave sigmaActive = $(LJZ_EDCWB_TmpDF() + ":sigmaActive")
 
-    Variable fitOK = 1,V_FitError
+    Variable fitOK = 1
     if (V_FitError != 0)
         fitOK = 0
     endif
@@ -4576,32 +4590,31 @@ Function/S LJZ_EDCWB_StatusTagForWave(wPath)
     String wPath
 
     Variable acc = LJZ_EDCWB_ReadAcceptState(wPath)
-    String reviewTag = "[ ]"
+    String reviewTag = " "
     if (acc > 0)
-        reviewTag = "[A]"
+        reviewTag = "A"
     elseif (acc < 0)
-        reviewTag = "[R]"
+        reviewTag = "R"
     endif
 
+    String stageTag = "New"
     Wave/Z wInfo = $(LJZ_EDCWB_ResultFitInfoPath(wPath))
     Wave/Z wGuess = $(LJZ_EDCWB_ResultGuessPath(wPath))
 
     if (WaveExists(wInfo) && numtype(wInfo[LJZ_EDCWB_FI_FitOK()]) == 0)
         if (wInfo[LJZ_EDCWB_FI_FitOK()] > 0)
-            return reviewTag + "[Fit]"
+            stageTag = "Fit"
         else
-            return reviewTag + "[FitFail]"
+            stageTag = "Fail"
         endif
-    endif
-
-    if (WaveExists(wGuess))
+    elseif (WaveExists(wGuess))
         WaveStats/Q wGuess
         if (numtype(V_numNaNs) == 0 && V_numNaNs < numpnts(wGuess))
-            return reviewTag + "[Guess]"
+            stageTag = "Guess"
         endif
     endif
 
-    return reviewTag + "[New]"
+    return "[" + reviewTag + "|" + stageTag + "]"
 End
 
 Function LJZ_EDCWB_RebuildListWaves()
@@ -4724,22 +4737,20 @@ Function LJZ_EDCWB_LoadCurrentWave()
 
     LJZ_EDCWB_EnsureResultRecord(curPath)
 
-    Variable ok
+    Variable ok = 0
     if (LJZ_EDCWB_HasFitRecord(curPath))
         ok = LJZ_EDCWB_LoadFitRecordToEditState(curPath)
         if (ok != 0)
             return -1
         endif
+        LJZ_EDCWB_MarkDirty(0)
     else
         LJZ_EDCWB_SetModel(eModel)
         LJZ_EDCWB_FillNaNParsWithDefaults(eModel)
         LJZ_EDCWB_SyncParToAuxState()
         ok = LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
         if (ok != 0)
-            ok = LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-            if (ok != 0)
-                return -1
-            endif
+            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
         endif
         LJZ_EDCWB_MarkDirty(0)
     endif
@@ -4804,6 +4815,7 @@ Function LJZ_EDCWB_RefreshGraph()
             WaveStats/Q w0
             if (V_numNaNs < numpnts(w0))
                 AppendToGraph/W=$g w0
+                ModifyGraph/W=$g lsize=1,rgb=(0,0,0)
             endif
         endif
     endif
@@ -4814,6 +4826,7 @@ Function LJZ_EDCWB_RefreshGraph()
             WaveStats/Q w1
             if (V_numNaNs < numpnts(w1))
                 AppendToGraph/W=$g w1
+                ModifyGraph/W=$g lsize=1.5,rgb=(0,0,65535)
             endif
         endif
     endif
@@ -4824,6 +4837,7 @@ Function LJZ_EDCWB_RefreshGraph()
             WaveStats/Q wGuess
             if (V_numNaNs < numpnts(wGuess))
                 AppendToGraph/W=$g wGuess
+                ModifyGraph/W=$g lsize=1.2,lstyle=3,rgb=(0,52224,0)
             endif
         endif
     endif
@@ -4834,6 +4848,7 @@ Function LJZ_EDCWB_RefreshGraph()
             WaveStats/Q wFit
             if (V_numNaNs < numpnts(wFit))
                 AppendToGraph/W=$g wFit
+                ModifyGraph/W=$g lsize=2,rgb=(65535,0,0)
             endif
         endif
     endif
@@ -4844,6 +4859,7 @@ Function LJZ_EDCWB_RefreshGraph()
             WaveStats/Q wRes
             if (V_numNaNs < numpnts(wRes))
                 AppendToGraph/R/W=$g wRes
+                ModifyGraph/W=$g lsize=1,rgb=(32768,32768,32768)
             endif
         endif
     endif
@@ -5292,6 +5308,7 @@ End
 Function LJZ_EDCWB_ExportSummaryToTargetDF()
     LJZ_EDCWB_EnsureDF()
 
+    SVAR sTarget = $(LJZ_EDCWB_BaseDF() + ":TargetDF")
     sTarget = LJZ_EDCWB_NormDFPath(sTarget)
     if (strlen(sTarget) == 0)
         Print "EDCWB export: invalid target DF."
