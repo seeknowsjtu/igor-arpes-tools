@@ -720,6 +720,31 @@ Function LJZ_EDCWB_SaveFitVectors(srcWavePath, wCoefIn, wSigmaIn, wInfoIn)
     return 0
 End
 
+Function LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
+    String srcWavePath
+
+    LJZ_EDCWB_EnsureResultRecord(srcWavePath)
+
+    Wave/Z wFit = $(LJZ_EDCWB_ResultFitPath(srcWavePath))
+    if (WaveExists(wFit))
+        wFit = NaN
+    endif
+
+    Wave/Z wRes = $(LJZ_EDCWB_ResultResPath(srcWavePath))
+    if (WaveExists(wRes))
+        wRes = NaN
+    endif
+
+    Wave/Z wSig = $(LJZ_EDCWB_ResultFitSigmaPath(srcWavePath))
+    if (WaveExists(wSig))
+        LJZ_EDCWB_EnsureNumWaveLen12(wSig, NaN)
+        wSig = NaN
+    endif
+
+    return 0
+End
+
+
 Function LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
     String srcWavePath
 
@@ -2947,6 +2972,7 @@ Function LJZ_EDCWB_AutoGuessAndSave(srcWavePath, modelID)
 
     // 同时把当前 edit 参数写入 fitcoef / fitinfo，方便 panel 直接载入
     LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
+    LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
 
     return 0
 End
@@ -3437,105 +3463,26 @@ Function LJZ_EDCWB_DoFitSinglePeak(srcWavePath)
     endif
     Wave sigmaActive = $(LJZ_EDCWB_TmpDF() + ":sigmaActive")
 
-    LJZ_EDCWB_SaveFitResultSinglePeak(srcWavePath, coefActive, sigmaActive, 1)
-    LJZ_EDCWB_MarkDirty(0)
+    Variable fitOK = 1
+    NVAR/Z vFitError = V_FitError
+    if (NVAR_Exists(vFitError) && vFitError != 0)
+        fitOK = 0
+    endif
 
+    LJZ_EDCWB_SaveFitResultSinglePeak(srcWavePath, coefActive, sigmaActive, fitOK)
+    if (!fitOK)
+        return -2
+    endif
+
+    LJZ_EDCWB_MarkDirty(0)
     return 0
 End
 
 
 // ============================================================================
-//  Section 41. Dispatcher / skeleton for future models
+//  Section 41-42 removed (legacy dispatcher/refit/batch)
+//  Keep Part 5B implementations as the single source of truth.
 // ============================================================================
-
-Function LJZ_EDCWB_DoFitCurrent()
-    LJZ_EDCWB_EnsureDF()
-
-    SVAR sPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
-    NVAR eModel = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
-
-    if (strlen(sPath) == 0)
-        return -1
-    endif
-
-    return LJZ_EDCWB_DoFitWave(sPath, eModel)
-End
-
-Function LJZ_EDCWB_DoFitWave(srcWavePath, modelID)
-    String srcWavePath
-    Variable modelID
-
-    if (!LJZ_EDCWB_SourceWaveExists(srcWavePath))
-        return -1
-    endif
-
-    if (modelID == LJZ_EDCWB_Model_SinglePeakFDConv())
-        return LJZ_EDCWB_DoFitSinglePeak(srcWavePath)
-    endif
-
-    // 下面两个模型先留接口，不硬上
-    if (modelID == LJZ_EDCWB_Model_EffectiveGap())
-        Print "LJZ_EDCWB: EffectiveGap fit engine not implemented yet."
-        return -2
-    endif
-
-    if (modelID == LJZ_EDCWB_Model_SymGap())
-        Print "LJZ_EDCWB: SymGap fit engine not implemented yet."
-        return -2
-    endif
-
-    return -1
-End
-
-
-// ============================================================================
-//  Section 42. Refit / batch skeleton
-// ============================================================================
-
-Function LJZ_EDCWB_RefitCurrent()
-    LJZ_EDCWB_EnsureDF()
-
-    SVAR sPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
-    if (strlen(sPath) == 0)
-        return -1
-    endif
-
-    return LJZ_EDCWB_DoFitCurrent()
-End
-
-Function LJZ_EDCWB_BatchFitList(listStr, modelID, onlyUnchecked)
-    String listStr
-    Variable modelID, onlyUnchecked
-
-    Variable n = ItemsInList(listStr, ";")
-    Variable i, ok, nDone = 0
-    String wPath
-
-    for (i = 0; i < n; i += 1)
-        wPath = StringFromList(i, listStr, ";")
-        if (strlen(wPath) == 0)
-            continue
-        endif
-
-        if (onlyUnchecked)
-            if (LJZ_EDCWB_ReadAcceptState(wPath) != 0)
-                continue
-            endif
-        endif
-
-        ok = LJZ_EDCWB_AutoInitGuess(wPath, modelID)
-        if (ok != 0)
-            continue
-        endif
-
-        ok = LJZ_EDCWB_DoFitWave(wPath, modelID)
-        if (ok == 0)
-            nDone += 1
-        endif
-    endfor
-
-    return nDone
-End
 
 // ============================================================================
 //  LJZ_EDCWB Part 5B : Fit Engine extensions
@@ -3796,9 +3743,18 @@ Function LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
     endif
     Wave sigmaActive = $(LJZ_EDCWB_TmpDF() + ":sigmaActive")
 
-    LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, coefActive, sigmaActive, 1)
-    LJZ_EDCWB_MarkDirty(0)
+    Variable fitOK = 1
+    NVAR/Z vFitError = V_FitError
+    if (NVAR_Exists(vFitError) && vFitError != 0)
+        fitOK = 0
+    endif
 
+    LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, coefActive, sigmaActive, fitOK)
+    if (!fitOK)
+        return -2
+    endif
+
+    LJZ_EDCWB_MarkDirty(0)
     return 0
 End
 
@@ -4201,7 +4157,8 @@ Function LJZ_EDCWB_OpenPanel()
     Button btSummary,pos={170,340},size={50,20},title="Sum",proc=LJZ_EDCWB_ButtonProc
 
     PopupMenu pmModel,pos={240,40},size={220,20},title="Model"
-    PopupMenu pmModel,mode=1,popvalue=LJZ_EDCWB_ModelName($(LJZ_EDCWB_BaseDF() + ":EditModelID")),value=#"LJZ_EDCWB_ModelPopupList()",proc=LJZ_EDCWB_PopupProc
+    NVAR eModelOpen = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
+    PopupMenu pmModel,mode=1,popvalue=LJZ_EDCWB_ModelName(eModelOpen),value=#"LJZ_EDCWB_ModelPopupList()",proc=LJZ_EDCWB_PopupProc
 
     SetVariable svXLo,pos={240,75},size={105,18},title="XLo"
     SetVariable svXLo,variable=$(LJZ_EDCWB_BaseDF() + ":EditXLo"),proc=LJZ_EDCWB_SetVarProc
@@ -4394,6 +4351,7 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
 
     String name = sva.ctrlName
     SVAR sTarget = $(LJZ_EDCWB_BaseDF() + ":TargetDF")
+    SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
 
     if (CmpStr(name, "svTarget") == 0)
         LJZ_EDCWB_RebuildListWaves()
@@ -4403,14 +4361,14 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
 
     if ((CmpStr(name, "svTemp") == 0) || (CmpStr(name, "svEF") == 0) || (CmpStr(name, "svRes") == 0))
         LJZ_EDCWB_SyncAuxStateToPar()
-        LJZ_EDCWB_BuildAndSaveGuessCurve($(LJZ_EDCWB_BaseDF() + ":CurWavePath"))
+        LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
         LJZ_EDCWB_RefreshGraph()
         return 0
     endif
 
     if ((CmpStr(name, "svXLo") == 0) || (CmpStr(name, "svXHi") == 0) || (CmpStr(name, "svSmP1") == 0) || (CmpStr(name, "svSmP2") == 0))
-        LJZ_EDCWB_RebuildAllWorkWaves($(LJZ_EDCWB_BaseDF() + ":CurWavePath"))
-        LJZ_EDCWB_BuildAndSaveGuessCurve($(LJZ_EDCWB_BaseDF() + ":CurWavePath"))
+        LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+        LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
         LJZ_EDCWB_RefreshGraph()
         return 0
     endif
