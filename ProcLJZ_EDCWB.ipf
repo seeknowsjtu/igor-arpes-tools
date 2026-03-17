@@ -485,8 +485,14 @@ End
 //  Section 4. Panel callbacks
 // ============================================================================
 
-Function EDCFIT_ButtonProc(ctrlName) : ButtonControl
-    String ctrlName
+Function EDCFIT_ButtonProc(ba) : ButtonControl
+    STRUCT WMButtonAction &ba
+
+    if (ba.eventCode != 2)
+        return 0
+    endif
+
+    String ctrlName = ba.ctrlName
 
     if (CmpStr(ctrlName, "btScan") == 0)
         EDCFIT_RebuildWaveList()
@@ -512,11 +518,14 @@ Function EDCFIT_ButtonProc(ctrlName) : ButtonControl
     return 0
 End
 
-Function EDCFIT_SetVarProc(ctrlName,varNum,varStr,varName) : SetVariableControl
-    String ctrlName
-    Variable varNum
-    String varStr
-    String varName
+Function EDCFIT_SetVarProc(sva) : SetVariableControl
+    STRUCT WMSetVariableAction &sva
+
+    if ((sva.eventCode != 1) && (sva.eventCode != 2) && (sva.eventCode != 3))
+        return 0
+    endif
+
+    String ctrlName = sva.ctrlName
 
     if (CmpStr(ctrlName, "svBaseDF") == 0)
         EDCFIT_RebuildWaveList()
@@ -532,9 +541,14 @@ Function EDCFIT_SetVarProc(ctrlName,varNum,varStr,varName) : SetVariableControl
     return 0
 End
 
-Function EDCFIT_CheckProc(ctrlName,checked) : CheckBoxControl
-    String ctrlName
-    Variable checked
+Function EDCFIT_CheckProc(cba) : CheckBoxControl
+    STRUCT WMCheckboxAction &cba
+
+    if (cba.eventCode != 2)
+        return 0
+    endif
+
+    String ctrlName = cba.ctrlName
 
     if (CmpStr(ctrlName, "cbRecursive") == 0)
         EDCFIT_RebuildWaveList()
@@ -545,17 +559,16 @@ Function EDCFIT_CheckProc(ctrlName,checked) : CheckBoxControl
     return 0
 End
 
-Function EDCFIT_ListBoxProc(ctrlName,row,col,event) : ListBoxControl
-    String ctrlName
-    Variable row,col,event
+Function EDCFIT_ListBoxProc(lba) : ListBoxControl
+    STRUCT WMListboxAction &lba
 
-    if ((event != 1) && (event != 4))
+    if ((lba.eventCode != 1) && (lba.eventCode != 4))
         return 0
     endif
 
-    if (CmpStr(ctrlName, "lbWave") == 0)
-        if (row >= 0)
-            EDCFIT_SelectWaveRow(row)
+    if (CmpStr(lba.ctrlName, "lbWave") == 0)
+        if (lba.row >= 0)
+            EDCFIT_SelectWaveRow(lba.row)
             EDCFIT_RefreshTitleBoxes()
         endif
     endif
@@ -3389,6 +3402,10 @@ Function LJZ_EDCWB_BuildAndSaveGuessCurve(srcWavePath)
 
     LJZ_EDCWB_EnsureDF()
 
+    if (!LJZ_EDCWB_SourceWaveExists(srcWavePath))
+        return -1
+    endif
+
     Wave wPar = $(LJZ_EDCWB_BaseDF() + ":EditPar")
     Wave/Z wGuess = LJZ_EDCWB_BuildGuessCurveFromPar(srcWavePath, wPar)
     if (!WaveExists(wGuess))
@@ -3832,10 +3849,7 @@ Function LJZ_EDCWB_SaveFitResultSinglePeak(srcWavePath, wCoefActive, wSigmaActiv
         fitinfo16[LJZ_EDCWB_FI_NROI()] = iHi - iLo + 1
     endif
 
-    NVAR/Z vChi = V_chisq
-    if (NVAR_Exists(vChi))
-        fitinfo16[LJZ_EDCWB_FI_ChiSq()] = vChi
-    endif
+    fitinfo16[LJZ_EDCWB_FI_ChiSq()] = V_chisq
 
     LJZ_EDCWB_SaveFitCurve(srcWavePath, fitFull, resFull)
     LJZ_EDCWB_SaveFitVectors(srcWavePath, fitcoef12, fitsigma12, fitinfo16)
@@ -3907,8 +3921,7 @@ Function LJZ_EDCWB_DoFitSinglePeak(srcWavePath)
     Wave sigmaActive = $(LJZ_EDCWB_TmpDF() + ":sigmaActive")
 
     Variable fitOK = 1
-    NVAR/Z vFitError = V_FitError
-    if (NVAR_Exists(vFitError) && vFitError != 0)
+    if (V_FitError != 0)
         fitOK = 0
     endif
 
@@ -4109,10 +4122,7 @@ Function LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, wCoefActive, wSigm
         fitinfo16[LJZ_EDCWB_FI_NROI()] = iHi - iLo + 1
     endif
 
-    NVAR/Z vChi = V_chisq
-    if (NVAR_Exists(vChi))
-        fitinfo16[LJZ_EDCWB_FI_ChiSq()] = vChi
-    endif
+    fitinfo16[LJZ_EDCWB_FI_ChiSq()] = V_chisq
 
     LJZ_EDCWB_SaveFitCurve(srcWavePath, fitFull, resFull)
     LJZ_EDCWB_SaveFitVectors(srcWavePath, fitcoef12, fitsigma12, fitinfo16)
@@ -4187,8 +4197,7 @@ Function LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
     Wave sigmaActive = $(LJZ_EDCWB_TmpDF() + ":sigmaActive")
 
     Variable fitOK = 1
-    NVAR/Z vFitError = V_FitError
-    if (NVAR_Exists(vFitError) && vFitError != 0)
+    if (V_FitError != 0)
         fitOK = 0
     endif
 
@@ -4230,6 +4239,7 @@ Function LJZ_EDCWB_DoFitWave(srcWavePath, modelID)
         return -1
     endif
 
+    LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
     return LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
 End
 
@@ -4423,12 +4433,22 @@ Function LJZ_EDCWB_LoadCurrentWave()
 
     LJZ_EDCWB_EnsureResultRecord(curPath)
 
+    Variable ok
     if (LJZ_EDCWB_HasFitRecord(curPath))
-        LJZ_EDCWB_LoadFitRecordToEditState(curPath)
+        ok = LJZ_EDCWB_LoadFitRecordToEditState(curPath)
+        if (ok != 0)
+            return -1
+        endif
     else
         LJZ_EDCWB_SetModel(eModel)
-        LJZ_EDCWB_AutoInitGuess(curPath, eModel)
-        LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
+        ok = LJZ_EDCWB_AutoInitGuess(curPath, eModel)
+        if (ok != 0)
+            return -1
+        endif
+        ok = LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
+        if (ok != 0)
+            return -1
+        endif
     endif
 
     LJZ_EDCWB_RebuildAllWorkWaves(curPath)
@@ -4777,8 +4797,10 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
     endif
 
     if (CmpStr(name, "btRebuild") == 0)
-        LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-        LJZ_EDCWB_RefreshGraph()
+        if (strlen(curPath) > 0)
+            LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+            LJZ_EDCWB_RefreshGraph()
+        endif
         return 0
     endif
 
@@ -4804,15 +4826,19 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
 
     if ((CmpStr(name, "svTemp") == 0) || (CmpStr(name, "svEF") == 0) || (CmpStr(name, "svRes") == 0))
         LJZ_EDCWB_SyncAuxStateToPar()
-        LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
-        LJZ_EDCWB_RefreshGraph()
+        if (strlen(curPath) > 0)
+            LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
+            LJZ_EDCWB_RefreshGraph()
+        endif
         return 0
     endif
 
     if ((CmpStr(name, "svXLo") == 0) || (CmpStr(name, "svXHi") == 0) || (CmpStr(name, "svSmP1") == 0) || (CmpStr(name, "svSmP2") == 0))
-        LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-        LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
-        LJZ_EDCWB_RefreshGraph()
+        if (strlen(curPath) > 0)
+            LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+            LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
+            LJZ_EDCWB_RefreshGraph()
+        endif
         return 0
     endif
 
@@ -4852,17 +4878,21 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
 
     if (CmpStr(name, "pmSmMethod") == 0)
         smMethod = str2num(StringFromList(0, ps, ":"))
-        LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-        LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
-        LJZ_EDCWB_RefreshGraph()
+        if (strlen(curPath) > 0)
+            LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+            LJZ_EDCWB_BuildAndSaveGuessCurve(curPath)
+            LJZ_EDCWB_RefreshGraph()
+        endif
         return 0
     endif
 
     if (CmpStr(name, "pmNorm") == 0)
         eNorm = str2num(StringFromList(0, ps, ":"))
-        LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-        LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-        LJZ_EDCWB_RefreshGraph()
+        if (strlen(curPath) > 0)
+            LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
+            LJZ_EDCWB_RefreshGraph()
+        endif
         return 0
     endif
 
