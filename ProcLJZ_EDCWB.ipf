@@ -40,27 +40,41 @@ End
 Function/S LJZ_EDCWB_NormDFPath(df)
     String df
 
-    if (strlen(df) == 0)
+    String s = RemoveEnding(df, " ")
+    s = RemoveEnding(s, ":")
+
+    if (strlen(s) == 0)
         return ""
     endif
 
-    df = RemoveEnding(df, ":") + ":"
-    if (!DataFolderExists(df))
+    if (CmpStr(s, "root") == 0)
+        s = "root"
+    elseif (!StringMatch(s, "root:*") && !StringMatch(s, "root"))
         return ""
     endif
 
-    return df
+    s += ":"
+    if (!DataFolderExists(s))
+        return ""
+    endif
+
+    return s
 End
 
 Function/S LJZ_EDCWB_WaveNameFromPath(wPath)
     String wPath
 
-    Variable n = ItemsInList(wPath, ":")
+    String s = RemoveEnding(RemoveEnding(wPath, " "), ":")
+    Variable n = ItemsInList(s, ":")
     if (n < 2)
         return ""
     endif
 
-    return StringFromList(n - 1, wPath, ":")
+    if (!StringMatch(s, "root:*") && (CmpStr(s, "root") != 0))
+        return ""
+    endif
+
+    return StringFromList(n - 1, s, ":")
 End
 
 
@@ -76,17 +90,23 @@ End
 Function/S LJZ_EDCWB_WaveDFFromPath(wPath)
     String wPath
 
-    Variable n = ItemsInList(wPath, ":")
+    String s = RemoveEnding(RemoveEnding(wPath, " "), ":")
+    Variable n = ItemsInList(s, ":")
     if (n < 2)
+        return ""
+    endif
+
+    if (!StringMatch(s, "root:*") && (CmpStr(s, "root") != 0))
         return ""
     endif
 
     Variable i
     String df = ""
     for (i = 0; i < n - 1; i += 1)
-        df += StringFromList(i, wPath, ":") + ":"
+        df += StringFromList(i, s, ":") + ":"
     endfor
 
+    df = LJZ_EDCWB_NormDFPath(df)
     return df
 End
 
@@ -302,18 +322,18 @@ End
 
 Function/S EDCFIT_df_with_colon(inStr)
     String inStr
-    String s = inStr
+    String s = RemoveEnding(RemoveEnding(inStr, " "), ":")
 
     if (strlen(s) == 0)
         return "root:"
     endif
 
-    if (StringMatch(s, "root"))
+    if (CmpStr(s, "root") == 0)
         s = "root:"
-    endif
-
-    if (!StringMatch(s, "*:"))
+    elseif (StringMatch(s, "root:*"))
         s += ":"
+    else
+        return "root:"
     endif
 
     return s
@@ -322,6 +342,9 @@ End
 Function EDCFIT_df_exists(dfStr)
     String dfStr
     String s = EDCFIT_df_with_colon(dfStr)
+    if (strlen(s) == 0)
+        return 0
+    endif
     return DataFolderExists(s)
 End
 
@@ -424,6 +447,7 @@ Function EDCFIT_RebuildWaveList()
         return -1
     endif
 
+    String oldSel = sWave
     String listStr = EDCFIT_List3DWaves(dfStr, rec)
     Variable n = ItemsInList(listStr, ";")
 
@@ -441,8 +465,12 @@ Function EDCFIT_RebuildWaveList()
     endfor
 
     if (n > 0)
-        wSel[0] = 1
-        sWave = StringFromList(0, listStr, ";")
+        Variable hit = WhichListItem(oldSel, listStr, ";", 0, 0)
+        if (hit < 0)
+            hit = 0
+        endif
+        wSel[hit] = 1
+        sWave = StringFromList(hit, listStr, ";")
     else
         sWave = ""
     endif
@@ -464,6 +492,12 @@ Function EDCFIT_SelectWaveRow(row)
     String listStr = EDCFIT_CurrentWaveList()
     Variable n = ItemsInList(listStr, ";")
     if (n <= 0)
+        Wave/Z wSel0 = root:ARPES_LJZ:EDCFit:LB_Sel
+        if (WaveExists(wSel0))
+            Redimension/N=0 wSel0
+        endif
+        SVAR sWave0 = root:ARPES_LJZ:EDCFit:EDCWaveSel
+        sWave0 = ""
         return -1
     endif
 
@@ -521,8 +555,9 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
     Variable nAvg   = kEnd - kStart + 1
 
     String runDF = EDCFIT_MakeRunDFName(w, kStart, kEnd, "EDC")
+    String oldDF = GetDataFolder(1)
     NewDataFolder/O $(RemoveEnding(runDF, ":"))
-    SetDataFolder $(RemoveEnding(runDF, ":"))
+    SetDataFolder $runDF
 
     Variable t, k
     for (t = 0; t < nT; t += 1)
@@ -537,7 +572,7 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
         edc /= nAvg
     endfor
 
-    SetDataFolder root:
+    SetDataFolder $oldDF
     EDCFIT_ApplySmoothing_All(runDF)
 
     SVAR bn = root:ARPES_LJZ:EDCFit:gBaseName
@@ -550,7 +585,8 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
     KillWindow/Z $wNameBase
     String wOlap = wNameBase
 
-    SetDataFolder $(RemoveEnding(runDF, ":"))
+    oldDF = GetDataFolder(1)
+    SetDataFolder $runDF
     for (t = 0; t < nT; t += 1)
         Wave/Z sh = $("edc_show_" + num2str(t))
         if (!WaveExists(sh))
@@ -566,7 +602,7 @@ Function EDCPF_ShowEDC_LJZ(ctrlName) : ButtonControl
             ModifyGraph offset($NameOfWave(sh)) = {0, t * evary}
         endif
     endfor
-    SetDataFolder root:
+    SetDataFolder $oldDF
 
     String/G   root:ARPES_LJZ:EDCFit:RunDF      = runDF
     Variable/G root:ARPES_LJZ:EDCFit:Run_kStart = kStart
@@ -602,7 +638,8 @@ Function EDCFIT_ReShowCurrentEDC()
     String wNameBase = "EDC_Overlapping_" + CleanupName(bnTag, 0)
     KillWindow/Z $wNameBase
 
-    SetDataFolder $(RemoveEnding(runDF, ":"))
+    String oldDF = GetDataFolder(1)
+    SetDataFolder $runDF
 
     Variable t = 0
     do
@@ -623,7 +660,7 @@ Function EDCFIT_ReShowCurrentEDC()
         t += 1
     while (1)
 
-    SetDataFolder root:
+    SetDataFolder $oldDF
     return 0
 End
 
@@ -677,6 +714,8 @@ Function EDCFit_OpenPanel()
 
     PopupMenu pmSm,pos={240,285},size={120,20},title="Method"
     PopupMenu pmSm,mode=2,popvalue="Smooth",value="0:None;1:Smooth;2:SmoothS;3:BLPF;",proc=EDCFIT_PopupProc
+    NVAR SmMethod = root:ARPES_LJZ:EDCFit:SmMethod
+    PopupMenu pmSm,mode=(SmMethod + 1)
 
     SetVariable svSmN,pos={240,315},size={150,18},title="N1"
     SetVariable svSmN,variable=root:ARPES_LJZ:EDCFit:SmN,proc=EDCFIT_SetVarProc
@@ -784,6 +823,8 @@ Function EDCFIT_SetVarProc(sva) : SetVariableControl
     String ctrlName = sva.ctrlName
 
     if (CmpStr(ctrlName, "svBaseDF") == 0)
+        SVAR sBase = root:ARPES_LJZ:EDCFit:BaseDF
+        sBase = EDCFIT_df_with_colon(sBase)
         EDCFIT_RebuildWaveList()
         EDCFIT_RefreshTitleBoxes()
         return 0
@@ -817,6 +858,7 @@ Function EDCFIT_CheckProc(cba) : CheckBoxControl
     endif
     if (CmpStr(ctrlName, "cbSm") == 0)
         EDCFIT_ReShowCurrentEDC()
+        EDCFIT_RefreshTitleBoxes()
         return 0
     endif
     return 0
@@ -1256,10 +1298,15 @@ Function LJZ_EDCWB_EnsureResultRecord(srcWavePath)
     String srcWavePath
 
     Wave/Z src = $srcWavePath
+    String srcDF = LJZ_EDCWB_WaveDFFromPath(srcWavePath)
+    String srcNm = LJZ_EDCWB_WaveNameFromPath(srcWavePath)
     if (!WaveExists(src))
         return -1
     endif
     if (!LJZ_EDCWB_Is1DWave(src))
+        return -1
+    endif
+    if ((strlen(srcDF) == 0) || (strlen(srcNm) == 0))
         return -1
     endif
 
@@ -1323,7 +1370,9 @@ End
 Function LJZ_EDCWB_ReadAcceptState(srcWavePath)
     String srcWavePath
 
-    LJZ_EDCWB_EnsureResultRecord(srcWavePath)
+    if (LJZ_EDCWB_EnsureResultRecord(srcWavePath) != 0)
+        return 0
+    endif
 
     Wave/Z wAcc = $(LJZ_EDCWB_ResultAcceptPath(srcWavePath))
     if (!WaveExists(wAcc))
@@ -1337,14 +1386,16 @@ Function LJZ_EDCWB_WriteAcceptState(srcWavePath, state)
     String srcWavePath
     Variable state
 
-    LJZ_EDCWB_EnsureResultRecord(srcWavePath)
+    if (LJZ_EDCWB_EnsureResultRecord(srcWavePath) != 0)
+        return -1
+    endif
 
     Wave/Z wAcc = $(LJZ_EDCWB_ResultAcceptPath(srcWavePath))
     if (!WaveExists(wAcc))
         return -1
     endif
 
-    wAcc[0] = state
+    wAcc[0] = (state != 0)
     return 0
 End
 
@@ -1581,6 +1632,9 @@ Function LJZ_EDCWB_HasFitRecord(srcWavePath)
     if (numtype(wInfo[LJZ_EDCWB_FI_FitOK()]) != 0)
         return 0
     endif
+    if (wInfo[LJZ_EDCWB_FI_FitOK()] == 0)
+        return 0
+    endif
 
     if (numpnts(wCoef) < 12)
         return 0
@@ -1617,4 +1671,3 @@ Function LJZ_EDCWB_ClearFitRecord(srcWavePath)
 
     return 0
 End
-
