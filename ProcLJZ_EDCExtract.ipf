@@ -159,10 +159,10 @@ Function LJZ_EDCExtract_EnsureDF()
         Variable/G $(LJZ_EDCExtract_BaseDF() + ":evary") = 0.2
     endif
 
-    SVAR/Z bn = $(LJZ_EDCExtract_BaseDF() + ":BaseName")
-    if (!SVAR_Exists(bn))
-        String/G $(LJZ_EDCExtract_BaseDF() + ":BaseName") = ""
-    endif
+SVAR/Z bn = $(LJZ_EDCExtract_BaseDF() + ":BaseName")
+if (!SVAR_Exists(bn))
+    String/G $(LJZ_EDCExtract_BaseDF() + ":BaseName") = "EDC"
+endif
 
     SVAR/Z runDF = $(LJZ_EDCExtract_BaseDF() + ":RunDF")
     if (!SVAR_Exists(runDF))
@@ -250,6 +250,23 @@ Function/S LJZ_EDCExtract_WaveShortLabel(wPath)
     endif
 
     return nm
+End
+
+Function/S EDCEXTRACT_OverlapGraphName()
+    return "EDC_Overlap"
+End
+
+Function/S EDCEXTRACT_OverlapGraphTitle(runDF, baseName, kStart, kEnd)
+    String runDF, baseName
+    Variable kStart, kEnd
+
+    String s = "EDC Overlap"
+    if (strlen(baseName) > 0)
+        s += " | " + baseName
+    endif
+    s += " | k=" + num2str(kStart) + " to " + num2str(kEnd)
+
+    return s
 End
 
 Function/S LJZ_EDCExtract_List3DWaves_OneDF(dfStr)
@@ -520,11 +537,20 @@ End
 Function/S LJZ_EDCExtract_BuildGraphTitle(baseName, runDF)
     String baseName, runDF
 
+    SVAR/Z sWave = $(LJZ_EDCExtract_BaseDF() + ":WaveSel")
+    NVAR/Z k0 = $(LJZ_EDCExtract_BaseDF() + ":Run_kStart")
+    NVAR/Z k1 = $(LJZ_EDCExtract_BaseDF() + ":Run_kEnd")
+
+    String nm = ""
     if (strlen(baseName) > 0)
-        return "EDC_Overlapping_" + CleanupName(baseName, 0)
+        nm = baseName
+    elseif (SVAR_Exists(sWave) && strlen(sWave) > 0)
+        nm = LJZ_EDCExtract_WaveNameFromPath(sWave)
+    else
+        nm = "EDC"
     endif
 
-    return "EDC_Overlapping_" + CleanupName(RemoveEnding(runDF, ":"), 0)
+    return nm + " | k=" + num2str(k0) + "-" + num2str(k1)
 End
 
 Function LJZ_EDCExtract_RebuildOverlayGraph(runDF, baseName, evary)
@@ -532,12 +558,8 @@ Function LJZ_EDCExtract_RebuildOverlayGraph(runDF, baseName, evary)
     Variable evary
 
     String g = LJZ_EDCExtract_GraphName()
-    DoWindow/F $g
-    if (V_flag == 0)
-        Display/N=$g
-    endif
 
-    RemoveFromGraph/Z /W=$g *
+    DoWindow/K $g
 
     String oldDf = GetDataFolder(1)
     SetDataFolder $(RemoveEnding(runDF, ":"))
@@ -550,7 +572,9 @@ Function LJZ_EDCExtract_RebuildOverlayGraph(runDF, baseName, evary)
         endif
 
         if (t == 0)
-            AppendToGraph/W=$g sh
+            Display/N=$g sh
+            Label/W=$g left "Intensity (a.u.)"
+            Label/W=$g bottom "Energy"
         else
             AppendToGraph/W=$g sh
             ModifyGraph/W=$g offset($NameOfWave(sh))={0, t * evary}
@@ -561,9 +585,7 @@ Function LJZ_EDCExtract_RebuildOverlayGraph(runDF, baseName, evary)
 
     SetDataFolder $oldDf
 
-    ModifyGraph/W=$g mirror=1,axThick=1.2
-    Label/W=$g left "Intensity (a.u.)"
-    Label/W=$g bottom "Energy"
+    ModifyGraph/W=$g mirror=2
     DoWindow/T $g, LJZ_EDCExtract_BuildGraphTitle(baseName, runDF)
 
     return 0
@@ -678,59 +700,66 @@ Function LJZ_EDCExtract_OpenPanel()
     String p = LJZ_EDCExtract_PanelName()
     DoWindow/F $p
     if (V_flag == 0)
-        NewPanel/N=$p /W=(80,80,525,535)
+        NewPanel/N=$p /W=(80,80,700,500)
     else
         DoWindow/F $p
         return 0
     endif
 
-    SetVariable svBaseDF,pos={10,10},size={250,18},title="Base DF"
+    // ---------------- top row ----------------
+    SetVariable svBaseDF,pos={10,10},size={430,20},title="Base DF"
     SetVariable svBaseDF,value=_STR:LJZ_EDCExtract_BaseDF() + ":BaseDF",proc=LJZ_EDCExtract_SetVarProc
 
-    CheckBox cbRecursive,pos={270,10},title="Recursive"
+    CheckBox cbRecursive,pos={455,11},title="Recursive"
     CheckBox cbRecursive,variable=$(LJZ_EDCExtract_BaseDF() + ":Recursive"),proc=LJZ_EDCExtract_CheckProc
 
-    Button btScan,pos={360,8},size={55,20},title="Scan",proc=LJZ_EDCExtract_ButtonProc
+    Button btScan,pos={560,8},size={70,24},title="Scan",proc=LJZ_EDCExtract_ButtonProc
 
-    ListBox lbWave,pos={10,40},size={210,240},listWave=$(LJZ_EDCExtract_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EDCExtract_BaseDF() + ":LB_Sel"),proc=LJZ_EDCExtract_ListBoxProc
+    // ---------------- left list ----------------
+    ListBox lbWave,pos={10,40},size={350,230},listWave=$(LJZ_EDCExtract_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EDCExtract_BaseDF() + ":LB_Sel"),proc=LJZ_EDCExtract_ListBoxProc
 
-    SetVariable svK0,pos={240,50},size={150,18},title="Kindex"
+    // ---------------- right controls ----------------
+    SetVariable svK0,pos={390,45},size={180,20},title="Kindex"
     SetVariable svK0,variable=$(LJZ_EDCExtract_BaseDF() + ":Kindex"),proc=LJZ_EDCExtract_SetVarProc
 
-    SetVariable svK1,pos={240,80},size={150,18},title="Kxe"
+    SetVariable svK1,pos={390,75},size={180,20},title="Kxe"
     SetVariable svK1,variable=$(LJZ_EDCExtract_BaseDF() + ":Kxe"),proc=LJZ_EDCExtract_SetVarProc
 
-    SetVariable svEvary,pos={240,110},size={150,18},title="evary"
+    SetVariable svEvary,pos={390,105},size={180,20},title="evary"
     SetVariable svEvary,variable=$(LJZ_EDCExtract_BaseDF() + ":evary"),proc=LJZ_EDCExtract_SetVarProc
 
-    SetVariable svBaseName,pos={240,140},size={180,18},title="BaseName"
+    SetVariable svBaseName,pos={390,135},size={260,20},title="BaseName"
     SetVariable svBaseName,value=_STR:LJZ_EDCExtract_BaseDF() + ":BaseName",proc=LJZ_EDCExtract_SetVarProc
 
-    Button btShowEDC,pos={240,180},size={120,26},title="Extract EDC",proc=LJZ_EDCExtract_ButtonProc
-    Button btReShowEDC,pos={240,215},size={120,26},title="ReShow EDC",proc=LJZ_EDCExtract_ButtonProc
+    Button btShowEDC,pos={390,175},size={120,28},title="Extract EDC",proc=LJZ_EDCExtract_ButtonProc
+    Button btReShowEDC,pos={525,175},size={120,28},title="ReShow EDC",proc=LJZ_EDCExtract_ButtonProc
 
-    CheckBox cbSm,pos={240,255},title="Smooth"
+    // ---------------- smoothing block ----------------
+    CheckBox cbSm,pos={390,220},title="Smooth"
     CheckBox cbSm,variable=$(LJZ_EDCExtract_BaseDF() + ":SmEnable"),proc=LJZ_EDCExtract_CheckProc
 
-    PopupMenu pmSm,pos={240,285},size={125,20},title="Method"
+    PopupMenu pmSm,pos={390,248},size={150,20},title="Method"
     PopupMenu pmSm,mode=2,popvalue="Smooth",value="0:None;1:Smooth;2:SmoothS;3:BLPF;",proc=LJZ_EDCExtract_PopupProc
 
-    SetVariable svSmN,pos={240,315},size={150,18},title="N1"
+    SetVariable svSmN,pos={390,278},size={120,20},title="N1"
     SetVariable svSmN,variable=$(LJZ_EDCExtract_BaseDF() + ":SmN"),proc=LJZ_EDCExtract_SetVarProc
 
-    SetVariable svSmN2,pos={240,345},size={150,18},title="N2"
+    SetVariable svSmN2,pos={530,278},size={120,20},title="N2"
     SetVariable svSmN2,variable=$(LJZ_EDCExtract_BaseDF() + ":SmN2"),proc=LJZ_EDCExtract_SetVarProc
 
-    SetVariable svSmS,pos={240,375},size={150,18},title="S"
+    SetVariable svSmS,pos={390,308},size={120,20},title="S"
     SetVariable svSmS,variable=$(LJZ_EDCExtract_BaseDF() + ":SmS"),proc=LJZ_EDCExtract_SetVarProc
 
-    SetVariable svCut,pos={240,405},size={150,18},title="cutoff"
+    SetVariable svCut,pos={530,308},size={120,20},title="cutoff"
     SetVariable svCut,variable=$(LJZ_EDCExtract_BaseDF() + ":SmCutoff"),proc=LJZ_EDCExtract_SetVarProc
 
-    Button btGraph,pos={240,445},size={120,24},title="Focus Graph",proc=LJZ_EDCExtract_ButtonProc
+    Button btGraph,pos={390,345},size={120,26},title="Focus Graph",proc=LJZ_EDCExtract_ButtonProc
 
-    TitleBox tbSel,pos={10,292},size={410,40},title="Selected Wave: "
-    TitleBox tbRun,pos={10,342},size={410,70},title="RunDF: "
+    // ---------------- info boxes ----------------
+    TitleBox tbSel,pos={10,285},size={660,20},frame=0,title="Selected Wave: "
+    TitleBox tbRun,pos={10,315},size={660,40},frame=0,title="RunDF: "
+
+    LJZ_EDCExtract_RefreshTitleBoxes()
 
     return 0
 End
@@ -744,8 +773,8 @@ Function LJZ_EDCExtract_RefreshTitleBoxes()
         return 0
     endif
 
-    TitleBox tbSel win=$p, title="Selected Wave: " + sWave
-    TitleBox tbRun win=$p, title="RunDF: " + runDF
+    TitleBox tbSel win=$p, title="Selected Wave: " + LJZ_EDCExtract_ShortenForTitle(sWave, 90)
+    TitleBox tbRun win=$p, title="RunDF: " + LJZ_EDCExtract_ShortenForTitle(runDF, 90)
 
     return 0
 End
@@ -870,4 +899,15 @@ Function LJZ_EDCExtract_ListBoxProc(lba) : ListBoxControl
     endif
 
     return 0
+End
+
+Function/S LJZ_EDCExtract_ShortenForTitle(s, maxLen)
+    String s
+    Variable maxLen
+
+    if (strlen(s) <= maxLen)
+        return s
+    endif
+
+    return s[0, maxLen-4] + "..."
 End
