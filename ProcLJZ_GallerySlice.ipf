@@ -284,6 +284,11 @@ Function sg_init_defaults_if_needed()
         Variable/G useLUT = 1
     endif
 
+    NVAR/Z invertColors = root:ARPES_LJZ:SliceGallery:invertColors
+    if (!NVAR_Exists(invertColors))
+        Variable/G invertColors = 0
+    endif
+
     NVAR/Z colorMode = root:ARPES_LJZ:SliceGallery:colorMode
     if (!NVAR_Exists(colorMode))
         Variable/G colorMode = 1      // 0 per-panel, 1 shared, 2 manual
@@ -1823,6 +1828,8 @@ Window SLICEGALLERY_LJZ_P() : Panel
 
     CheckBox sg_ck_lut,pos={852.00,300.60},size={56.40,18.00},title="Use LUT"
 	CheckBox sg_ck_lut,variable= root:ARPES_LJZ:SliceGallery:useLUT
+	CheckBox sg_ck_invert_ct,pos={930.00,300.60},size={78.00,18.00},title="Invert"
+	CheckBox sg_ck_invert_ct,variable= root:ARPES_LJZ:SliceGallery:invertColors
 	PopupMenu sg_pm_color,pos={852.00,330.60},size={78.60,20.40},proc=sg_pm_color_proc
 	PopupMenu sg_pm_color,mode=2,popvalue="SharedAuto",value= #"\"PerPanelAuto;SharedAuto;Manual\""
 	SetVariable sg_sv_c0,pos={852.00,360.60},size={78.00,19.80},title="cMin"
@@ -2187,6 +2194,45 @@ Function/S sg_ct_snapshot_lut_path(graphName, imageName)
     return sg_ct_applied_df() + sg_ct_snapshot_key(graphName, imageName) + "_lut"
 End
 
+Function sg_build_effective_ct(destCT, srcCT, srcLUT, useLookup, invertColors)
+    Wave/W/U destCT
+    Wave/W/U srcCT
+    Wave/Z srcLUT
+    Variable useLookup, invertColors
+
+    Variable destN = DimSize(destCT, 0)
+    Variable srcN  = DimSize(srcCT, 0)
+    Variable ii, jj, srcIdx, lutIdx, lutVal
+
+    if (destN <= 0 || srcN <= 0)
+        return -1
+    endif
+
+    for (ii = 0; ii < destN; ii += 1)
+        jj = invertColors ? (destN - 1 - ii) : ii
+
+        if (useLookup && WaveExists(srcLUT))
+            lutIdx = round(jj * (DimSize(srcLUT, 0) - 1) / max(destN - 1, 1))
+            lutIdx = max(0, min(DimSize(srcLUT, 0) - 1, lutIdx))
+            lutVal = srcLUT[lutIdx]
+        else
+            lutVal = jj / max(destN - 1.0, 1)
+        endif
+
+        if (numtype(lutVal) != 0)
+            lutVal = 0
+        endif
+        lutVal = max(0, min(1, lutVal))
+
+        srcIdx = round(lutVal * (srcN - 1))
+        srcIdx = max(0, min(srcN - 1, srcIdx))
+
+        destCT[ii][] = srcCT[srcIdx][q]
+    endfor
+
+    return 0
+End
+
 // 根据 SliceGallery 当前 ctPick / useLUT
 // 为 graphName:imageName 生成冻结 palette 快照
 Function sg_prepare_ct_snapshot_for_image(graphName, imageName)
@@ -2195,8 +2241,9 @@ Function sg_prepare_ct_snapshot_for_image(graphName, imageName)
     sg_init_defaults_if_needed()
     ctluz_ensure_folder()
 
-    SVAR ctPick  = root:ARPES_LJZ:SliceGallery:ctPick
-    NVAR useLUT  = root:ARPES_LJZ:SliceGallery:useLUT
+    SVAR ctPick       = root:ARPES_LJZ:SliceGallery:ctPick
+    NVAR useLUT       = root:ARPES_LJZ:SliceGallery:useLUT
+    NVAR invertColors = root:ARPES_LJZ:SliceGallery:invertColors
 
     Wave/Z/W/U srcCT = root:ARPES_LJZ:CTLUZ:ct_table
     Wave/Z srcLUT    = root:ARPES_LJZ:CTLUZ:ct_lut
@@ -2215,25 +2262,43 @@ Function sg_prepare_ct_snapshot_for_image(graphName, imageName)
     String ctPath  = sg_ct_snapshot_ct_path(graphName, imageName)
     String lutPath = sg_ct_snapshot_lut_path(graphName, imageName)
 
-    Duplicate/O srcCT, $ctPath
-    Wave/W/U snapCT = $ctPath
+    if (invertColors)
+        Duplicate/O srcCT, $ctPath
+        Wave/W/U snapCT = $ctPath
+        sg_build_effective_ct(snapCT, srcCT, srcLUT, useLUT, 1)
 
-    Note/K snapCT
-    Note snapCT, "SliceGallery CT snapshot\r" + \
-                 "graph=" + graphName + "\r" + \
-                 "image=" + imageName + "\r" + \
-                 "ctPick=" + ctPick + "\r"
+        Note/K snapCT
+        Note snapCT, "SliceGallery CT snapshot\r" + \
+                     "graph=" + graphName + "\r" + \
+                     "image=" + imageName + "\r" + \
+                     "ctPick=" + ctPick + "\r" + \
+                     "invertColors=1\r"
 
-    // LUT: 若不用 LUT，则删掉旧 snapshot lut，避免误用
-    KillWaves/Z $lutPath
-    if (useLUT && WaveExists(srcLUT))
-        Duplicate/O srcLUT, $lutPath
-        Wave snapLUT = $lutPath
-        Note/K snapLUT
-        Note snapLUT, "SliceGallery LUT snapshot\r" + \
-                      "graph=" + graphName + "\r" + \
-                      "image=" + imageName + "\r" + \
-                      "ctPick=" + ctPick + "\r"
+        // invert 后直接把 LUT 烘焙进 CT，避免 lookup 方向和 CT 方向不一致
+        KillWaves/Z $lutPath
+    else
+        Duplicate/O srcCT, $ctPath
+        Wave/W/U snapCT = $ctPath
+
+        Note/K snapCT
+        Note snapCT, "SliceGallery CT snapshot\r" + \
+                     "graph=" + graphName + "\r" + \
+                     "image=" + imageName + "\r" + \
+                     "ctPick=" + ctPick + "\r" + \
+                     "invertColors=0\r"
+
+        // LUT: 若不用 LUT，则删掉旧 snapshot lut，避免误用
+        KillWaves/Z $lutPath
+        if (useLUT && WaveExists(srcLUT))
+            Duplicate/O srcLUT, $lutPath
+            Wave snapLUT = $lutPath
+            Note/K snapLUT
+            Note snapLUT, "SliceGallery LUT snapshot\r" + \
+                          "graph=" + graphName + "\r" + \
+                          "image=" + imageName + "\r" + \
+                          "ctPick=" + ctPick + "\r" + \
+                          "invertColors=0\r"
+        endif
     endif
 
     return 0
