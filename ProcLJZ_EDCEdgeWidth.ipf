@@ -260,8 +260,10 @@ Function LJZ_EDCEdgeWidth_ParseWaveIndex(nm)
     String nm
 
     Variable idx = NaN
-    Variable ok = sscanf(nm, "edc_show_%d", idx)
-    if (ok != 1)
+    // 在 Igor 中 sscanf 是指令，结果保存在内置变量 V_flag 中
+    sscanf nm, "edc_show_%d", idx
+    
+    if (V_flag != 1)
         return NaN
     endif
 
@@ -749,14 +751,14 @@ Function LJZ_EDCEdgeWidth_CreateGraphSubwindow()
     Wave/Z w = $sWave
     if (!WaveExists(w) || !LJZ_EDCEdgeWidth_Is1DWave(w))
         Wave stub = $(LJZ_EDCEdgeWidth_BaseDF() + ":GraphStub")
-        Display/HOST=$p/N=$gName/W=(260,40,875,360) stub
+        Display/HOST=$p/N=$gName/W=(260, 40, 750, 360) stub
         ModifyGraph/W=$gPath margin(left)=48,margin(bottom)=32,mirror=2
         Label/W=$gPath left "Intensity (a.u.)"
         Label/W=$gPath bottom "Energy"
         return 0
     endif
 
-    Display/HOST=$p/N=$gName/W=(260,40,875,360) w
+    Display/HOST=$p/N=$gName/W=(260, 40, 750, 360) w
     ModifyGraph/W=$gPath margin(left)=48,margin(bottom)=32,mirror=2
     Label/W=$gPath left "Intensity (a.u.)"
     Label/W=$gPath bottom "Energy"
@@ -1047,27 +1049,22 @@ Function LJZ_EDCEdgeWidth_OpenPanel()
     SetVariable svWidth,pos={400,506},size={180,20},title="Width"
     SetVariable svWidth,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":Width"),proc=LJZ_EDCEdgeWidth_SetVarProc,noedit=1
 
-    TitleBox tbSel,pos={10,544},size={860,20},frame=0,title="Selected Wave: "
-    TitleBox tbSrc,pos={10,568},size={860,20},frame=0,title="Source DF: "
+    // === 仅修改此处：将原有的 TitleBox 替换为 noedit 的 SetVariable ===
+    SetVariable svSelWave,pos={10,544},size={860,20},title="Selected Wave:"
+    SetVariable svSelWave,value=$(LJZ_EDCEdgeWidth_BaseDF() + ":WaveSel"),noedit=1
+
+    SetVariable svSrcDF,pos={10,568},size={860,20},title="Source DF:"
+    SetVariable svSrcDF,value=$(LJZ_EDCEdgeWidth_BaseDF() + ":SourceDF"),noedit=1
+    // ===================================================================
+
     TitleBox tbMsg,pos={10,590},size={860,18},frame=0,title="Definition: center = half-height crossing inside each window; fallback = max-slope midpoint"
 
     LJZ_EDCEdgeWidth_CreateGraphSubwindow()
-    LJZ_EDCEdgeWidth_RefreshTitleBoxes()
     return 0
 End
 
 Function LJZ_EDCEdgeWidth_RefreshTitleBoxes()
-    SVAR sWave = $(LJZ_EDCEdgeWidth_BaseDF() + ":WaveSel")
-    SVAR sDF   = $(LJZ_EDCEdgeWidth_BaseDF() + ":SourceDF")
-
-    String p = LJZ_EDCEdgeWidth_PanelName()
-    if (WinType(p) == 0)
-        return 0
-    endif
-
-    TitleBox tbSel win=$p, title="Selected Wave: " + LJZ_EDCEdgeWidth_ShortenForTitle(sWave, 120)
-    TitleBox tbSrc win=$p, title="Source DF: " + LJZ_EDCEdgeWidth_ShortenForTitle(sDF, 120)
-
+    // 已全部采用 SetVariable 全局变量绑定，因此无需手动画 TitleBox，避免文字重叠。
     return 0
 End
 
