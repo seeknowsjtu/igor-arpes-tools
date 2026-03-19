@@ -552,6 +552,17 @@ Function LJZ_EDCEdgeWidth_ClearCurrentResultDisplay()
     XRise = NaN
     XFall = NaN
     Width = NaN
+
+    String panelName = LJZ_EDCEdgeWidth_PanelName()
+    String graphName = LJZ_EDCEdgeWidth_GraphName()
+    String graphPath = LJZ_EDCEdgeWidth_GraphPath()
+
+    if (LJZ_EDCEdgeWidth_HasChildSubwindow(panelName, graphName))
+        TextBox/W=$graphPath/K/N=tbEdge
+        SetDrawLayer/W=$graphPath UserFront
+        DrawAction/W=$graphPath getgroup=EdgeMarks, delete
+    endif
+
     return 0
 End
 
@@ -812,26 +823,13 @@ Function LJZ_EDCEdgeWidth_UpdateGraphMarks()
         return 0
     endif
 
-    SVAR sWave = $(LJZ_EDCEdgeWidth_BaseDF() + ":WaveSel")
-    if (strlen(sWave) == 0)
-        return 0
-    endif
-
-    Wave/Z w = $sWave
-    if (!WaveExists(w) || !LJZ_EDCEdgeWidth_Is1DWave(w))
-        return 0
-    endif
-
     NVAR XRise = $(LJZ_EDCEdgeWidth_BaseDF() + ":XRise")
     NVAR XFall = $(LJZ_EDCEdgeWidth_BaseDF() + ":XFall")
     NVAR Width = $(LJZ_EDCEdgeWidth_BaseDF() + ":Width")
-
-    if (numtype(XRise) == 0)
-        Cursor/W=$graphPath/P A, w, round(x2pnt(w, XRise))
-    endif
-    if (numtype(XFall) == 0)
-        Cursor/W=$graphPath/P B, w, round(x2pnt(w, XFall))
-    endif
+    NVAR RiseX1 = $(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX1")
+    NVAR RiseX2 = $(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX2")
+    NVAR FallX1 = $(LJZ_EDCEdgeWidth_BaseDF() + ":FallX1")
+    NVAR FallX2 = $(LJZ_EDCEdgeWidth_BaseDF() + ":FallX2")
 
     String tb = ""
     if (numtype(XRise) == 0)
@@ -849,6 +847,48 @@ Function LJZ_EDCEdgeWidth_UpdateGraphMarks()
         TextBox/W=$graphPath/C/N=tbEdge/F=0/A=RT tb
     endif
 
+    SetDrawLayer/W=$graphPath UserFront
+    DrawAction/W=$graphPath getgroup=EdgeMarks, delete
+
+    SetDrawEnv/W=$graphPath gstart, gname=EdgeMarks
+
+    // ------------------------------
+    // 先画搜索窗口边界（细一点、浅一点）
+    // ------------------------------
+    if (numtype(RiseX1) == 0)
+        SetDrawEnv/W=$graphPath xcoord=bottom,ycoord=prel,linefgc=(45000,45000,65535),linethick=1,dash=1
+        DrawLine/W=$graphPath RiseX1, 0, RiseX1, 1
+    endif
+
+    if (numtype(RiseX2) == 0)
+        SetDrawEnv/W=$graphPath xcoord=bottom,ycoord=prel,linefgc=(45000,45000,65535),linethick=1,dash=1
+        DrawLine/W=$graphPath RiseX2, 0, RiseX2, 1
+    endif
+
+    if (numtype(FallX1) == 0)
+        SetDrawEnv/W=$graphPath xcoord=bottom,ycoord=prel,linefgc=(65535,45000,45000),linethick=1,dash=1
+        DrawLine/W=$graphPath FallX1, 0, FallX1, 1
+    endif
+
+    if (numtype(FallX2) == 0)
+        SetDrawEnv/W=$graphPath xcoord=bottom,ycoord=prel,linefgc=(65535,45000,45000),linethick=1,dash=1
+        DrawLine/W=$graphPath FallX2, 0, FallX2, 1
+    endif
+
+    // ------------------------------
+    // 再画最终找到的位置（粗一点）
+    // ------------------------------
+    if (numtype(XRise) == 0)
+        SetDrawEnv/W=$graphPath xcoord=bottom,ycoord=prel,linefgc=(0,0,65535),linethick=2,dash=2
+        DrawLine/W=$graphPath XRise, 0, XRise, 1
+    endif
+
+    if (numtype(XFall) == 0)
+        SetDrawEnv/W=$graphPath xcoord=bottom,ycoord=prel,linefgc=(65535,0,0),linethick=2,dash=2
+        DrawLine/W=$graphPath XFall, 0, XFall, 1
+    endif
+
+    SetDrawEnv/W=$graphPath gstop
     return 0
 End
 
@@ -992,7 +1032,22 @@ Function LJZ_EDCEdgeWidth_MeasureAll()
     endif
 
     LJZ_EDCEdgeWidth_EnsureResultWaves()
+    SVAR sDF = $(LJZ_EDCEdgeWidth_BaseDF() + ":SourceDF")
+    String dfStr = LJZ_EDCEdgeWidth_df_with_colon(sDF)
 
+    Wave/Z wRise = $(dfStr + "edc_xrise")
+    Wave/Z wFall = $(dfStr + "edc_xfall")
+    Wave/Z wWidth = $(dfStr + "edc_width")
+
+    if (WaveExists(wRise))
+        wRise = NaN
+    endif
+    if (WaveExists(wFall))
+        wFall = NaN
+    endif
+    if (WaveExists(wWidth))
+        wWidth = NaN
+    endif
     // Measure All 按当前 SourceDF 扫描全部 edc_show_i；
     // 每条都通过 wave 名解析真实 i，并完整写回三个结果 wave。
     Variable i
@@ -1059,26 +1114,42 @@ Function LJZ_EDCEdgeWidth_OpenPanel()
 
     ListBox lbWave,pos={10,42},size={225,318},listWave=$(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Sel"),proc=LJZ_EDCEdgeWidth_ListBoxProc
 
+
+    // ------------------------------------------------------------
+    // Row 1 : action buttons
+    // ------------------------------------------------------------
     Button btRefresh,pos={250,372},size={95,28},title="Refresh",proc=LJZ_EDCEdgeWidth_ButtonProc
     Button btAuto,pos={360,372},size={90,28},title="AutoFill",proc=LJZ_EDCEdgeWidth_ButtonProc
     Button btMeasure,pos={465,372},size={90,28},title="Measure",proc=LJZ_EDCEdgeWidth_ButtonProc
     Button btMeasureAll,pos={570,372},size={100,28},title="Measure All",proc=LJZ_EDCEdgeWidth_ButtonProc
+    Button btMeasureNext,pos={685,372},size={120,28},title="Measure+Next",proc=LJZ_EDCEdgeWidth_ButtonProc
+    Button btPlotResult,pos={820,372},size={110,28},title="Plot Result",proc=LJZ_EDCEdgeWidth_ButtonProc
 
-    TitleBox tbR1,pos={250,412},size={180,18},frame=0,title="Rising edge window"
-    SetVariable svRiseX1,pos={250,436},size={150,20},title="Rise x1"
+    // ------------------------------------------------------------
+    // Row 2 : edge windows
+    // ------------------------------------------------------------
+    TitleBox tbR1,pos={250,414},size={160,18},frame=0,title="Rising edge window"
+    SetVariable svRiseX1,pos={250,438},size={145,20},title="Rise x1"
     SetVariable svRiseX1,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX1"),proc=LJZ_EDCEdgeWidth_SetVarProc
 
-    SetVariable svRiseX2,pos={415,436},size={150,20},title="Rise x2"
+    SetVariable svRiseX2,pos={410,438},size={145,20},title="Rise x2"
     SetVariable svRiseX2,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX2"),proc=LJZ_EDCEdgeWidth_SetVarProc
 
-    TitleBox tbF1,pos={620,412},size={180,18},frame=0,title="Falling edge window"
-    SetVariable svFallX1,pos={620,436},size={150,20},title="Fall x1"
+    Button btAutoRise,pos={570,436},size={90,24},title="Auto Rise",proc=LJZ_EDCEdgeWidth_ButtonProc
+
+    TitleBox tbF1,pos={690,414},size={170,18},frame=0,title="Falling edge window"
+    SetVariable svFallX1,pos={690,438},size={145,20},title="Fall x1"
     SetVariable svFallX1,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":FallX1"),proc=LJZ_EDCEdgeWidth_SetVarProc
 
-    SetVariable svFallX2,pos={785,436},size={150,20},title="Fall x2"
+    SetVariable svFallX2,pos={850,438},size={145,20},title="Fall x2"
     SetVariable svFallX2,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":FallX2"),proc=LJZ_EDCEdgeWidth_SetVarProc
 
-    TitleBox tbRes1,pos={10,480},size={280,18},frame=0,title="Measurement Result"
+    Button btAutoFall,pos={850,468},size={90,24},title="Auto Fall",proc=LJZ_EDCEdgeWidth_ButtonProc
+
+    // ------------------------------------------------------------
+    // Row 3 : measurement result
+    // ------------------------------------------------------------
+    TitleBox tbRes1,pos={10,480},size={200,18},frame=0,title="Measurement Result"
 
     SetVariable svXRise,pos={10,506},size={180,20},title="XRise"
     SetVariable svXRise,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":XRise"),proc=LJZ_EDCEdgeWidth_SetVarProc,noedit=1
@@ -1089,20 +1160,33 @@ Function LJZ_EDCEdgeWidth_OpenPanel()
     SetVariable svWidth,pos={400,506},size={180,20},title="Width"
     SetVariable svWidth,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":Width"),proc=LJZ_EDCEdgeWidth_SetVarProc,noedit=1
 
-    SetVariable svSelWave,pos={10,544},size={925,20},title="Selected Wave:"
+    // ------------------------------------------------------------
+    // Bottom info
+    // ------------------------------------------------------------
+    SetVariable svSelWave,pos={10,542},size={985,20},title="Selected Wave:"
     SetVariable svSelWave,value=_STR:LJZ_EDCEdgeWidth_BaseDF() + ":WaveSel",noedit=1
 
-    SetVariable svSrcDF,pos={10,568},size={925,20},title="Source DF:"
+    SetVariable svSrcDF,pos={10,566},size={985,20},title="Source DF:"
     SetVariable svSrcDF,value=_STR:LJZ_EDCEdgeWidth_BaseDF() + ":SourceDF",noedit=1
 
-    TitleBox tbMsg,pos={10,592},size={925,18},frame=0,title="Definition: center = half-height crossing inside each window; fallback = max-slope midpoint"
-
+    TitleBox tbMsg,pos={10,592},size={985,18},frame=0,title="Definition: center = half-height crossing inside each window; fallback = max-slope midpoint"
     LJZ_EDCEdgeWidth_CreateGraphSubwindow()
     return 0
 End
 
 Function LJZ_EDCEdgeWidth_RefreshTitleBoxes()
-    // 当前全部采用 SetVariable 全局变量绑定，因此无需手动画 TitleBox，避免文字重叠。
+    String p = LJZ_EDCEdgeWidth_PanelName()
+    if (WinType(p) == 0)
+        return 0
+    endif
+
+    SVAR sWave = $(LJZ_EDCEdgeWidth_BaseDF() + ":WaveSel")
+    SVAR sDF   = $(LJZ_EDCEdgeWidth_BaseDF() + ":SourceDF")
+
+    SetVariable svSourceDF win=$p, value=_STR:sDF
+    SetVariable svSelWave  win=$p, value=_STR:sWave
+    SetVariable svSrcDF    win=$p, value=_STR:sDF
+
     return 0
 End
 
@@ -1139,9 +1223,21 @@ Function LJZ_EDCEdgeWidth_ButtonProc(ba) : ButtonControl
 
     if (CmpStr(ctrlName, "btAuto") == 0)
         LJZ_EDCEdgeWidth_AutoFillWindows()
+        LJZ_EDCEdgeWidth_UpdateGraphMarks()
+        return 0
+    endif
+    
+    if (CmpStr(ctrlName, "btAutoRise") == 0)
+        LJZ_EDCEdgeWidth_AutoFillRiseWindow()
+        LJZ_EDCEdgeWidth_UpdateGraphMarks()
         return 0
     endif
 
+    if (CmpStr(ctrlName, "btAutoFall") == 0)
+        LJZ_EDCEdgeWidth_AutoFillFallWindow()
+        LJZ_EDCEdgeWidth_UpdateGraphMarks()
+        return 0
+    endif
     if (CmpStr(ctrlName, "btMeasure") == 0)
         LJZ_EDCEdgeWidth_FindWidth()
         return 0
@@ -1152,26 +1248,36 @@ Function LJZ_EDCEdgeWidth_ButtonProc(ba) : ButtonControl
         return 0
     endif
 
+    if (CmpStr(ctrlName, "btMeasureNext") == 0)
+        LJZ_EDCEdgeWidth_MeasureAndNext()
+        return 0
+    endif
+    
+    if (CmpStr(ctrlName, "btPlotResult") == 0)
+        LJZ_EDCEdgeWidth_PlotResults()
+        return 0
+    endif
+        
     return 0
 End
 
 Function LJZ_EDCEdgeWidth_SetVarProc(sva) : SetVariableControl
     STRUCT WMSetVariableAction &sva
 
-    if ((sva.eventCode != 1) && (sva.eventCode != 2) && (sva.eventCode != 3))
+    if ((sva.eventCode != 1) && (sva.eventCode != 2))
         return 0
     endif
 
     String ctrlName = sva.ctrlName
 
     if (CmpStr(ctrlName, "svSourceDF") == 0)
-        LJZ_EDCEdgeWidth_RebuildWaveList()
-        LJZ_EDCEdgeWidth_RefreshCurrentSelection()
-        LJZ_EDCEdgeWidth_RefreshTitleBoxes()
+        SVAR sDF = $(LJZ_EDCEdgeWidth_BaseDF() + ":SourceDF")
+        sDF = LJZ_EDCEdgeWidth_df_with_colon(sva.sval)
         return 0
     endif
 
     if ((CmpStr(ctrlName, "svRiseX1") == 0) || (CmpStr(ctrlName, "svRiseX2") == 0) || (CmpStr(ctrlName, "svFallX1") == 0) || (CmpStr(ctrlName, "svFallX2") == 0))
+        LJZ_EDCEdgeWidth_UpdateGraphMarks()
         return 0
     endif
 
@@ -1192,6 +1298,124 @@ Function LJZ_EDCEdgeWidth_ListBoxProc(lba) : ListBoxControl
             LJZ_EDCEdgeWidth_RefreshTitleBoxes()
         endif
     endif
+
+    return 0
+End
+
+Function LJZ_EDCEdgeWidth_MeasureAndNext()
+    LJZ_EDCEdgeWidth_EnsureDF()
+
+    Variable ret = LJZ_EDCEdgeWidth_FindWidth()
+
+    String listStr = LJZ_EDCEdgeWidth_CurrentWaveList()
+    Variable n = ItemsInList(listStr, ";")
+    NVAR SelRow = $(LJZ_EDCEdgeWidth_BaseDF() + ":SelRow")
+
+    if (ret == 0 && n > 0)
+        if (SelRow < n - 1)
+            LJZ_EDCEdgeWidth_SelectWaveRow(SelRow + 1)
+            LJZ_EDCEdgeWidth_RefreshCurrentSelection()
+            LJZ_EDCEdgeWidth_RefreshTitleBoxes()
+        endif
+    endif
+
+    return 0
+End
+
+Function LJZ_EDCEdgeWidth_AutoFillRiseWindow()
+    LJZ_EDCEdgeWidth_EnsureDF()
+
+    SVAR sWave = $(LJZ_EDCEdgeWidth_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
+        return -1
+    endif
+
+    Wave/Z w = $sWave
+    if (!WaveExists(w) || !LJZ_EDCEdgeWidth_Is1DWave(w))
+        return -1
+    endif
+
+    Variable xA = pnt2x(w, 0)
+    Variable xB = pnt2x(w, numpnts(w)-1)
+    Variable xMin = min(xA, xB)
+    Variable xMax = max(xA, xB)
+    Variable span = xMax - xMin
+
+    if (span <= 0)
+        return -1
+    endif
+
+    NVAR RiseX1 = $(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX1")
+    NVAR RiseX2 = $(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX2")
+
+    RiseX1 = xMin + 0.15 * span
+    RiseX2 = xMin + 0.35 * span
+
+    return 0
+End
+
+Function LJZ_EDCEdgeWidth_AutoFillFallWindow()
+    LJZ_EDCEdgeWidth_EnsureDF()
+
+    SVAR sWave = $(LJZ_EDCEdgeWidth_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
+        return -1
+    endif
+
+    Wave/Z w = $sWave
+    if (!WaveExists(w) || !LJZ_EDCEdgeWidth_Is1DWave(w))
+        return -1
+    endif
+
+    Variable xA = pnt2x(w, 0)
+    Variable xB = pnt2x(w, numpnts(w)-1)
+    Variable xMin = min(xA, xB)
+    Variable xMax = max(xA, xB)
+    Variable span = xMax - xMin
+
+    if (span <= 0)
+        return -1
+    endif
+
+    NVAR FallX1 = $(LJZ_EDCEdgeWidth_BaseDF() + ":FallX1")
+    NVAR FallX2 = $(LJZ_EDCEdgeWidth_BaseDF() + ":FallX2")
+
+    FallX1 = xMin + 0.65 * span
+    FallX2 = xMin + 0.85 * span
+
+    return 0
+End
+
+Function LJZ_EDCEdgeWidth_PlotResults()
+    LJZ_EDCEdgeWidth_EnsureDF()
+
+    SVAR sDF = $(LJZ_EDCEdgeWidth_BaseDF() + ":SourceDF")
+    String dfStr = LJZ_EDCEdgeWidth_df_with_colon(sDF)
+
+    Wave/Z wRise  = $(dfStr + "edc_xrise")
+    Wave/Z wFall  = $(dfStr + "edc_xfall")
+    Wave/Z wWidth = $(dfStr + "edc_width")
+
+    if (!WaveExists(wRise) || !WaveExists(wFall) || !WaveExists(wWidth))
+        DoAlert 0, "结果 wave 不存在，请先 Measure 或 Measure All。"
+        return -1
+    endif
+
+    String g = "EDCEdgeWidth_ResultGraph"
+    DoWindow/K $g
+
+    Display/N=$g wWidth
+    AppendToGraph/R wRise
+    AppendToGraph/R wFall
+
+    ModifyGraph mode=3,marker=19
+    ModifyGraph rgb(edc_width)=(0,0,0)
+    ModifyGraph rgb(edc_xrise)=(0,0,65535)
+    ModifyGraph rgb(edc_xfall)=(65535,0,0)
+
+    Label left "Width"
+    Label right "XRise / XFall"
+    Label bottom "Index or t"
 
     return 0
 End
