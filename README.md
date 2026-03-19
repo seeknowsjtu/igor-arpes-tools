@@ -36,8 +36,11 @@ The codebase includes:
 - `ProcLJZ_MDCWB.ipf`  
   MDC Workbench with a more structured engineering-style state-management approach.
 
-- `ProcLJZ_EDCWB.ipf` + `ProcLJZ_EDCWB_Part2.ipf`  
-  EDC Workbench is split into two procedure files: Part 1 (core/runtime state + result-record IO) and Part 2 (model bank, fit engine, panel callbacks, and summary export) to keep each file easier to maintain.
+- `ProcLJZ_EDCWB_Core.ipf` / `ProcLJZ_EDCWB_Model.ipf` / `ProcLJZ_EDCWB_PreprocessGuessFit.ipf` / `ProcLJZ_EDCWB_Panel.ipf`
+  Current modular EDC Workbench load set. `ProcLJZ_EDCWB.ipf` is retained only as a legacy placeholder so it can no longer collide with the modular `LJZ_EDCWB_*` implementation.
+
+- `ProcLJZ_EDCFit.ipf`
+  Separate legacy-compatible entry stub reserved for non-Workbench EDC fitting helpers so the old monolithic EDCWB namespace no longer needs to be loaded together with the modular workbench.
 
 - `ProcLJZ_2025.ipf`  
   A broader collection of earlier utility and display-related functions.

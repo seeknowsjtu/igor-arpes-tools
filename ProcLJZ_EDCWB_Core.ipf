@@ -478,6 +478,16 @@ Function/S LJZ_EDCWB_ResultResPath(srcWavePath)
     return LJZ_EDCWB_WaveDFFromPath(srcWavePath) + LJZ_EDCWB_ResultBaseName(srcWavePath) + "_res"
 End
 
+Function/S LJZ_EDCWB_ResultEditCoefPath(srcWavePath)
+    String srcWavePath
+    return LJZ_EDCWB_WaveDFFromPath(srcWavePath) + LJZ_EDCWB_ResultBaseName(srcWavePath) + "_editsnapcoef"
+End
+
+Function/S LJZ_EDCWB_ResultEditInfoPath(srcWavePath)
+    String srcWavePath
+    return LJZ_EDCWB_WaveDFFromPath(srcWavePath) + LJZ_EDCWB_ResultBaseName(srcWavePath) + "_editsnapinfo"
+End
+
 Function/S LJZ_EDCWB_ResultAcceptPath(srcWavePath)
     String srcWavePath
     return LJZ_EDCWB_WaveDFFromPath(srcWavePath) + LJZ_EDCWB_ResultBaseName(srcWavePath) + "_accept"
@@ -539,6 +549,20 @@ Function LJZ_EDCWB_EnsureResultRecord(srcWavePath)
         Make/O/N=16 $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath)) = NaN
     else
         LJZ_EDCWB_EnsureNumWaveLen16(wInfo, NaN)
+    endif
+
+    Wave/Z wEditCoef = $(LJZ_EDCWB_ResultEditCoefPath(srcWavePath))
+    if (!WaveExists(wEditCoef))
+        Make/O/N=12 $(LJZ_EDCWB_ResultEditCoefPath(srcWavePath)) = NaN
+    else
+        LJZ_EDCWB_EnsureNumWaveLen12(wEditCoef, NaN)
+    endif
+
+    Wave/Z wEditInfo = $(LJZ_EDCWB_ResultEditInfoPath(srcWavePath))
+    if (!WaveExists(wEditInfo))
+        Make/O/N=16 $(LJZ_EDCWB_ResultEditInfoPath(srcWavePath)) = NaN
+    else
+        LJZ_EDCWB_EnsureNumWaveLen16(wEditInfo, NaN)
     endif
 
     Wave/Z wAcc = $(LJZ_EDCWB_ResultAcceptPath(srcWavePath))
@@ -714,7 +738,7 @@ End
 //  Section 8. save / load edit-state record
 // ============================================================================
 
-Function LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
+Function LJZ_EDCWB_SaveCurrentEditSnapshot(srcWavePath)
     String srcWavePath
 
     LJZ_EDCWB_EnsureDF()
@@ -730,14 +754,15 @@ Function LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
     NVAR fitOnSm  = $(LJZ_EDCWB_BaseDF() + ":FitOnSmooth")
 
     Wave ePar     = $(LJZ_EDCWB_BaseDF() + ":EditPar")
-    Wave wCoef    = $(LJZ_EDCWB_ResultFitCoefPath(srcWavePath))
-    Wave wInfo    = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
+    Wave wCoef    = $(LJZ_EDCWB_ResultEditCoefPath(srcWavePath))
+    Wave wInfo    = $(LJZ_EDCWB_ResultEditInfoPath(srcWavePath))
 
     LJZ_EDCWB_EnsureNumWaveLen12(wCoef, NaN)
     LJZ_EDCWB_EnsureNumWaveLen16(wInfo, NaN)
 
     wCoef = NaN
     wCoef = ePar[p]
+    wInfo = NaN
 
     wInfo[LJZ_EDCWB_FI_ModelID()]     = eModel
     wInfo[LJZ_EDCWB_FI_XLo()]         = eXLo
@@ -751,14 +776,22 @@ Function LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
     return 0
 End
 
-Function LJZ_EDCWB_LoadFitRecordToEditState(srcWavePath)
+// legacy compatibility name: this now stores only edit/guess snapshot,
+// never the true fit result record.
+Function LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
     String srcWavePath
+
+    return LJZ_EDCWB_SaveCurrentEditSnapshot(srcWavePath)
+End
+
+Function LJZ_EDCWB_LoadRecordToEditState_Generic(srcWavePath, coefPath, infoPath)
+    String srcWavePath, coefPath, infoPath
 
     LJZ_EDCWB_EnsureDF()
     LJZ_EDCWB_EnsureResultRecord(srcWavePath)
 
-    Wave/Z wCoef = $(LJZ_EDCWB_ResultFitCoefPath(srcWavePath))
-    Wave/Z wInfo = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
+    Wave/Z wCoef = $coefPath
+    Wave/Z wInfo = $infoPath
     if (!WaveExists(wCoef) || !WaveExists(wInfo))
         return -1
     endif
@@ -810,6 +843,18 @@ Function LJZ_EDCWB_LoadFitRecordToEditState(srcWavePath)
     return 0
 End
 
+Function LJZ_EDCWB_LoadFitRecordToEditState(srcWavePath)
+    String srcWavePath
+
+    return LJZ_EDCWB_LoadRecordToEditState_Generic(srcWavePath, LJZ_EDCWB_ResultFitCoefPath(srcWavePath), LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
+End
+
+Function LJZ_EDCWB_LoadEditSnapshotToEditState(srcWavePath)
+    String srcWavePath
+
+    return LJZ_EDCWB_LoadRecordToEditState_Generic(srcWavePath, LJZ_EDCWB_ResultEditCoefPath(srcWavePath), LJZ_EDCWB_ResultEditInfoPath(srcWavePath))
+End
+
 
 // ============================================================================
 //  Section 9. clear / detect existing record
@@ -831,6 +876,9 @@ Function LJZ_EDCWB_HasFitRecord(srcWavePath)
     if (numtype(wInfo[LJZ_EDCWB_FI_ModelID()]) != 0)
         return 0
     endif
+    if (numtype(wInfo[LJZ_EDCWB_FI_FitOK()]) != 0)
+        return 0
+    endif
 
     WaveStats/Q wCoef
     if (V_numNaNs >= numpnts(wCoef))
@@ -838,6 +886,49 @@ Function LJZ_EDCWB_HasFitRecord(srcWavePath)
     endif
 
     return 1
+End
+
+Function LJZ_EDCWB_HasEditSnapshot(srcWavePath)
+    String srcWavePath
+
+    Wave/Z wCoef = $(LJZ_EDCWB_ResultEditCoefPath(srcWavePath))
+    Wave/Z wInfo = $(LJZ_EDCWB_ResultEditInfoPath(srcWavePath))
+
+    if (!WaveExists(wCoef) || !WaveExists(wInfo))
+        return 0
+    endif
+
+    LJZ_EDCWB_EnsureNumWaveLen12(wCoef, NaN)
+    LJZ_EDCWB_EnsureNumWaveLen16(wInfo, NaN)
+
+    if (numtype(wInfo[LJZ_EDCWB_FI_ModelID()]) != 0)
+        return 0
+    endif
+
+    WaveStats/Q wCoef
+    if (V_numNaNs >= numpnts(wCoef))
+        return 0
+    endif
+
+    return 1
+End
+
+Function LJZ_EDCWB_ClearEditSnapshot(srcWavePath)
+    String srcWavePath
+
+    LJZ_EDCWB_EnsureResultRecord(srcWavePath)
+
+    Wave/Z wEditCoef = $(LJZ_EDCWB_ResultEditCoefPath(srcWavePath))
+    if (WaveExists(wEditCoef))
+        wEditCoef = NaN
+    endif
+
+    Wave/Z wEditInfo = $(LJZ_EDCWB_ResultEditInfoPath(srcWavePath))
+    if (WaveExists(wEditInfo))
+        wEditInfo = NaN
+    endif
+
+    return 0
 End
 
 Function LJZ_EDCWB_ClearFitRecord(srcWavePath)
@@ -860,6 +951,7 @@ Function LJZ_EDCWB_ClearFitRecord(srcWavePath)
     wFit   = NaN
     wRes   = NaN
     wAcc[0] = 0
+    LJZ_EDCWB_ClearEditSnapshot(srcWavePath)
 
     return 0
 End

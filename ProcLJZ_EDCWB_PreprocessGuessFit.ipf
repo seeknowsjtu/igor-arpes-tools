@@ -210,8 +210,13 @@ Function LJZ_EDCWB_ApplySmoothInPlace(w, method, p1, p2)
         return 0
     endif
 
-    // 对 EDC 这里故意不做 BLPF，避免和你现在数据类型不兼容
-    // method==3 暂时退化为 no-op
+    if (method == 3)
+        Variable cutoff = abs(p1)
+        cutoff = min(max(cutoff, 0.001), 0.499)
+        Smooth/BLPF cutoff, w
+        return 0
+    endif
+
     return 0
 End
 
@@ -632,6 +637,7 @@ Function LJZ_EDCWB_Guess_SinglePeakFDConv(w, wPar)
         amp = max(1e-3, abs(yPeak))
     endif
 
+    // SinglePeakFDConv stores w as FWHM.
     Variable fwhm = LJZ_EDCWB_HalfHeightWidth(w, iPeak, bgAtPeak)
     if (numtype(fwhm) != 0 || fwhm <= 0)
         fwhm = abs(DimDelta(w, 0)) * 6
@@ -827,24 +833,41 @@ Function LJZ_EDCWB_FDValue(x, T, EF)
     return 1 / (exp(arg) + 1)
 End
 
+// SinglePeakFDConv chain convention:
+//   w is always FWHM for both auto-guess, preview, and true fit function.
 Function LJZ_EDCWB_LorentzValue(x, x0, w)
     Variable x, x0, w
 
+    Variable gamma
     if (w <= 0)
         w = 1e-4
     endif
 
-    return 1 / (1 + ((x - x0) / w)^2)
+    gamma = max(0.5 * w, 1e-4)
+    return 1 / (1 + ((x - x0) / gamma)^2)
 End
 
-Function LJZ_EDCWB_GaussValue(x, x0, s)
-    Variable x, x0, s
+Function LJZ_EDCWB_GaussValue(x, x0, w)
+    Variable x, x0, w
 
-    if (s <= 0)
-        s = 1e-4
+    Variable sigma
+    if (w <= 0)
+        w = 1e-4
     endif
 
-    return exp(-0.5 * ((x - x0) / s)^2)
+    sigma = max(w / (2 * sqrt(2 * ln(2))), 1e-4)
+    return exp(-0.5 * ((x - x0) / sigma)^2)
+End
+
+// Gap models keep their Gaussian-width parameter as sigma to minimize behavior change.
+Function LJZ_EDCWB_GaussValueSigma(x, x0, sigma)
+    Variable x, x0, sigma
+
+    if (sigma <= 0)
+        sigma = 1e-4
+    endif
+
+    return exp(-0.5 * ((x - x0) / sigma)^2)
 End
 
 Function/WAVE LJZ_EDCWB_BuildGuessCurveFromPar(srcWavePath, wPar)
@@ -903,7 +926,7 @@ Function/WAVE LJZ_EDCWB_BuildGuessCurveFromPar(srcWavePath, wPar)
             Gamma = 0.005
         endif
 
-        out = (bg0 + bg1 * x) + A * (LJZ_EDCWB_GaussValue(x, EF - Delta, Gamma) + 0.7 * LJZ_EDCWB_GaussValue(x, EF + Delta, Gamma))
+        out = (bg0 + bg1 * x) + A * (LJZ_EDCWB_GaussValueSigma(x, EF - Delta, Gamma) + 0.7 * LJZ_EDCWB_GaussValueSigma(x, EF + Delta, Gamma))
         out *= LJZ_EDCWB_FDValue(x, T, EF)
         return out
     endif
@@ -926,7 +949,7 @@ Function/WAVE LJZ_EDCWB_BuildGuessCurveFromPar(srcWavePath, wPar)
             Gamma = 0.005
         endif
 
-        out = (bg0 + bg1 * x) + A * (LJZ_EDCWB_GaussValue(x, x0 - Delta, Gamma) + LJZ_EDCWB_GaussValue(x, x0 + Delta, Gamma))
+        out = (bg0 + bg1 * x) + A * (LJZ_EDCWB_GaussValueSigma(x, x0 - Delta, Gamma) + LJZ_EDCWB_GaussValueSigma(x, x0 + Delta, Gamma))
         return out
     endif
 
@@ -949,7 +972,7 @@ Function LJZ_EDCWB_AutoGuessAndSave(srcWavePath, modelID)
         return -1
     endif
 
-    LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
+    LJZ_EDCWB_SaveCurrentEditSnapshot(srcWavePath)
     LJZ_EDCWB_SaveGuessCurve(srcWavePath, wGuess)
     return 0
 End
@@ -982,24 +1005,39 @@ Function LJZ_EDCWB_FitFDValue(x, T, EF)
     return 1 / (exp(arg) + 1)
 End
 
+// SinglePeakFDConv true fit also uses w as FWHM.
 Function LJZ_EDCWB_FitLor(x, x0, w)
     Variable x, x0, w
 
+    Variable gamma
     if (w <= 0)
         w = 1e-4
     endif
 
-    return 1 / (1 + ((x - x0) / w)^2)
+    gamma = max(0.5 * w, 1e-4)
+    return 1 / (1 + ((x - x0) / gamma)^2)
 End
 
 Function LJZ_EDCWB_FitGau(x, x0, w)
     Variable x, x0, w
 
+    Variable sigma
     if (w <= 0)
         w = 1e-4
     endif
 
-    return exp(-0.5 * ((x - x0) / w)^2)
+    sigma = max(w / (2 * sqrt(2 * ln(2))), 1e-4)
+    return exp(-0.5 * ((x - x0) / sigma)^2)
+End
+
+Function LJZ_EDCWB_FitGauSigma(x, x0, sigma)
+    Variable x, x0, sigma
+
+    if (sigma <= 0)
+        sigma = 1e-4
+    endif
+
+    return exp(-0.5 * ((x - x0) / sigma)^2)
 End
 
 Function LJZ_EDCWB_FitFunc_SinglePeakFDConv(coef, x) : FitFunc
@@ -1050,8 +1088,8 @@ Function LJZ_EDCWB_FitFunc_EffectiveGap(coef, x) : FitFunc
         Gamma = 1e-4
     endif
 
-    Variable edge1 = LJZ_EDCWB_FitGau(x, EF - Delta, Gamma)
-    Variable edge2 = 0.7 * LJZ_EDCWB_FitGau(x, EF + Delta, Gamma)
+    Variable edge1 = LJZ_EDCWB_FitGauSigma(x, EF - Delta, Gamma)
+    Variable edge2 = 0.7 * LJZ_EDCWB_FitGauSigma(x, EF + Delta, Gamma)
     Variable fd    = LJZ_EDCWB_FitFDValue(x, T, EF)
 
     return (bg0 + bg1 * x + A * (edge1 + edge2)) * fd
@@ -1075,8 +1113,8 @@ Function LJZ_EDCWB_FitFunc_SymGap(coef, x) : FitFunc
         Gamma = 1e-4
     endif
 
-    Variable p1 = LJZ_EDCWB_FitGau(x, x0 - Delta, Gamma)
-    Variable p2 = LJZ_EDCWB_FitGau(x, x0 + Delta, Gamma)
+    Variable p1 = LJZ_EDCWB_FitGauSigma(x, x0 - Delta, Gamma)
+    Variable p2 = LJZ_EDCWB_FitGauSigma(x, x0 + Delta, Gamma)
 
     return bg0 + bg1 * x + A * (p1 + p2)
 End
@@ -1314,15 +1352,15 @@ Function LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, wCoefActive, wSigm
     NVAR eNorm   = $(LJZ_EDCWB_BaseDF() + ":EditNormMode")
     NVAR fitOnSm = $(LJZ_EDCWB_BaseDF() + ":FitOnSmooth")
 
-    fitinfo16[0]  = modelID
-    fitinfo16[1]  = eXLo
-    fitinfo16[2]  = eXHi
-    fitinfo16[3]  = fitOK
-    fitinfo16[9]  = eTemp
-    fitinfo16[10] = eRes
-    fitinfo16[11] = eEF
-    fitinfo16[12] = eNorm
-    fitinfo16[13] = fitOnSm
+    fitinfo16[LJZ_EDCWB_FI_ModelID()]     = modelID
+    fitinfo16[LJZ_EDCWB_FI_XLo()]         = eXLo
+    fitinfo16[LJZ_EDCWB_FI_XHi()]         = eXHi
+    fitinfo16[LJZ_EDCWB_FI_FitOK()]       = fitOK
+    fitinfo16[LJZ_EDCWB_FI_Temperature()] = eTemp
+    fitinfo16[LJZ_EDCWB_FI_Resolution()]  = eRes
+    fitinfo16[LJZ_EDCWB_FI_EFermi()]      = eEF
+    fitinfo16[LJZ_EDCWB_FI_NormMode()]    = eNorm
+    fitinfo16[LJZ_EDCWB_FI_SmoothUsed()]  = fitOnSm
 
     Wave wFitIn = LJZ_EDCWB_GetFitInputWave(srcWavePath)
     Duplicate/O wFitIn, $(LJZ_EDCWB_TmpDF() + ":fitFull")
@@ -1333,15 +1371,15 @@ Function LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, wCoefActive, wSigm
     LJZ_EDCWB_EvalModelWave(modelID, wFitIn, wCoefActive, fitFull)
     resFull = wFitIn[p] - fitFull[p]
 
-    fitinfo16[5] = LJZ_EDCWB_RMSEBetweenWaves(wFitIn, fitFull)
-    fitinfo16[7] = LJZ_EDCWB_MaxAbsWave(resFull)
+    fitinfo16[LJZ_EDCWB_FI_FitRMSE()]   = LJZ_EDCWB_RMSEBetweenWaves(wFitIn, fitFull)
+    fitinfo16[LJZ_EDCWB_FI_MaxAbsRes()] = LJZ_EDCWB_MaxAbsWave(resFull)
 
     Variable iLo, iHi
     if (LJZ_EDCWB_GetLastFitROIRange(iLo, iHi) == 0)
-        fitinfo16[8] = iHi - iLo + 1
+        fitinfo16[LJZ_EDCWB_FI_NROI()] = iHi - iLo + 1
     endif
 
-    fitinfo16[6] = chiSq
+    fitinfo16[LJZ_EDCWB_FI_ChiSq()] = chiSq
 
     LJZ_EDCWB_SaveFitCurve(srcWavePath, fitFull, resFull)
     LJZ_EDCWB_SaveFitVectors(srcWavePath, fitcoef12, fitsigma12, fitinfo16)
@@ -1397,7 +1435,7 @@ Function LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
 
     Wave/Z wGuess = LJZ_EDCWB_BuildGuessCurveFromPar(srcWavePath, wEditPar)
     if (WaveExists(wGuess))
-        LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
+        LJZ_EDCWB_SaveCurrentEditSnapshot(srcWavePath)
         LJZ_EDCWB_SaveGuessCurve(srcWavePath, wGuess)
     endif
 

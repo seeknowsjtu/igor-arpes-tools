@@ -157,7 +157,7 @@ End
 //   1 bg1
 //   2 A
 //   3 x0
-//   4 w
+//   4 w   (FWHM for the pseudo-Voigt peak in SinglePeakFDConv)
 //   5 eta
 //   6 T
 //   7 EF
@@ -689,7 +689,7 @@ Function LJZ_EDCWB_SanitizeParamWave(modelID, wPar)
         endif
     endif
 
-    // w > 0
+    // w > 0  (SinglePeakFDConv defines w as FWHM)
     idx = LJZ_EDCWB_ParamIndex(modelID, "w")
     if (idx >= 0 && numtype(wPar[idx]) == 0)
         if (wPar[idx] <= 0)
