@@ -3,19 +3,14 @@
 
 // ============================================================================
 //  ProcLJZ_EDCFit.ipf
-//  Legacy-compatible stub for the non-workbench EDCFit entry point.
 //
-//  The old monolithic ProcLJZ_EDCWB.ipf is intentionally retired to avoid
-//  namespace collisions with the modular LJZ_EDCWB_* workbench files.
-//  If the historical EDCFit_LJZ body is recovered later, it should live here
-//  and must not reintroduce LJZ_EDCWB_* definitions.
+//  这是未恢复的 legacy stub，不是正式入口。
+//  在历史 EDCFit 工作流未恢复之前，禁止将本文件重新挂入任何正式菜单。
+//  若未来恢复旧 EDCFit 工作流，只允许恢复 EDCFit_* 旧链路，
+//  不得在此文件中重新引入任何 LJZ_EDCWB_* 函数或实现。
 // ============================================================================
 
-Menu "ARPES_LJZ"
-    "Legacy EDCFit_LJZ", EDCFit_LJZ()
-End
-
-Function EDCFit_LJZ()
-    DoAlert 0, "Legacy EDCFit_LJZ() has been separated from EDCWB. Please restore its historical implementation in ProcLJZ_EDCFit.ipf if you need the old standalone workflow."
+Function EDCFit_LegacyStub_LJZ()
+    DoAlert 0, "Legacy EDCFit workflow is not restored yet. ProcLJZ_EDCFit.ipf is only a stub and must not be exposed as a formal menu entry until the historical EDCFit_* chain is recovered."
     return 0
 End

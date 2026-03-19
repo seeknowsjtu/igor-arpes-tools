@@ -3,12 +3,20 @@
 
 // ============================================================================
 //  ProcLJZ_EDCWB_Panel.ipf
-//  EDCWB Panel + Graph + Export + Callbacks
+//  EDCWB panel / graph / callback / export 模块。
+//
+//  这里只负责：
+//    - panel
+//    - graph
+//    - callback
+//    - export
+//
+//  不负责：
+//    - 正式入口菜单注册
+//    - 模块 include 装配
+//
+//  EDCWB 相关菜单只能由 ProcLJZ_EDCWB.ipf 提供，禁止在此文件重新注册。
 // ============================================================================
-
-Menu "ARPES_LJZ"
-    "2026EDCWB_LJZ", LJZ_EDCWB()
-End
 
 
 // ============================================================================
