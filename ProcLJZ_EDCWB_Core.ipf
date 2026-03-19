@@ -699,6 +699,8 @@ Function LJZ_EDCWB_SaveFitVectors(srcWavePath, wCoefIn, wSigmaIn, wInfoIn)
     return 0
 End
 
+// Clear only stored true-fit outputs/metadata so stale fit artifacts can never
+// be mistaken for a completed fit record. Edit/guess snapshot data is untouched.
 Function LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
     String srcWavePath
 
@@ -714,6 +716,12 @@ Function LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
         wRes = NaN
     endif
 
+    Wave/Z wCoef = $(LJZ_EDCWB_ResultFitCoefPath(srcWavePath))
+    if (WaveExists(wCoef))
+        LJZ_EDCWB_EnsureNumWaveLen12(wCoef, NaN)
+        wCoef = NaN
+    endif
+
     Wave/Z wSig = $(LJZ_EDCWB_ResultFitSigmaPath(srcWavePath))
     if (WaveExists(wSig))
         LJZ_EDCWB_EnsureNumWaveLen12(wSig, NaN)
@@ -723,6 +731,7 @@ Function LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
     Wave/Z wInfo = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
     if (WaveExists(wInfo))
         LJZ_EDCWB_EnsureNumWaveLen16(wInfo, NaN)
+        wInfo[LJZ_EDCWB_FI_ModelID()]   = NaN
         wInfo[LJZ_EDCWB_FI_FitOK()]     = NaN
         wInfo[LJZ_EDCWB_FI_FitRMSE()]   = NaN
         wInfo[LJZ_EDCWB_FI_ChiSq()]     = NaN
@@ -738,6 +747,8 @@ End
 //  Section 8. save / load edit-state record
 // ============================================================================
 
+// Save the current manual edit/guess state as the edit snapshot only; this does
+// not create or refresh the persisted true-fit record.
 Function LJZ_EDCWB_SaveCurrentEditSnapshot(srcWavePath)
     String srcWavePath
 
@@ -776,8 +787,8 @@ Function LJZ_EDCWB_SaveCurrentEditSnapshot(srcWavePath)
     return 0
 End
 
-// legacy compatibility name: this now stores only edit/guess snapshot,
-// never the true fit result record.
+// Legacy compatibility entry point: it now saves only the edit/guess snapshot
+// and never writes the persisted true-fit result record.
 Function LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
     String srcWavePath
 
@@ -846,11 +857,19 @@ End
 Function LJZ_EDCWB_LoadFitRecordToEditState(srcWavePath)
     String srcWavePath
 
+    if (!LJZ_EDCWB_HasFitRecord(srcWavePath))
+        return -1
+    endif
+
     return LJZ_EDCWB_LoadRecordToEditState_Generic(srcWavePath, LJZ_EDCWB_ResultFitCoefPath(srcWavePath), LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
 End
 
 Function LJZ_EDCWB_LoadEditSnapshotToEditState(srcWavePath)
     String srcWavePath
+
+    if (!LJZ_EDCWB_HasEditSnapshot(srcWavePath))
+        return -1
+    endif
 
     return LJZ_EDCWB_LoadRecordToEditState_Generic(srcWavePath, LJZ_EDCWB_ResultEditCoefPath(srcWavePath), LJZ_EDCWB_ResultEditInfoPath(srcWavePath))
 End
@@ -860,6 +879,8 @@ End
 //  Section 9. clear / detect existing record
 // ============================================================================
 
+// Return 1 only when the persisted true-fit record is complete enough to be
+// trusted as a finished fit, not merely because stale fitinfo/fitcoef exists.
 Function LJZ_EDCWB_HasFitRecord(srcWavePath)
     String srcWavePath
 
@@ -885,9 +906,31 @@ Function LJZ_EDCWB_HasFitRecord(srcWavePath)
         return 0
     endif
 
-    return 1
+    Wave/Z wFit = $(LJZ_EDCWB_ResultFitPath(srcWavePath))
+    if (WaveExists(wFit))
+        WaveStats/Q wFit
+        if (V_numNaNs < numpnts(wFit))
+            return 1
+        endif
+    endif
+
+    Wave/Z wRes = $(LJZ_EDCWB_ResultResPath(srcWavePath))
+    if (WaveExists(wRes))
+        WaveStats/Q wRes
+        if (V_numNaNs < numpnts(wRes))
+            return 1
+        endif
+    endif
+
+    if (numtype(wInfo[LJZ_EDCWB_FI_FitRMSE()]) == 0)
+        return 1
+    endif
+
+    return 0
 End
 
+// Return 1 only when the persisted edit snapshot waves themselves contain a
+// usable manual edit/guess snapshot; this is intentionally independent of fit.
 Function LJZ_EDCWB_HasEditSnapshot(srcWavePath)
     String srcWavePath
 
@@ -913,6 +956,8 @@ Function LJZ_EDCWB_HasEditSnapshot(srcWavePath)
     return 1
 End
 
+// Clear only the persisted edit/guess snapshot waves. True-fit outputs remain
+// untouched so edit-state cleanup stays independent from fit-record cleanup.
 Function LJZ_EDCWB_ClearEditSnapshot(srcWavePath)
     String srcWavePath
 
@@ -931,25 +976,18 @@ Function LJZ_EDCWB_ClearEditSnapshot(srcWavePath)
     return 0
 End
 
+// Full record reset used by higher-level "clear fit record" actions: clear
+// guess + true-fit outputs + accept state, then also clear the edit snapshot.
 Function LJZ_EDCWB_ClearFitRecord(srcWavePath)
     String srcWavePath
 
     LJZ_EDCWB_EnsureResultRecord(srcWavePath)
 
     Wave wGuess = $(LJZ_EDCWB_ResultGuessPath(srcWavePath))
-    Wave wCoef  = $(LJZ_EDCWB_ResultFitCoefPath(srcWavePath))
-    Wave wSig   = $(LJZ_EDCWB_ResultFitSigmaPath(srcWavePath))
-    Wave wInfo  = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
-    Wave wFit   = $(LJZ_EDCWB_ResultFitPath(srcWavePath))
-    Wave wRes   = $(LJZ_EDCWB_ResultResPath(srcWavePath))
     Wave wAcc   = $(LJZ_EDCWB_ResultAcceptPath(srcWavePath))
 
     wGuess = NaN
-    wCoef  = NaN
-    wSig   = NaN
-    wInfo  = NaN
-    wFit   = NaN
-    wRes   = NaN
+    LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
     wAcc[0] = 0
     LJZ_EDCWB_ClearEditSnapshot(srcWavePath)
 
