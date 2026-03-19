@@ -405,7 +405,16 @@ Function/S LJZ_EDCExtract_MakeRunDFName(w, kStart, kEnd, tag)
     String tag
 
     String nm = CleanupName(NameOfWave(w), 0)
-    return LJZ_EDCExtract_RunRoot() + ":" + nm + "_RUN_" + tag + "_k" + num2str(kStart) + "2" + num2str(kEnd) + ":"
+    if (strlen(nm) > 24)
+        nm = nm[0, 23]
+    endif
+
+    String tag2 = CleanupName(tag, 0)
+    if (strlen(tag2) == 0)
+        tag2 = "EDC"
+    endif
+
+    return LJZ_EDCExtract_RunRoot() + ":" + nm + "_" + tag2 + "_k" + num2str(kStart) + "_" + num2str(kEnd) + ":"
 End
 
 Function LJZ_EDCExtract_BuildRawEDCs(w, kStart, kEnd, runDF)
@@ -440,6 +449,17 @@ Function LJZ_EDCExtract_BuildRawEDCs(w, kStart, kEnd, runDF)
     NewDataFolder/O $(RemoveEnding(runDF, ":"))
     String oldDf = GetDataFolder(1)
     SetDataFolder $(RemoveEnding(runDF, ":"))
+
+    Variable killIdx = 0
+    do
+        Wave/Z oldRaw = $("edc_raw_" + num2str(killIdx))
+        Wave/Z oldShow = $("edc_show_" + num2str(killIdx))
+        if (!WaveExists(oldRaw) && !WaveExists(oldShow))
+            break
+        endif
+        KillWaves/Z oldRaw, oldShow
+        killIdx += 1
+    while (1)
 
     Variable t, k
     for (t = 0; t < nT; t += 1)
@@ -497,11 +517,22 @@ Function LJZ_EDCExtract_ApplySmoothing(runDF)
                     Smooth/S=(poly) n2, sh
                 endif
             elseif (SmMethod == 3)
-                Variable fc = min(max(SmCutoff, 0.001), 0.499)
-                Smooth/BLPF fc, sh
+                Smooth n1, sh
+                if (n2 >= 3)
+                    Smooth n2, sh
+                endif
             endif
         endif
 
+        t += 1
+    while (1)
+
+    do
+        Wave/Z stale = $(runDF + "edc_show_" + num2str(t))
+        if (!WaveExists(stale))
+            break
+        endif
+        KillWaves/Z stale
         t += 1
     while (1)
 
@@ -550,6 +581,7 @@ Function/S LJZ_EDCExtract_BuildGraphTitle(baseName, runDF)
         nm = "EDC"
     endif
 
+    nm = LJZ_EDCExtract_ShortenForTitle(nm, 72)
     return nm + " | k=" + num2str(k0) + "-" + num2str(k1)
 End
 
@@ -697,6 +729,8 @@ End
 Function LJZ_EDCExtract_OpenPanel()
     LJZ_EDCExtract_EnsureDF()
 
+    NVAR SmMethod = $(LJZ_EDCExtract_BaseDF() + ":SmMethod")
+
     String p = LJZ_EDCExtract_PanelName()
     DoWindow/F $p
     if (V_flag == 0)
@@ -708,7 +742,7 @@ Function LJZ_EDCExtract_OpenPanel()
 
     // ---------------- top row ----------------
     SetVariable svBaseDF,pos={10,10},size={430,20},title="Base DF"
-    SetVariable svBaseDF,value=_STR:LJZ_EDCExtract_BaseDF() + ":BaseDF",proc=LJZ_EDCExtract_SetVarProc
+    SetVariable svBaseDF,value=_STR:"root:ARPES_LJZ:EDCExtract:BaseDF",proc=LJZ_EDCExtract_SetVarProc
 
     CheckBox cbRecursive,pos={455,11},title="Recursive"
     CheckBox cbRecursive,variable=$(LJZ_EDCExtract_BaseDF() + ":Recursive"),proc=LJZ_EDCExtract_CheckProc
@@ -729,7 +763,7 @@ Function LJZ_EDCExtract_OpenPanel()
     SetVariable svEvary,variable=$(LJZ_EDCExtract_BaseDF() + ":evary"),proc=LJZ_EDCExtract_SetVarProc
 
     SetVariable svBaseName,pos={390,135},size={260,20},title="BaseName"
-    SetVariable svBaseName,value=_STR:LJZ_EDCExtract_BaseDF() + ":BaseName",proc=LJZ_EDCExtract_SetVarProc
+    SetVariable svBaseName,value=_STR:"root:ARPES_LJZ:EDCExtract:BaseName",proc=LJZ_EDCExtract_SetVarProc
 
     Button btShowEDC,pos={390,175},size={120,28},title="Extract EDC",proc=LJZ_EDCExtract_ButtonProc
     Button btReShowEDC,pos={525,175},size={120,28},title="ReShow EDC",proc=LJZ_EDCExtract_ButtonProc
@@ -760,6 +794,7 @@ Function LJZ_EDCExtract_OpenPanel()
     TitleBox tbRun,pos={10,315},size={660,40},frame=0,title="RunDF: "
 
     LJZ_EDCExtract_RefreshTitleBoxes()
+    PopupMenu pmSm win=$p, mode=(SmMethod + 1)
 
     return 0
 End
