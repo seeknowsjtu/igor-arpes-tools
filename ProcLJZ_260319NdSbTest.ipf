@@ -36,8 +36,9 @@ Function Plot_SW6_All_Delta12K()
     Wave/Z w1 = $p1
     Wave/Z ws1
     if (WaveExists(w1))
-        Duplicate/O w1, $(outDF + "sw6_1mW_dk12")
-        Wave w1p = $(outDF + "sw6_1mW_dk12")
+        Duplicate/O w1, $(outDF + "sw6_1mW_de12")
+        Wave w1p = $(outDF + "sw6_1mW_de12")
+        w1p *= 1.233
 
         if (first)
             Display/N=$wname w1p
@@ -49,9 +50,10 @@ Function Plot_SW6_All_Delta12K()
         String s1 = ReplaceString("deltak12_k", p1, "sigmadeltak12_k")
         Wave/Z ws1tmp = $s1
         if (WaveExists(ws1tmp))
-            Duplicate/O ws1tmp, $(outDF + "sw6_1mW_sdk12")
-            Wave ws1p = $(outDF + "sw6_1mW_sdk12")
-            ErrorBars/W=$wname sw6_1mW_dk12 Y,wave=(ws1p,ws1p)
+            Duplicate/O ws1tmp, $(outDF + "sw6_1mW_sde12")
+            Wave ws1p = $(outDF + "sw6_1mW_sde12")
+            ws1p *= 1.233
+            ErrorBars/W=$wname sw6_1mW_de12 Y,wave=(ws1p,ws1p)
         endif
     else
         Print "Missing: " + p1
@@ -60,16 +62,18 @@ Function Plot_SW6_All_Delta12K()
     // ===== 2 mW =====
     Wave/Z w2 = $p2
     if (WaveExists(w2))
-        Duplicate/O w2, $(outDF + "sw6_2mW_dk12")
-        Wave w2p = $(outDF + "sw6_2mW_dk12")
+        Duplicate/O w2, $(outDF + "sw6_2mW_de12")
+        Wave w2p = $(outDF + "sw6_2mW_de12")
+        w2p *= 1.233
         AppendToGraph/W=$wname w2p
 
         String s2 = ReplaceString("deltak12_k", p2, "sigmadeltak12_k")
         Wave/Z ws2tmp = $s2
         if (WaveExists(ws2tmp))
-            Duplicate/O ws2tmp, $(outDF + "sw6_2mW_sdk12")
-            Wave ws2p = $(outDF + "sw6_2mW_sdk12")
-            ErrorBars/W=$wname sw6_2mW_dk12 Y,wave=(ws2p,ws2p)
+            Duplicate/O ws2tmp, $(outDF + "sw6_2mW_sde12")
+            Wave ws2p = $(outDF + "sw6_2mW_sde12")
+            ws2p *= 1.233
+            ErrorBars/W=$wname sw6_2mW_de12 Y,wave=(ws2p,ws2p)
         endif
     else
         Print "Missing: " + p2
@@ -78,16 +82,18 @@ Function Plot_SW6_All_Delta12K()
     // ===== 2.5 mW =====
     Wave/Z w3 = $p3
     if (WaveExists(w3))
-        Duplicate/O w3, $(outDF + "sw6_2d5mW_dk12")
-        Wave w3p = $(outDF + "sw6_2d5mW_dk12")
+        Duplicate/O w3, $(outDF + "sw6_2d5mW_de12")
+        Wave w3p = $(outDF + "sw6_2d5mW_de12")
+        w3p *= 1.233
         AppendToGraph/W=$wname w3p
 
         String s3 = ReplaceString("deltak12_k", p3, "sigmadeltak12_k")
         Wave/Z ws3tmp = $s3
         if (WaveExists(ws3tmp))
-            Duplicate/O ws3tmp, $(outDF + "sw6_2d5mW_sdk12")
-            Wave ws3p = $(outDF + "sw6_2d5mW_sdk12")
-            ErrorBars/W=$wname sw6_2d5mW_dk12 Y,wave=(ws3p,ws3p)
+            Duplicate/O ws3tmp, $(outDF + "sw6_2d5mW_sde12")
+            Wave ws3p = $(outDF + "sw6_2d5mW_sde12")
+            ws3p *= 1.233
+            ErrorBars/W=$wname sw6_2d5mW_de12 Y,wave=(ws3p,ws3p)
         endif
     else
         Print "Missing: " + p3
@@ -96,16 +102,18 @@ Function Plot_SW6_All_Delta12K()
     // ===== 3 mW =====
     Wave/Z w4 = $p4
     if (WaveExists(w4))
-        Duplicate/O w4, $(outDF + "sw6_3mW_dk12")
-        Wave w4p = $(outDF + "sw6_3mW_dk12")
+        Duplicate/O w4, $(outDF + "sw6_3mW_de12")
+        Wave w4p = $(outDF + "sw6_3mW_de12")
+        w4p *= 1.233
         AppendToGraph/W=$wname w4p
 
         String s4 = ReplaceString("deltak12_k", p4, "sigmadeltak12_k")
         Wave/Z ws4tmp = $s4
         if (WaveExists(ws4tmp))
-            Duplicate/O ws4tmp, $(outDF + "sw6_3mW_sdk12")
-            Wave ws4p = $(outDF + "sw6_3mW_sdk12")
-            ErrorBars/W=$wname sw6_3mW_dk12 Y,wave=(ws4p,ws4p)
+            Duplicate/O ws4tmp, $(outDF + "sw6_3mW_sde12")
+            Wave ws4p = $(outDF + "sw6_3mW_sde12")
+            ws4p *= 1.233
+            ErrorBars/W=$wname sw6_3mW_de12 Y,wave=(ws4p,ws4p)
         endif
     else
         Print "Missing: " + p4
@@ -114,16 +122,18 @@ Function Plot_SW6_All_Delta12K()
     // ===== 3.5 mW =====
     Wave/Z w5 = $p5
     if (WaveExists(w5))
-        Duplicate/O w5, $(outDF + "sw6_3d5mW_dk12")
-        Wave w5p = $(outDF + "sw6_3d5mW_dk12")
+        Duplicate/O w5, $(outDF + "sw6_3d5mW_de12")
+        Wave w5p = $(outDF + "sw6_3d5mW_de12")
+        w5p *= 1.233
         AppendToGraph/W=$wname w5p
 
         String s5 = ReplaceString("deltak12_k", p5, "sigmadeltak12_k")
         Wave/Z ws5tmp = $s5
         if (WaveExists(ws5tmp))
-            Duplicate/O ws5tmp, $(outDF + "sw6_3d5mW_sdk12")
-            Wave ws5p = $(outDF + "sw6_3d5mW_sdk12")
-            ErrorBars/W=$wname sw6_3d5mW_dk12 Y,wave=(ws5p,ws5p)
+            Duplicate/O ws5tmp, $(outDF + "sw6_3d5mW_sde12")
+            Wave ws5p = $(outDF + "sw6_3d5mW_sde12")
+            ws5p *= 1.233
+            ErrorBars/W=$wname sw6_3d5mW_de12 Y,wave=(ws5p,ws5p)
         endif
     else
         Print "Missing: " + p5
@@ -132,16 +142,18 @@ Function Plot_SW6_All_Delta12K()
     // ===== 4 mW =====
     Wave/Z w6 = $p6
     if (WaveExists(w6))
-        Duplicate/O w6, $(outDF + "sw6_4mW_dk12")
-        Wave w6p = $(outDF + "sw6_4mW_dk12")
+        Duplicate/O w6, $(outDF + "sw6_4mW_de12")
+        Wave w6p = $(outDF + "sw6_4mW_de12")
+        w6p *= 1.233
         AppendToGraph/W=$wname w6p
 
         String s6 = ReplaceString("deltak12_k", p6, "sigmadeltak12_k")
         Wave/Z ws6tmp = $s6
         if (WaveExists(ws6tmp))
-            Duplicate/O ws6tmp, $(outDF + "sw6_4mW_sdk12")
-            Wave ws6p = $(outDF + "sw6_4mW_sdk12")
-            ErrorBars/W=$wname sw6_4mW_dk12 Y,wave=(ws6p,ws6p)
+            Duplicate/O ws6tmp, $(outDF + "sw6_4mW_sde12")
+            Wave ws6p = $(outDF + "sw6_4mW_sde12")
+            ws6p *= 1.233
+            ErrorBars/W=$wname sw6_4mW_de12 Y,wave=(ws6p,ws6p)
         endif
     else
         Print "Missing: " + p6
@@ -158,47 +170,47 @@ Function Plot_SW6_All_Delta12K()
     ModifyGraph/W=$wname tickUnit(left)=1,tickUnit(bottom)=1
     ModifyGraph/W=$wname fSize=16
     SetAxis/W=$wname left 0,*
-    Label/W=$wname left "Δk\\B12\\M (Å\\S-1\\M)"
+    Label/W=$wname left "ΔE\\B12\\M (eV)"
     Label/W=$wname bottom "Delay Time (ps)"
 
     // ========================
     // 2) 各条曲线的 marker / size / color
     // ========================
-    ModifyGraph/W=$wname mode(sw6_1mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_1mW_dk12)=19
-    ModifyGraph/W=$wname msize(sw6_1mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_1mW_dk12)=(0,0,0)
+    ModifyGraph/W=$wname mode(sw6_1mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_1mW_de12)=19
+    ModifyGraph/W=$wname msize(sw6_1mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_1mW_de12)=(0,0,0)
 
-    ModifyGraph/W=$wname mode(sw6_2mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_2mW_dk12)=17
-    ModifyGraph/W=$wname msize(sw6_2mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_2mW_dk12)=(56000,0,0)
+    ModifyGraph/W=$wname mode(sw6_2mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_2mW_de12)=17
+    ModifyGraph/W=$wname msize(sw6_2mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_2mW_de12)=(56000,0,0)
 
-    ModifyGraph/W=$wname mode(sw6_2d5mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_2d5mW_dk12)=16
-    ModifyGraph/W=$wname msize(sw6_2d5mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_2d5mW_dk12)=(0,0,50000)
+    ModifyGraph/W=$wname mode(sw6_2d5mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_2d5mW_de12)=16
+    ModifyGraph/W=$wname msize(sw6_2d5mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_2d5mW_de12)=(0,0,50000)
 
-    ModifyGraph/W=$wname mode(sw6_3mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_3mW_dk12)=18
-    ModifyGraph/W=$wname msize(sw6_3mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_3mW_dk12)=(0,42000,12000)
+    ModifyGraph/W=$wname mode(sw6_3mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_3mW_de12)=18
+    ModifyGraph/W=$wname msize(sw6_3mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_3mW_de12)=(0,42000,12000)
 
-    ModifyGraph/W=$wname mode(sw6_3d5mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_3d5mW_dk12)=8
-    ModifyGraph/W=$wname msize(sw6_3d5mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_3d5mW_dk12)=(42000,0,48000)
+    ModifyGraph/W=$wname mode(sw6_3d5mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_3d5mW_de12)=8
+    ModifyGraph/W=$wname msize(sw6_3d5mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_3d5mW_de12)=(42000,0,48000)
 
-    ModifyGraph/W=$wname mode(sw6_4mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_4mW_dk12)=10
-    ModifyGraph/W=$wname msize(sw6_4mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_4mW_dk12)=(32000,18000,0)
+    ModifyGraph/W=$wname mode(sw6_4mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_4mW_de12)=10
+    ModifyGraph/W=$wname msize(sw6_4mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_4mW_de12)=(32000,18000,0)
 
     // ========================
     // 3) reference line
     // ========================
     Make/O/N=2 $(outDF + "ref15_x") = {-1, 104}
-    Make/O/N=2 $(outDF + "ref15_y") = {0.017, 0.017}
+    Make/O/N=2 $(outDF + "ref15_y") = {0.020961, 0.020961}
     AppendToGraph/W=$wname $(outDF + "ref15_y") vs $(outDF + "ref15_x")
     ModifyGraph/W=$wname lstyle(ref15_y)=3,rgb(ref15_y)=(35000,35000,35000),lsize(ref15_y)=1.2
 
@@ -213,8 +225,8 @@ Function Plot_SW6_All_Delta12K()
     // ---- 1 mW ----
     if (WaveExists(w1p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_1mW_sdk12")))
-            Wave ws1p2 = $(outDF + "sw6_1mW_sdk12")
+        if (WaveExists($(outDF + "sw6_1mW_sde12")))
+            Wave ws1p2 = $(outDF + "sw6_1mW_sde12")
             nTmp = min(numpnts(w1p), numpnts(ws1p2))
             do
                 nTmp -= 1
@@ -259,8 +271,8 @@ Function Plot_SW6_All_Delta12K()
     // ---- 2 mW ----
     if (WaveExists(w2p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_2mW_sdk12")))
-            Wave ws2p2 = $(outDF + "sw6_2mW_sdk12")
+        if (WaveExists($(outDF + "sw6_2mW_sde12")))
+            Wave ws2p2 = $(outDF + "sw6_2mW_sde12")
             nTmp = min(numpnts(w2p), numpnts(ws2p2))
             do
                 nTmp -= 1
@@ -305,8 +317,8 @@ Function Plot_SW6_All_Delta12K()
     // ---- 2.5 mW ----
     if (WaveExists(w3p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_2d5mW_sdk12")))
-            Wave ws3p2 = $(outDF + "sw6_2d5mW_sdk12")
+        if (WaveExists($(outDF + "sw6_2d5mW_sde12")))
+            Wave ws3p2 = $(outDF + "sw6_2d5mW_sde12")
             nTmp = min(numpnts(w3p), numpnts(ws3p2))
             do
                 nTmp -= 1
@@ -351,8 +363,8 @@ Function Plot_SW6_All_Delta12K()
     // ---- 3 mW ----
     if (WaveExists(w4p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_3mW_sdk12")))
-            Wave ws4p2 = $(outDF + "sw6_3mW_sdk12")
+        if (WaveExists($(outDF + "sw6_3mW_sde12")))
+            Wave ws4p2 = $(outDF + "sw6_3mW_sde12")
             nTmp = min(numpnts(w4p), numpnts(ws4p2))
             do
                 nTmp -= 1
@@ -397,8 +409,8 @@ Function Plot_SW6_All_Delta12K()
     // ---- 3.5 mW ----
     if (WaveExists(w5p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_3d5mW_sdk12")))
-            Wave ws5p2 = $(outDF + "sw6_3d5mW_sdk12")
+        if (WaveExists($(outDF + "sw6_3d5mW_sde12")))
+            Wave ws5p2 = $(outDF + "sw6_3d5mW_sde12")
             nTmp = min(numpnts(w5p), numpnts(ws5p2))
             do
                 nTmp -= 1
@@ -443,8 +455,8 @@ Function Plot_SW6_All_Delta12K()
     // ---- 4 mW ----
     if (WaveExists(w6p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_4mW_sdk12")))
-            Wave ws6p2 = $(outDF + "sw6_4mW_sdk12")
+        if (WaveExists($(outDF + "sw6_4mW_sde12")))
+            Wave ws6p2 = $(outDF + "sw6_4mW_sde12")
             nTmp = min(numpnts(w6p), numpnts(ws6p2))
             do
                 nTmp -= 1
@@ -490,7 +502,7 @@ Function Plot_SW6_All_Delta12K()
     // 5) 图例
     // ========================
     Legend/W=$wname/K/N=text0
-    Legend/W=$wname/C/N=text0/J/F=0/A=RT/X=2/Y=2 "\\s(sw6_1mW_dk12) 60 μJ/cm\\S2\\M\r\\s(sw6_2mW_dk12) 120 μJ/cm\\S2\\M\r\\s(sw6_2d5mW_dk12) 150 μJ/cm\\S2\\M\r\\s(sw6_3mW_dk12) 180 μJ/cm\\S2\\M\r\\s(sw6_3d5mW_dk12) 210 μJ/cm\\S2\\M\r\\s(sw6_4mW_dk12) 240 μJ/cm\\S2\\M"
+    Legend/W=$wname/C/N=text0/J/F=0/A=RT/X=2/Y=2 "\\s(sw6_1mW_de12) 60 μJ/cm\\S2\\M\r\\s(sw6_2mW_de12) 120 μJ/cm\\S2\\M\r\\s(sw6_2d5mW_de12) 150 μJ/cm\\S2\\M\r\\s(sw6_3mW_de12) 180 μJ/cm\\S2\\M\r\\s(sw6_3d5mW_de12) 210 μJ/cm\\S2\\M\r\\s(sw6_4mW_de12) 240 μJ/cm\\S2\\M"
 End
 
 
@@ -531,9 +543,10 @@ Function Plot_SW6_Time_All_Delta12K()
     Wave/Z w60src = $p60
     Wave/Z x60src = $x60
     if (WaveExists(w60src) && WaveExists(x60src))
-        Duplicate/O w60src, $(outDF + "sw6_60ps_dk12")
+        Duplicate/O w60src, $(outDF + "sw6_60ps_de12")
         Duplicate/O x60src, $(outDF + "sw6_60ps_x")
-        Wave w60p = $(outDF + "sw6_60ps_dk12")
+        Wave w60p = $(outDF + "sw6_60ps_de12")
+        w60p *= 1.233
         Wave x60p = $(outDF + "sw6_60ps_x")
         w60p *= yMul
 
@@ -547,10 +560,11 @@ Function Plot_SW6_Time_All_Delta12K()
         String s60 = ReplaceString("deltak12_k", p60, "sigmadeltak12_k")
         Wave/Z ws60 = $s60
         if (WaveExists(ws60))
-            Duplicate/O ws60, $(outDF + "sw6_60ps_sdk12")
-            Wave ws60p = $(outDF + "sw6_60ps_sdk12")
+            Duplicate/O ws60, $(outDF + "sw6_60ps_sde12")
+            Wave ws60p = $(outDF + "sw6_60ps_sde12")
+            ws60p *= 1.233
             ws60p *= yMul
-            ErrorBars/W=$wname sw6_60ps_dk12 Y,wave=(ws60p,ws60p)
+            ErrorBars/W=$wname sw6_60ps_de12 Y,wave=(ws60p,ws60p)
         endif
     else
         Print "Missing 60 ps: " + p60 + " or " + x60
@@ -562,9 +576,10 @@ Function Plot_SW6_Time_All_Delta12K()
     Wave/Z w100src = $p100
     Wave/Z x100src = $x100
     if (WaveExists(w100src) && WaveExists(x100src))
-        Duplicate/O w100src, $(outDF + "sw6_100ps_dk12")
+        Duplicate/O w100src, $(outDF + "sw6_100ps_de12")
         Duplicate/O x100src, $(outDF + "sw6_100ps_x")
-        Wave w100p = $(outDF + "sw6_100ps_dk12")
+        Wave w100p = $(outDF + "sw6_100ps_de12")
+        w100p *= 1.233
         Wave x100p = $(outDF + "sw6_100ps_x")
         w100p *= yMul
 
@@ -573,10 +588,11 @@ Function Plot_SW6_Time_All_Delta12K()
         String s100 = ReplaceString("deltak12_k", p100, "sigmadeltak12_k")
         Wave/Z ws100 = $s100
         if (WaveExists(ws100))
-            Duplicate/O ws100, $(outDF + "sw6_100ps_sdk12")
-            Wave ws100p = $(outDF + "sw6_100ps_sdk12")
+            Duplicate/O ws100, $(outDF + "sw6_100ps_sde12")
+            Wave ws100p = $(outDF + "sw6_100ps_sde12")
+            ws100p *= 1.233
             ws100p *= yMul
-            ErrorBars/W=$wname sw6_100ps_dk12 Y,wave=(ws100p,ws100p)
+            ErrorBars/W=$wname sw6_100ps_de12 Y,wave=(ws100p,ws100p)
         endif
     else
         Print "Missing 100 ps: " + p100 + " or " + x100
@@ -588,9 +604,10 @@ Function Plot_SW6_Time_All_Delta12K()
     Wave/Z w300src = $p300
     Wave/Z x300src = $x300
     if (WaveExists(w300src) && WaveExists(x300src))
-        Duplicate/O w300src, $(outDF + "sw6_300ps_dk12")
+        Duplicate/O w300src, $(outDF + "sw6_300ps_de12")
         Duplicate/O x300src, $(outDF + "sw6_300ps_x")
-        Wave w300p = $(outDF + "sw6_300ps_dk12")
+        Wave w300p = $(outDF + "sw6_300ps_de12")
+        w300p *= 1.233
         Wave x300p = $(outDF + "sw6_300ps_x")
         w300p *= yMul
 
@@ -599,10 +616,11 @@ Function Plot_SW6_Time_All_Delta12K()
         String s300 = ReplaceString("deltak12_k", p300, "sigmadeltak12_k")
         Wave/Z ws300 = $s300
         if (WaveExists(ws300))
-            Duplicate/O ws300, $(outDF + "sw6_300ps_sdk12")
-            Wave ws300p = $(outDF + "sw6_300ps_sdk12")
+            Duplicate/O ws300, $(outDF + "sw6_300ps_sde12")
+            Wave ws300p = $(outDF + "sw6_300ps_sde12")
+            ws300p *= 1.233
             ws300p *= yMul
-            ErrorBars/W=$wname sw6_300ps_dk12 Y,wave=(ws300p,ws300p)
+            ErrorBars/W=$wname sw6_300ps_de12 Y,wave=(ws300p,ws300p)
         endif
     else
         Print "Missing 300 ps: " + p300 + " or " + x300
@@ -614,9 +632,10 @@ Function Plot_SW6_Time_All_Delta12K()
     Wave/Z w600src = $p600
     Wave/Z x600src = $x600
     if (WaveExists(w600src) && WaveExists(x600src))
-        Duplicate/O w600src, $(outDF + "sw6_600ps_dk12")
+        Duplicate/O w600src, $(outDF + "sw6_600ps_de12")
         Duplicate/O x600src, $(outDF + "sw6_600ps_x")
-        Wave w600p = $(outDF + "sw6_600ps_dk12")
+        Wave w600p = $(outDF + "sw6_600ps_de12")
+        w600p *= 1.233
         Wave x600p = $(outDF + "sw6_600ps_x")
         w600p *= yMul
 
@@ -625,10 +644,11 @@ Function Plot_SW6_Time_All_Delta12K()
         String s600 = ReplaceString("deltak12_k", p600, "sigmadeltak12_k")
         Wave/Z ws600 = $s600
         if (WaveExists(ws600))
-            Duplicate/O ws600, $(outDF + "sw6_600ps_sdk12")
-            Wave ws600p = $(outDF + "sw6_600ps_sdk12")
+            Duplicate/O ws600, $(outDF + "sw6_600ps_sde12")
+            Wave ws600p = $(outDF + "sw6_600ps_sde12")
+            ws600p *= 1.233
             ws600p *= yMul
-            ErrorBars/W=$wname sw6_600ps_dk12 Y,wave=(ws600p,ws600p)
+            ErrorBars/W=$wname sw6_600ps_de12 Y,wave=(ws600p,ws600p)
         endif
     else
         Print "Missing 600 ps: " + p600 + " or " + x600
@@ -640,9 +660,10 @@ Function Plot_SW6_Time_All_Delta12K()
     Wave/Z w900src = $p900
     Wave/Z x900src = $x900
     if (WaveExists(w900src) && WaveExists(x900src))
-        Duplicate/O w900src, $(outDF + "sw6_900ps_dk12")
+        Duplicate/O w900src, $(outDF + "sw6_900ps_de12")
         Duplicate/O x900src, $(outDF + "sw6_900ps_x")
-        Wave w900p = $(outDF + "sw6_900ps_dk12")
+        Wave w900p = $(outDF + "sw6_900ps_de12")
+        w900p *= 1.233
         Wave x900p = $(outDF + "sw6_900ps_x")
         w900p *= yMul
 
@@ -651,10 +672,11 @@ Function Plot_SW6_Time_All_Delta12K()
         String s900 = ReplaceString("deltak12_k", p900, "sigmadeltak12_k")
         Wave/Z ws900 = $s900
         if (WaveExists(ws900))
-            Duplicate/O ws900, $(outDF + "sw6_900ps_sdk12")
-            Wave ws900p = $(outDF + "sw6_900ps_sdk12")
+            Duplicate/O ws900, $(outDF + "sw6_900ps_sde12")
+            Wave ws900p = $(outDF + "sw6_900ps_sde12")
+            ws900p *= 1.233
             ws900p *= yMul
-            ErrorBars/W=$wname sw6_900ps_dk12 Y,wave=(ws900p,ws900p)
+            ErrorBars/W=$wname sw6_900ps_de12 Y,wave=(ws900p,ws900p)
         endif
     else
         Print "Missing 900 ps: " + p900 + " or " + x900
@@ -673,47 +695,47 @@ Function Plot_SW6_Time_All_Delta12K()
 
     SetAxis/W=$wname left 0,*
     SetAxis/W=$wname bottom 0,252
-    Label/W=$wname left "Δk\\B12\\M (Å\\S-1\\M)"
+    Label/W=$wname left "ΔE\\B12\\M (eV)"
     Label/W=$wname bottom "Fluence (μJ/cm\\S2\\M)"
 
     // ========================
     // 8) marker / color
     // ========================
     // 60 ps
-    ModifyGraph/W=$wname mode(sw6_60ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_60ps_dk12)=19
-    ModifyGraph/W=$wname msize(sw6_60ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_60ps_dk12)=(0,0,0)
+    ModifyGraph/W=$wname mode(sw6_60ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_60ps_de12)=19
+    ModifyGraph/W=$wname msize(sw6_60ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_60ps_de12)=(0,0,0)
 
     // 100 ps
-    ModifyGraph/W=$wname mode(sw6_100ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_100ps_dk12)=17
-    ModifyGraph/W=$wname msize(sw6_100ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_100ps_dk12)=(56000,0,0)
+    ModifyGraph/W=$wname mode(sw6_100ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_100ps_de12)=17
+    ModifyGraph/W=$wname msize(sw6_100ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_100ps_de12)=(56000,0,0)
 
     // 300 ps
-    ModifyGraph/W=$wname mode(sw6_300ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_300ps_dk12)=16
-    ModifyGraph/W=$wname msize(sw6_300ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_300ps_dk12)=(0,0,50000)
+    ModifyGraph/W=$wname mode(sw6_300ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_300ps_de12)=16
+    ModifyGraph/W=$wname msize(sw6_300ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_300ps_de12)=(0,0,50000)
 
     // 600 ps
-    ModifyGraph/W=$wname mode(sw6_600ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_600ps_dk12)=18
-    ModifyGraph/W=$wname msize(sw6_600ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_600ps_dk12)=(0,42000,12000)
+    ModifyGraph/W=$wname mode(sw6_600ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_600ps_de12)=18
+    ModifyGraph/W=$wname msize(sw6_600ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_600ps_de12)=(0,42000,12000)
 
     // 900 ps
-    ModifyGraph/W=$wname mode(sw6_900ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_900ps_dk12)=10
-    ModifyGraph/W=$wname msize(sw6_900ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_900ps_dk12)=(32000,18000,0)
+    ModifyGraph/W=$wname mode(sw6_900ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_900ps_de12)=10
+    ModifyGraph/W=$wname msize(sw6_900ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_900ps_de12)=(32000,18000,0)
 
     // ========================
     // 9) reference line
     // ========================
     Make/O/N=2 $(outDF + "ref15_x") = {0, 260}
-    Make/O/N=2 $(outDF + "ref15_y") = {0.017*yMul, 0.017*yMul}
+    Make/O/N=2 $(outDF + "ref15_y") = {0.020961*yMul, 0.020961*yMul}
 
     AppendToGraph/W=$wname $(outDF + "ref15_y") vs $(outDF + "ref15_x")
     ModifyGraph/W=$wname lstyle(ref15_y)=3,rgb(ref15_y)=(35000,35000,35000),lsize(ref15_y)=1.2
@@ -885,7 +907,7 @@ Function Plot_SW6_Time_All_Delta12K()
     // 11) legend
     // ========================
     Legend/W=$wname/K/N=text0
-    Legend/W=$wname/C/N=text0/J/F=0/A=RT/X=2/Y=2 "\\s(sw6_60ps_dk12) 60 ps\r\\s(sw6_100ps_dk12) 100 ps\r\\s(sw6_300ps_dk12) 300 ps\r\\s(sw6_600ps_dk12) 600 ps\r\\s(sw6_900ps_dk12) 900 ps"
+    Legend/W=$wname/C/N=text0/J/F=0/A=RT/X=2/Y=2 "\\s(sw6_60ps_de12) 60 ps\r\\s(sw6_100ps_de12) 100 ps\r\\s(sw6_300ps_de12) 300 ps\r\\s(sw6_600ps_de12) 600 ps\r\\s(sw6_900ps_de12) 900 ps"
 End
 
 
@@ -923,9 +945,10 @@ Function Plot_SW6_All_Delta12KwithTp()
     Wave/Z wTsrc = $pT
     Wave/Z xTsrc = $xT
     if (WaveExists(wTsrc) && WaveExists(xTsrc))
-        Duplicate/O wTsrc, $(outDF + "sw6_temp_dk12")
+        Duplicate/O wTsrc, $(outDF + "sw6_temp_de12")
         Duplicate/O xTsrc, $(outDF + "sw6_temp_x")
-        Wave wTp = $(outDF + "sw6_temp_dk12")
+        Wave wTp = $(outDF + "sw6_temp_de12")
+        wTp *= 1.233
         Wave xTp = $(outDF + "sw6_temp_x")
 
         Variable nT = numpnts(wTp)
@@ -966,9 +989,10 @@ Function Plot_SW6_All_Delta12KwithTp()
         String sT = ReplaceString("deltak12_k", pT, "sigmadeltak12_k")
         Wave/Z wsTtmp = $sT
         if (WaveExists(wsTtmp))
-            Duplicate/O wsTtmp, $(outDF + "sw6_temp_sdk12")
-            Wave wsTpErr = $(outDF + "sw6_temp_sdk12")
-            wsTpErr = abs(aT) * wsTtmp[p]
+            Duplicate/O wsTtmp, $(outDF + "sw6_temp_sde12")
+            Wave wsTpErr = $(outDF + "sw6_temp_sde12")
+            wsTpErr *= 1.233
+            wsTpErr *= abs(aT)
         endif
 
         // fill 副本
@@ -983,9 +1007,9 @@ Function Plot_SW6_All_Delta12KwithTp()
 
         // 再加灰色参考线
         AppendToGraph/T=top/W=$wname wTp vs xTp
-        if (WaveExists($(outDF + "sw6_temp_sdk12")))
-            Wave wsTpErr2 = $(outDF + "sw6_temp_sdk12")
-            ErrorBars/W=$wname sw6_temp_dk12 Y,wave=(wsTpErr2,wsTpErr2)
+        if (WaveExists($(outDF + "sw6_temp_sde12")))
+            Wave wsTpErr2 = $(outDF + "sw6_temp_sde12")
+            ErrorBars/W=$wname sw6_temp_de12 Y,wave=(wsTpErr2,wsTpErr2)
         endif
     else
         Print "Missing temperature trace: " + pT + " or " + xT
@@ -998,16 +1022,18 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ===== 1 mW =====
     Wave/Z w1 = $p1
     if (WaveExists(w1))
-        Duplicate/O w1, $(outDF + "sw6_1mW_dk12")
-        Wave w1p = $(outDF + "sw6_1mW_dk12")
+        Duplicate/O w1, $(outDF + "sw6_1mW_de12")
+        Wave w1p = $(outDF + "sw6_1mW_de12")
+        w1p *= 1.233
         AppendToGraph/W=$wname w1p
 
         String s1 = ReplaceString("deltak12_k", p1, "sigmadeltak12_k")
         Wave/Z ws1tmp = $s1
         if (WaveExists(ws1tmp))
-            Duplicate/O ws1tmp, $(outDF + "sw6_1mW_sdk12")
-            Wave ws1p = $(outDF + "sw6_1mW_sdk12")
-            ErrorBars/W=$wname sw6_1mW_dk12 Y,wave=(ws1p,ws1p)
+            Duplicate/O ws1tmp, $(outDF + "sw6_1mW_sde12")
+            Wave ws1p = $(outDF + "sw6_1mW_sde12")
+            ws1p *= 1.233
+            ErrorBars/W=$wname sw6_1mW_de12 Y,wave=(ws1p,ws1p)
         endif
     else
         Print "Missing: " + p1
@@ -1016,16 +1042,18 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ===== 2 mW =====
     Wave/Z w2 = $p2
     if (WaveExists(w2))
-        Duplicate/O w2, $(outDF + "sw6_2mW_dk12")
-        Wave w2p = $(outDF + "sw6_2mW_dk12")
+        Duplicate/O w2, $(outDF + "sw6_2mW_de12")
+        Wave w2p = $(outDF + "sw6_2mW_de12")
+        w2p *= 1.233
         AppendToGraph/W=$wname w2p
 
         String s2 = ReplaceString("deltak12_k", p2, "sigmadeltak12_k")
         Wave/Z ws2tmp = $s2
         if (WaveExists(ws2tmp))
-            Duplicate/O ws2tmp, $(outDF + "sw6_2mW_sdk12")
-            Wave ws2p = $(outDF + "sw6_2mW_sdk12")
-            ErrorBars/W=$wname sw6_2mW_dk12 Y,wave=(ws2p,ws2p)
+            Duplicate/O ws2tmp, $(outDF + "sw6_2mW_sde12")
+            Wave ws2p = $(outDF + "sw6_2mW_sde12")
+            ws2p *= 1.233
+            ErrorBars/W=$wname sw6_2mW_de12 Y,wave=(ws2p,ws2p)
         endif
     else
         Print "Missing: " + p2
@@ -1034,16 +1062,18 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ===== 2.5 mW =====
     Wave/Z w3 = $p3
     if (WaveExists(w3))
-        Duplicate/O w3, $(outDF + "sw6_2d5mW_dk12")
-        Wave w3p = $(outDF + "sw6_2d5mW_dk12")
+        Duplicate/O w3, $(outDF + "sw6_2d5mW_de12")
+        Wave w3p = $(outDF + "sw6_2d5mW_de12")
+        w3p *= 1.233
         AppendToGraph/W=$wname w3p
 
         String s3 = ReplaceString("deltak12_k", p3, "sigmadeltak12_k")
         Wave/Z ws3tmp = $s3
         if (WaveExists(ws3tmp))
-            Duplicate/O ws3tmp, $(outDF + "sw6_2d5mW_sdk12")
-            Wave ws3p = $(outDF + "sw6_2d5mW_sdk12")
-            ErrorBars/W=$wname sw6_2d5mW_dk12 Y,wave=(ws3p,ws3p)
+            Duplicate/O ws3tmp, $(outDF + "sw6_2d5mW_sde12")
+            Wave ws3p = $(outDF + "sw6_2d5mW_sde12")
+            ws3p *= 1.233
+            ErrorBars/W=$wname sw6_2d5mW_de12 Y,wave=(ws3p,ws3p)
         endif
     else
         Print "Missing: " + p3
@@ -1052,16 +1082,18 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ===== 3 mW =====
     Wave/Z w4 = $p4
     if (WaveExists(w4))
-        Duplicate/O w4, $(outDF + "sw6_3mW_dk12")
-        Wave w4p = $(outDF + "sw6_3mW_dk12")
+        Duplicate/O w4, $(outDF + "sw6_3mW_de12")
+        Wave w4p = $(outDF + "sw6_3mW_de12")
+        w4p *= 1.233
         AppendToGraph/W=$wname w4p
 
         String s4 = ReplaceString("deltak12_k", p4, "sigmadeltak12_k")
         Wave/Z ws4tmp = $s4
         if (WaveExists(ws4tmp))
-            Duplicate/O ws4tmp, $(outDF + "sw6_3mW_sdk12")
-            Wave ws4p = $(outDF + "sw6_3mW_sdk12")
-            ErrorBars/W=$wname sw6_3mW_dk12 Y,wave=(ws4p,ws4p)
+            Duplicate/O ws4tmp, $(outDF + "sw6_3mW_sde12")
+            Wave ws4p = $(outDF + "sw6_3mW_sde12")
+            ws4p *= 1.233
+            ErrorBars/W=$wname sw6_3mW_de12 Y,wave=(ws4p,ws4p)
         endif
     else
         Print "Missing: " + p4
@@ -1070,16 +1102,18 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ===== 3.5 mW =====
     Wave/Z w5 = $p5
     if (WaveExists(w5))
-        Duplicate/O w5, $(outDF + "sw6_3d5mW_dk12")
-        Wave w5p = $(outDF + "sw6_3d5mW_dk12")
+        Duplicate/O w5, $(outDF + "sw6_3d5mW_de12")
+        Wave w5p = $(outDF + "sw6_3d5mW_de12")
+        w5p *= 1.233
         AppendToGraph/W=$wname w5p
 
         String s5 = ReplaceString("deltak12_k", p5, "sigmadeltak12_k")
         Wave/Z ws5tmp = $s5
         if (WaveExists(ws5tmp))
-            Duplicate/O ws5tmp, $(outDF + "sw6_3d5mW_sdk12")
-            Wave ws5p = $(outDF + "sw6_3d5mW_sdk12")
-            ErrorBars/W=$wname sw6_3d5mW_dk12 Y,wave=(ws5p,ws5p)
+            Duplicate/O ws5tmp, $(outDF + "sw6_3d5mW_sde12")
+            Wave ws5p = $(outDF + "sw6_3d5mW_sde12")
+            ws5p *= 1.233
+            ErrorBars/W=$wname sw6_3d5mW_de12 Y,wave=(ws5p,ws5p)
         endif
     else
         Print "Missing: " + p5
@@ -1088,16 +1122,18 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ===== 4 mW =====
     Wave/Z w6 = $p6
     if (WaveExists(w6))
-        Duplicate/O w6, $(outDF + "sw6_4mW_dk12")
-        Wave w6p = $(outDF + "sw6_4mW_dk12")
+        Duplicate/O w6, $(outDF + "sw6_4mW_de12")
+        Wave w6p = $(outDF + "sw6_4mW_de12")
+        w6p *= 1.233
         AppendToGraph/W=$wname w6p
 
         String s6 = ReplaceString("deltak12_k", p6, "sigmadeltak12_k")
         Wave/Z ws6tmp = $s6
         if (WaveExists(ws6tmp))
-            Duplicate/O ws6tmp, $(outDF + "sw6_4mW_sdk12")
-            Wave ws6p = $(outDF + "sw6_4mW_sdk12")
-            ErrorBars/W=$wname sw6_4mW_dk12 Y,wave=(ws6p,ws6p)
+            Duplicate/O ws6tmp, $(outDF + "sw6_4mW_sde12")
+            Wave ws6p = $(outDF + "sw6_4mW_sde12")
+            ws6p *= 1.233
+            ErrorBars/W=$wname sw6_4mW_de12 Y,wave=(ws6p,ws6p)
         endif
     else
         Print "Missing: " + p6
@@ -1108,35 +1144,35 @@ Function Plot_SW6_All_Delta12KwithTp()
     //============================================================
     // 4) fluence 曲线样式
     //============================================================
-    ModifyGraph/W=$wname mode(sw6_1mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_1mW_dk12)=19
-    ModifyGraph/W=$wname msize(sw6_1mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_1mW_dk12)=(0,0,0)
+    ModifyGraph/W=$wname mode(sw6_1mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_1mW_de12)=19
+    ModifyGraph/W=$wname msize(sw6_1mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_1mW_de12)=(0,0,0)
 
-    ModifyGraph/W=$wname mode(sw6_2mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_2mW_dk12)=17
-    ModifyGraph/W=$wname msize(sw6_2mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_2mW_dk12)=(56000,0,0)
+    ModifyGraph/W=$wname mode(sw6_2mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_2mW_de12)=17
+    ModifyGraph/W=$wname msize(sw6_2mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_2mW_de12)=(56000,0,0)
 
-    ModifyGraph/W=$wname mode(sw6_2d5mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_2d5mW_dk12)=16
-    ModifyGraph/W=$wname msize(sw6_2d5mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_2d5mW_dk12)=(0,0,50000)
+    ModifyGraph/W=$wname mode(sw6_2d5mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_2d5mW_de12)=16
+    ModifyGraph/W=$wname msize(sw6_2d5mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_2d5mW_de12)=(0,0,50000)
 
-    ModifyGraph/W=$wname mode(sw6_3mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_3mW_dk12)=18
-    ModifyGraph/W=$wname msize(sw6_3mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_3mW_dk12)=(0,42000,12000)
+    ModifyGraph/W=$wname mode(sw6_3mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_3mW_de12)=18
+    ModifyGraph/W=$wname msize(sw6_3mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_3mW_de12)=(0,42000,12000)
 
-    ModifyGraph/W=$wname mode(sw6_3d5mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_3d5mW_dk12)=8
-    ModifyGraph/W=$wname msize(sw6_3d5mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_3d5mW_dk12)=(42000,0,48000)
+    ModifyGraph/W=$wname mode(sw6_3d5mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_3d5mW_de12)=8
+    ModifyGraph/W=$wname msize(sw6_3d5mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_3d5mW_de12)=(42000,0,48000)
 
-    ModifyGraph/W=$wname mode(sw6_4mW_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_4mW_dk12)=10
-    ModifyGraph/W=$wname msize(sw6_4mW_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_4mW_dk12)=(32000,18000,0)
+    ModifyGraph/W=$wname mode(sw6_4mW_de12)=3
+    ModifyGraph/W=$wname marker(sw6_4mW_de12)=10
+    ModifyGraph/W=$wname msize(sw6_4mW_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_4mW_de12)=(32000,18000,0)
 
     // 温度 fill 与参考线样式
     if (WaveExists($(outDF + "sw6_temp_fill")))
@@ -1146,13 +1182,13 @@ Function Plot_SW6_All_Delta12KwithTp()
         ModifyGraph hbFill(sw6_temp_fill)=5
     endif
 
-    if (WaveExists($(outDF + "sw6_temp_dk12")))
-        ModifyGraph/W=$wname mode(sw6_temp_dk12)=4
-        ModifyGraph/W=$wname marker(sw6_temp_dk12)=8
-        ModifyGraph/W=$wname msize(sw6_temp_dk12)=3
-        ModifyGraph/W=$wname lstyle(sw6_temp_dk12)=3
-        ModifyGraph/W=$wname lsize(sw6_temp_dk12)=1.2
-        ModifyGraph/W=$wname rgb(sw6_temp_dk12)=(30000,30000,30000)
+    if (WaveExists($(outDF + "sw6_temp_de12")))
+        ModifyGraph/W=$wname mode(sw6_temp_de12)=4
+        ModifyGraph/W=$wname marker(sw6_temp_de12)=8
+        ModifyGraph/W=$wname msize(sw6_temp_de12)=3
+        ModifyGraph/W=$wname lstyle(sw6_temp_de12)=3
+        ModifyGraph/W=$wname lsize(sw6_temp_de12)=1.2
+        ModifyGraph/W=$wname rgb(sw6_temp_de12)=(30000,30000,30000)
     endif
     //============================================================
     // 3) 整体画布与坐标轴
@@ -1167,7 +1203,7 @@ Function Plot_SW6_All_Delta12KwithTp()
     ModifyGraph/W=$wname fSize=16
 
     SetAxis/W=$wname left 0,*
-    Label/W=$wname left "Δk\\B12\\M (Å\\S-1\\M)"
+    Label/W=$wname left "ΔE\\B12\\M (eV)"
     Label/W=$wname bottom "Delay Time (ps)"
 
     // top 轴给温度
@@ -1184,7 +1220,7 @@ Function Plot_SW6_All_Delta12KwithTp()
     // 5) reference line
     //============================================================
     Make/O/N=2 $(outDF + "ref15_x") = {-1, 104}
-    Make/O/N=2 $(outDF + "ref15_y") = {0.017, 0.017}
+    Make/O/N=2 $(outDF + "ref15_y") = {0.020961, 0.020961}
     AppendToGraph/W=$wname $(outDF + "ref15_y") vs $(outDF + "ref15_x")
     ModifyGraph/W=$wname lstyle(ref15_y)=3,rgb(ref15_y)=(35000,35000,35000),lsize(ref15_y)=1.2
 
@@ -1199,8 +1235,8 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ---- 3 mW ----
     if (WaveExists(w4p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_3mW_sdk12")))
-            Wave ws4p2 = $(outDF + "sw6_3mW_sdk12")
+        if (WaveExists($(outDF + "sw6_3mW_sde12")))
+            Wave ws4p2 = $(outDF + "sw6_3mW_sde12")
             nTmp = min(numpnts(w4p), numpnts(ws4p2))
             do
                 nTmp -= 1
@@ -1245,8 +1281,8 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ---- 3.5 mW ----
     if (WaveExists(w5p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_3d5mW_sdk12")))
-            Wave ws5p2 = $(outDF + "sw6_3d5mW_sdk12")
+        if (WaveExists($(outDF + "sw6_3d5mW_sde12")))
+            Wave ws5p2 = $(outDF + "sw6_3d5mW_sde12")
             nTmp = min(numpnts(w5p), numpnts(ws5p2))
             do
                 nTmp -= 1
@@ -1291,8 +1327,8 @@ Function Plot_SW6_All_Delta12KwithTp()
     // ---- 4 mW ----
     if (WaveExists(w6p))
         iLast = -1
-        if (WaveExists($(outDF + "sw6_4mW_sdk12")))
-            Wave ws6p2 = $(outDF + "sw6_4mW_sdk12")
+        if (WaveExists($(outDF + "sw6_4mW_sde12")))
+            Wave ws6p2 = $(outDF + "sw6_4mW_sde12")
             nTmp = min(numpnts(w6p), numpnts(ws6p2))
             do
                 nTmp -= 1
@@ -1340,13 +1376,13 @@ Function Plot_SW6_All_Delta12KwithTp()
     // 7) 图例
     //============================================================
     Legend/W=$wname/K/N=text0
-Legend/W=$wname/C/N=text0/J/F=0/A=RT/X=2/Y=2 "\\Zr080\\s(sw6_1mW_dk12) 60 μJ/cm\\S2\\M\\Zr080\r" + \
-    "\s(sw6_2mW_dk12) 120 μJ/cm\\S2\\M\\Zr080\r" + \
-    "\s(sw6_2d5mW_dk12) 150 μJ/cm\\S2\\M\\Zr080\r" + \
-    "\s(sw6_3mW_dk12) 180 μJ/cm\\S2\\M\\Zr080\r" + \
-    "\s(sw6_3d5mW_dk12) 210 μJ/cm\\S2\\M\\Zr080\r" + \
-    "\s(sw6_4mW_dk12) 240 μJ/cm\\S2\\M\\Zr080\r" + \
-    "\s(sw6_temp_dk12) Temperature reference"
+Legend/W=$wname/C/N=text0/J/F=0/A=RT/X=2/Y=2 "\\Zr080\\s(sw6_1mW_de12) 60 μJ/cm\\S2\\M\\Zr080\r" + \
+    "\s(sw6_2mW_de12) 120 μJ/cm\\S2\\M\\Zr080\r" + \
+    "\s(sw6_2d5mW_de12) 150 μJ/cm\\S2\\M\\Zr080\r" + \
+    "\s(sw6_3mW_de12) 180 μJ/cm\\S2\\M\\Zr080\r" + \
+    "\s(sw6_3d5mW_de12) 210 μJ/cm\\S2\\M\\Zr080\r" + \
+    "\s(sw6_4mW_de12) 240 μJ/cm\\S2\\M\\Zr080\r" + \
+    "\s(sw6_temp_de12) Temperature reference"
 End
 
 Function Plot_SW6_Time_All_Delta12KwithTp()
@@ -1392,9 +1428,10 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     Wave/Z wTsrc = $pT
     Wave/Z xTsrc = $xT
     if (WaveExists(wTsrc) && WaveExists(xTsrc))
-        Duplicate/O wTsrc, $(outDF + "sw6_temp_dk12")
+        Duplicate/O wTsrc, $(outDF + "sw6_temp_de12")
         Duplicate/O xTsrc, $(outDF + "sw6_temp_x")
-        Wave wTp = $(outDF + "sw6_temp_dk12")
+        Wave wTp = $(outDF + "sw6_temp_de12")
+        wTp *= 1.233
         Wave xTp = $(outDF + "sw6_temp_x")
 
         Variable nT = numpnts(wTp)
@@ -1435,9 +1472,10 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
         String sT = ReplaceString("deltak12_k", pT, "sigmadeltak12_k")
         Wave/Z wsTtmp = $sT
         if (WaveExists(wsTtmp))
-            Duplicate/O wsTtmp, $(outDF + "sw6_temp_sdk12")
-            Wave wsTpErr = $(outDF + "sw6_temp_sdk12")
-            wsTpErr = abs(aT) * wsTtmp[p]
+            Duplicate/O wsTtmp, $(outDF + "sw6_temp_sde12")
+            Wave wsTpErr = $(outDF + "sw6_temp_sde12")
+            wsTpErr *= 1.233
+            wsTpErr *= abs(aT)
         endif
 
         // fill 副本
@@ -1450,9 +1488,9 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
         // 再加灰色参考线
         AppendToGraph/T=top/W=$wname wTp vs xTp
 
-        if (WaveExists($(outDF + "sw6_temp_sdk12")))
-            Wave wsTpErr2 = $(outDF + "sw6_temp_sdk12")
-            ErrorBars/W=$wname sw6_temp_dk12 Y,wave=(wsTpErr2, wsTpErr2)
+        if (WaveExists($(outDF + "sw6_temp_sde12")))
+            Wave wsTpErr2 = $(outDF + "sw6_temp_sde12")
+            ErrorBars/W=$wname sw6_temp_de12 Y,wave=(wsTpErr2, wsTpErr2)
         endif
     else
         Print "Missing temperature trace: " + pT + " or " + xT
@@ -1466,9 +1504,10 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     Wave/Z w60src = $p60
     Wave/Z x60src = $x60
     if (WaveExists(w60src) && WaveExists(x60src))
-        Duplicate/O w60src, $(outDF + "sw6_60ps_dk12")
+        Duplicate/O w60src, $(outDF + "sw6_60ps_de12")
         Duplicate/O x60src, $(outDF + "sw6_60ps_x")
-        Wave w60p = $(outDF + "sw6_60ps_dk12")
+        Wave w60p = $(outDF + "sw6_60ps_de12")
+        w60p *= 1.233
         Wave x60p = $(outDF + "sw6_60ps_x")
         w60p *= yMul
         AppendToGraph/W=$wname w60p vs x60p
@@ -1476,10 +1515,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
         String s60 = ReplaceString("deltak12_k", p60, "sigmadeltak12_k")
         Wave/Z ws60tmp = $s60
         if (WaveExists(ws60tmp))
-            Duplicate/O ws60tmp, $(outDF + "sw6_60ps_sdk12")
-            Wave ws60p = $(outDF + "sw6_60ps_sdk12")
+            Duplicate/O ws60tmp, $(outDF + "sw6_60ps_sde12")
+            Wave ws60p = $(outDF + "sw6_60ps_sde12")
+            ws60p *= 1.233
             ws60p *= yMul
-            ErrorBars/W=$wname sw6_60ps_dk12 Y,wave=(ws60p, ws60p)
+            ErrorBars/W=$wname sw6_60ps_de12 Y,wave=(ws60p, ws60p)
         endif
     else
         Print "Missing 60 ps: " + p60 + " or " + x60
@@ -1489,9 +1529,10 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     Wave/Z w100src = $p100
     Wave/Z x100src = $x100
     if (WaveExists(w100src) && WaveExists(x100src))
-        Duplicate/O w100src, $(outDF + "sw6_100ps_dk12")
+        Duplicate/O w100src, $(outDF + "sw6_100ps_de12")
         Duplicate/O x100src, $(outDF + "sw6_100ps_x")
-        Wave w100p = $(outDF + "sw6_100ps_dk12")
+        Wave w100p = $(outDF + "sw6_100ps_de12")
+        w100p *= 1.233
         Wave x100p = $(outDF + "sw6_100ps_x")
         w100p *= yMul
         AppendToGraph/W=$wname w100p vs x100p
@@ -1499,10 +1540,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
         String s100 = ReplaceString("deltak12_k", p100, "sigmadeltak12_k")
         Wave/Z ws100tmp = $s100
         if (WaveExists(ws100tmp))
-            Duplicate/O ws100tmp, $(outDF + "sw6_100ps_sdk12")
-            Wave ws100p = $(outDF + "sw6_100ps_sdk12")
+            Duplicate/O ws100tmp, $(outDF + "sw6_100ps_sde12")
+            Wave ws100p = $(outDF + "sw6_100ps_sde12")
+            ws100p *= 1.233
             ws100p *= yMul
-            ErrorBars/W=$wname sw6_100ps_dk12 Y,wave=(ws100p, ws100p)
+            ErrorBars/W=$wname sw6_100ps_de12 Y,wave=(ws100p, ws100p)
         endif
     else
         Print "Missing 100 ps: " + p100 + " or " + x100
@@ -1512,9 +1554,10 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     Wave/Z w300src = $p300
     Wave/Z x300src = $x300
     if (WaveExists(w300src) && WaveExists(x300src))
-        Duplicate/O w300src, $(outDF + "sw6_300ps_dk12")
+        Duplicate/O w300src, $(outDF + "sw6_300ps_de12")
         Duplicate/O x300src, $(outDF + "sw6_300ps_x")
-        Wave w300p = $(outDF + "sw6_300ps_dk12")
+        Wave w300p = $(outDF + "sw6_300ps_de12")
+        w300p *= 1.233
         Wave x300p = $(outDF + "sw6_300ps_x")
         w300p *= yMul
         AppendToGraph/W=$wname w300p vs x300p
@@ -1522,10 +1565,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
         String s300 = ReplaceString("deltak12_k", p300, "sigmadeltak12_k")
         Wave/Z ws300tmp = $s300
         if (WaveExists(ws300tmp))
-            Duplicate/O ws300tmp, $(outDF + "sw6_300ps_sdk12")
-            Wave ws300p = $(outDF + "sw6_300ps_sdk12")
+            Duplicate/O ws300tmp, $(outDF + "sw6_300ps_sde12")
+            Wave ws300p = $(outDF + "sw6_300ps_sde12")
+            ws300p *= 1.233
             ws300p *= yMul
-            ErrorBars/W=$wname sw6_300ps_dk12 Y,wave=(ws300p, ws300p)
+            ErrorBars/W=$wname sw6_300ps_de12 Y,wave=(ws300p, ws300p)
         endif
     else
         Print "Missing 300 ps: " + p300 + " or " + x300
@@ -1535,9 +1579,10 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     Wave/Z w600src = $p600
     Wave/Z x600src = $x600
     if (WaveExists(w600src) && WaveExists(x600src))
-        Duplicate/O w600src, $(outDF + "sw6_600ps_dk12")
+        Duplicate/O w600src, $(outDF + "sw6_600ps_de12")
         Duplicate/O x600src, $(outDF + "sw6_600ps_x")
-        Wave w600p = $(outDF + "sw6_600ps_dk12")
+        Wave w600p = $(outDF + "sw6_600ps_de12")
+        w600p *= 1.233
         Wave x600p = $(outDF + "sw6_600ps_x")
         w600p *= yMul
         AppendToGraph/W=$wname w600p vs x600p
@@ -1545,10 +1590,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
         String s600 = ReplaceString("deltak12_k", p600, "sigmadeltak12_k")
         Wave/Z ws600tmp = $s600
         if (WaveExists(ws600tmp))
-            Duplicate/O ws600tmp, $(outDF + "sw6_600ps_sdk12")
-            Wave ws600p = $(outDF + "sw6_600ps_sdk12")
+            Duplicate/O ws600tmp, $(outDF + "sw6_600ps_sde12")
+            Wave ws600p = $(outDF + "sw6_600ps_sde12")
+            ws600p *= 1.233
             ws600p *= yMul
-            ErrorBars/W=$wname sw6_600ps_dk12 Y,wave=(ws600p, ws600p)
+            ErrorBars/W=$wname sw6_600ps_de12 Y,wave=(ws600p, ws600p)
         endif
     else
         Print "Missing 600 ps: " + p600 + " or " + x600
@@ -1558,9 +1604,10 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     Wave/Z w900src = $p900
     Wave/Z x900src = $x900
     if (WaveExists(w900src) && WaveExists(x900src))
-        Duplicate/O w900src, $(outDF + "sw6_900ps_dk12")
+        Duplicate/O w900src, $(outDF + "sw6_900ps_de12")
         Duplicate/O x900src, $(outDF + "sw6_900ps_x")
-        Wave w900p = $(outDF + "sw6_900ps_dk12")
+        Wave w900p = $(outDF + "sw6_900ps_de12")
+        w900p *= 1.233
         Wave x900p = $(outDF + "sw6_900ps_x")
         w900p *= yMul
         AppendToGraph/W=$wname w900p vs x900p
@@ -1568,10 +1615,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
         String s900 = ReplaceString("deltak12_k", p900, "sigmadeltak12_k")
         Wave/Z ws900tmp = $s900
         if (WaveExists(ws900tmp))
-            Duplicate/O ws900tmp, $(outDF + "sw6_900ps_sdk12")
-            Wave ws900p = $(outDF + "sw6_900ps_sdk12")
+            Duplicate/O ws900tmp, $(outDF + "sw6_900ps_sde12")
+            Wave ws900p = $(outDF + "sw6_900ps_sde12")
+            ws900p *= 1.233
             ws900p *= yMul
-            ErrorBars/W=$wname sw6_900ps_dk12 Y,wave=(ws900p, ws900p)
+            ErrorBars/W=$wname sw6_900ps_de12 Y,wave=(ws900p, ws900p)
         endif
     else
         Print "Missing 900 ps: " + p900 + " or " + x900
@@ -1589,44 +1637,44 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
         ModifyGraph hbFill(sw6_temp_fill)=5
     endif
 
-    if (WaveExists($(outDF + "sw6_temp_dk12")))
-        ModifyGraph/W=$wname mode(sw6_temp_dk12)=4
-        ModifyGraph/W=$wname marker(sw6_temp_dk12)=8
-        ModifyGraph/W=$wname msize(sw6_temp_dk12)=3
-        ModifyGraph/W=$wname lstyle(sw6_temp_dk12)=3
-        ModifyGraph/W=$wname lsize(sw6_temp_dk12)=1.2
-        ModifyGraph/W=$wname rgb(sw6_temp_dk12)=(30000,30000,30000)
+    if (WaveExists($(outDF + "sw6_temp_de12")))
+        ModifyGraph/W=$wname mode(sw6_temp_de12)=4
+        ModifyGraph/W=$wname marker(sw6_temp_de12)=8
+        ModifyGraph/W=$wname msize(sw6_temp_de12)=3
+        ModifyGraph/W=$wname lstyle(sw6_temp_de12)=3
+        ModifyGraph/W=$wname lsize(sw6_temp_de12)=1.2
+        ModifyGraph/W=$wname rgb(sw6_temp_de12)=(30000,30000,30000)
     endif
 
     // 60 ps
-    ModifyGraph/W=$wname mode(sw6_60ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_60ps_dk12)=19
-    ModifyGraph/W=$wname msize(sw6_60ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_60ps_dk12)=(0,0,0)
+    ModifyGraph/W=$wname mode(sw6_60ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_60ps_de12)=19
+    ModifyGraph/W=$wname msize(sw6_60ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_60ps_de12)=(0,0,0)
 
     // 100 ps
-    ModifyGraph/W=$wname mode(sw6_100ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_100ps_dk12)=17
-    ModifyGraph/W=$wname msize(sw6_100ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_100ps_dk12)=(56000,0,0)
+    ModifyGraph/W=$wname mode(sw6_100ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_100ps_de12)=17
+    ModifyGraph/W=$wname msize(sw6_100ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_100ps_de12)=(56000,0,0)
 
     // 300 ps
-    ModifyGraph/W=$wname mode(sw6_300ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_300ps_dk12)=16
-    ModifyGraph/W=$wname msize(sw6_300ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_300ps_dk12)=(0,0,50000)
+    ModifyGraph/W=$wname mode(sw6_300ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_300ps_de12)=16
+    ModifyGraph/W=$wname msize(sw6_300ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_300ps_de12)=(0,0,50000)
 
     // 600 ps
-    ModifyGraph/W=$wname mode(sw6_600ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_600ps_dk12)=18
-    ModifyGraph/W=$wname msize(sw6_600ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_600ps_dk12)=(0,42000,12000)
+    ModifyGraph/W=$wname mode(sw6_600ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_600ps_de12)=18
+    ModifyGraph/W=$wname msize(sw6_600ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_600ps_de12)=(0,42000,12000)
 
     // 900 ps
-    ModifyGraph/W=$wname mode(sw6_900ps_dk12)=3
-    ModifyGraph/W=$wname marker(sw6_900ps_dk12)=10
-    ModifyGraph/W=$wname msize(sw6_900ps_dk12)=4
-    ModifyGraph/W=$wname rgb(sw6_900ps_dk12)=(32000,18000,0)
+    ModifyGraph/W=$wname mode(sw6_900ps_de12)=3
+    ModifyGraph/W=$wname marker(sw6_900ps_de12)=10
+    ModifyGraph/W=$wname msize(sw6_900ps_de12)=4
+    ModifyGraph/W=$wname rgb(sw6_900ps_de12)=(32000,18000,0)
 
     //============================================================
     // 4) 整体画布与坐标轴
@@ -1643,7 +1691,7 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
 
     SetAxis/W=$wname left 0,*
     SetAxis/W=$wname bottom 0,252
-    Label/W=$wname left "Δk\\B12\\M (Å\\S-1\\M)"
+    Label/W=$wname left "ΔE\\B12\\M (eV)"
     Label/W=$wname bottom "Fluence (μJ/cm\\S2\\M)"
 
     // top 轴给温度
@@ -1661,7 +1709,7 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     // 5) reference line
     //============================================================
     Make/O/N=2 $(outDF + "ref15_x") = {0, 260}
-    Make/O/N=2 $(outDF + "ref15_y") = {0.017, 0.017}
+    Make/O/N=2 $(outDF + "ref15_y") = {0.020961, 0.020961}
     AppendToGraph/W=$wname $(outDF + "ref15_y") vs $(outDF + "ref15_x")
     ModifyGraph/W=$wname lstyle(ref15_y)=3
     ModifyGraph/W=$wname rgb(ref15_y)=(35000,35000,35000)
@@ -1676,11 +1724,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     Variable xEnd, yEnd
 
     // ---- 60 ps ----
-    if (WaveExists($(outDF + "sw6_60ps_dk12")))
-        Wave w60p2 = $(outDF + "sw6_60ps_dk12")
+    if (WaveExists($(outDF + "sw6_60ps_de12")))
+        Wave w60p2 = $(outDF + "sw6_60ps_de12")
         iLast = -1
-        if (WaveExists($(outDF + "sw6_60ps_sdk12")) && WaveExists($(outDF + "sw6_60ps_x")))
-            Wave ws60p2 = $(outDF + "sw6_60ps_sdk12")
+        if (WaveExists($(outDF + "sw6_60ps_sde12")) && WaveExists($(outDF + "sw6_60ps_x")))
+            Wave ws60p2 = $(outDF + "sw6_60ps_sde12")
             Wave x60p2  = $(outDF + "sw6_60ps_x")
             nTmp = min(numpnts(w60p2), min(numpnts(ws60p2), numpnts(x60p2)))
             do
@@ -1711,11 +1759,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     endif
 
     // ---- 100 ps ----
-    if (WaveExists($(outDF + "sw6_100ps_dk12")))
-        Wave w100p2 = $(outDF + "sw6_100ps_dk12")
+    if (WaveExists($(outDF + "sw6_100ps_de12")))
+        Wave w100p2 = $(outDF + "sw6_100ps_de12")
         iLast = -1
-        if (WaveExists($(outDF + "sw6_100ps_sdk12")) && WaveExists($(outDF + "sw6_100ps_x")))
-            Wave ws100p2 = $(outDF + "sw6_100ps_sdk12")
+        if (WaveExists($(outDF + "sw6_100ps_sde12")) && WaveExists($(outDF + "sw6_100ps_x")))
+            Wave ws100p2 = $(outDF + "sw6_100ps_sde12")
             Wave x100p2  = $(outDF + "sw6_100ps_x")
             nTmp = min(numpnts(w100p2), min(numpnts(ws100p2), numpnts(x100p2)))
             do
@@ -1746,11 +1794,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     endif
 
     // ---- 300 ps ----
-    if (WaveExists($(outDF + "sw6_300ps_dk12")))
-        Wave w300p2 = $(outDF + "sw6_300ps_dk12")
+    if (WaveExists($(outDF + "sw6_300ps_de12")))
+        Wave w300p2 = $(outDF + "sw6_300ps_de12")
         iLast = -1
-        if (WaveExists($(outDF + "sw6_300ps_sdk12")) && WaveExists($(outDF + "sw6_300ps_x")))
-            Wave ws300p2 = $(outDF + "sw6_300ps_sdk12")
+        if (WaveExists($(outDF + "sw6_300ps_sde12")) && WaveExists($(outDF + "sw6_300ps_x")))
+            Wave ws300p2 = $(outDF + "sw6_300ps_sde12")
             Wave x300p2  = $(outDF + "sw6_300ps_x")
             nTmp = min(numpnts(w300p2), min(numpnts(ws300p2), numpnts(x300p2)))
             do
@@ -1781,11 +1829,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     endif
 
     // ---- 600 ps ----
-    if (WaveExists($(outDF + "sw6_600ps_dk12")))
-        Wave w600p2 = $(outDF + "sw6_600ps_dk12")
+    if (WaveExists($(outDF + "sw6_600ps_de12")))
+        Wave w600p2 = $(outDF + "sw6_600ps_de12")
         iLast = -1
-        if (WaveExists($(outDF + "sw6_600ps_sdk12")) && WaveExists($(outDF + "sw6_600ps_x")))
-            Wave ws600p2 = $(outDF + "sw6_600ps_sdk12")
+        if (WaveExists($(outDF + "sw6_600ps_sde12")) && WaveExists($(outDF + "sw6_600ps_x")))
+            Wave ws600p2 = $(outDF + "sw6_600ps_sde12")
             Wave x600p2  = $(outDF + "sw6_600ps_x")
             nTmp = min(numpnts(w600p2), min(numpnts(ws600p2), numpnts(x600p2)))
             do
@@ -1816,11 +1864,11 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     endif
 
     // ---- 900 ps ----
-    if (WaveExists($(outDF + "sw6_900ps_dk12")))
-        Wave w900p2 = $(outDF + "sw6_900ps_dk12")
+    if (WaveExists($(outDF + "sw6_900ps_de12")))
+        Wave w900p2 = $(outDF + "sw6_900ps_de12")
         iLast = -1
-        if (WaveExists($(outDF + "sw6_900ps_sdk12")) && WaveExists($(outDF + "sw6_900ps_x")))
-            Wave ws900p2 = $(outDF + "sw6_900ps_sdk12")
+        if (WaveExists($(outDF + "sw6_900ps_sde12")) && WaveExists($(outDF + "sw6_900ps_x")))
+            Wave ws900p2 = $(outDF + "sw6_900ps_sde12")
             Wave x900p2  = $(outDF + "sw6_900ps_x")
             nTmp = min(numpnts(w900p2), min(numpnts(ws900p2), numpnts(x900p2)))
             do
@@ -1854,10 +1902,10 @@ Function Plot_SW6_Time_All_Delta12KwithTp()
     // 7) 图例
     //============================================================
     Legend/W=$wname/K/N=text0
-    Legend/W=$wname/C/N=text0/J/F=0/A=RT/X=2/Y=2 "\\Zr080\\s(sw6_60ps_dk12) 60 ps\r" + \
-        "\s(sw6_100ps_dk12) 100 ps\r" + \
-        "\s(sw6_300ps_dk12) 300 ps\r" + \
-        "\s(sw6_600ps_dk12) 600 ps\r" + \
-        "\s(sw6_900ps_dk12) 900 ps\r" + \
-        "\s(sw6_temp_dk12) Temperature reference"
+    Legend/W=$wname/C/N=text0/J/F=0/A=RT/X=2/Y=2 "\\Zr080\\s(sw6_60ps_de12) 60 ps\r" + \
+        "\s(sw6_100ps_de12) 100 ps\r" + \
+        "\s(sw6_300ps_de12) 300 ps\r" + \
+        "\s(sw6_600ps_de12) 600 ps\r" + \
+        "\s(sw6_900ps_de12) 900 ps\r" + \
+        "\s(sw6_temp_de12) Temperature reference"
 End
