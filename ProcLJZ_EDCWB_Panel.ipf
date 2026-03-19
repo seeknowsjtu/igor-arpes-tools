@@ -536,7 +536,7 @@ Function LJZ_EDCWB_RefreshPanelTitles()
     endif
 
     if (strlen(curPath) > 0)
-        DoWindow/T $p, "EDC Workbench" + suffix + " : " + LJZ_EDCWB_WaveNameFromPath_Panel(curPath)
+        DoWindow/T $p, "EDC Workbench" + suffix + " : " + LJZ_EDCWB_StatusTagForWave(curPath) + " " + LJZ_EDCWB_WaveNameFromPath_Panel(curPath)
     else
         DoWindow/T $p, "EDC Workbench" + suffix
     endif
@@ -913,6 +913,7 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
             LJZ_EDCWB_ClearStoredFitOutputs(curPath)
             LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
             LJZ_EDCWB_RefreshGraph()
+            LJZ_EDCWB_SyncPanelControls()
             LJZ_EDCWB_RefreshMetricBox()
             LJZ_EDCWB_RefreshResultBox()
             LJZ_EDCWB_RefreshPanelTitles()
@@ -925,6 +926,7 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
             LJZ_EDCWB_SyncAuxStateToPar()
             LJZ_EDCWB_DoFitWave(curPath, eModel)
             LJZ_EDCWB_RefreshGraph()
+            LJZ_EDCWB_SyncPanelControls()
             LJZ_EDCWB_RefreshMetricBox()
             LJZ_EDCWB_RefreshResultBox()
             LJZ_EDCWB_RefreshPanelTitles()
@@ -937,6 +939,7 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
             LJZ_EDCWB_SyncAuxStateToPar()
             LJZ_EDCWB_RefitCurrent()
             LJZ_EDCWB_RefreshGraph()
+            LJZ_EDCWB_SyncPanelControls()
             LJZ_EDCWB_RefreshMetricBox()
             LJZ_EDCWB_RefreshResultBox()
             LJZ_EDCWB_RefreshPanelTitles()
@@ -949,6 +952,8 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
             LJZ_EDCWB_WriteAcceptState(curPath, 1)
             LJZ_EDCWB_RebuildListWaves()
             LJZ_EDCWB_RefreshMetricBox()
+            LJZ_EDCWB_RefreshResultBox()
+            LJZ_EDCWB_RefreshPanelTitles()
         endif
         return 0
     endif
@@ -958,6 +963,8 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
             LJZ_EDCWB_WriteAcceptState(curPath, -1)
             LJZ_EDCWB_RebuildListWaves()
             LJZ_EDCWB_RefreshMetricBox()
+            LJZ_EDCWB_RefreshResultBox()
+            LJZ_EDCWB_RefreshPanelTitles()
         endif
         return 0
     endif
