@@ -69,6 +69,9 @@ Static Function LJZ_EDCWB_SetSyncingControls(flag)
     return 0
 End
 
+// Central reguess entry used by UI callbacks that mutate the editable guess
+// state. Keep the heavy rebuild/clear/autoguess/refresh chain here so callers
+// do not duplicate partial variants that drift out of sync.
 Static Function LJZ_EDCWB_ReguessCurrentWave(curPath, modelID, refreshResultBox)
     String curPath
     Variable modelID, refreshResultBox
@@ -170,6 +173,9 @@ Function LJZ_EDCWB_CurrentListCount()
     return ItemsInList(listStr, ";")
 End
 
+// Enumerate candidate EDC waves by object name rather than assuming that
+// edc_show_k exists as a continuous sequence. Prefer exact edc_show_* matches;
+// if none exist, fall back to the broader historical *edc* name filter.
 Function/S LJZ_EDCWB_ListEDCWaves(dfPath)
     String dfPath
 
@@ -179,28 +185,9 @@ Function/S LJZ_EDCWB_ListEDCWaves(dfPath)
     endif
 
     String out = ""
-    Wave/Z w0 = $(dfPath + "edc_show_0")
-    if (WaveExists(w0))
-        Variable nObj = CountObjects(dfPath, 1)
-        Variable k = 0
-        do
-            Wave/Z wk = $(dfPath + "edc_show_" + num2str(k))
-            if (!WaveExists(wk))
-                break
-            endif
-            if (LJZ_EDCWB_Is1DWave(wk))
-                out = AddListItem(dfPath + NameOfWave(wk), out, ";", Inf)
-            endif
-            k += 1
-            if (k > nObj)
-                break
-            endif
-        while (1)
-        return out
-    endif
-
+    String fallback = ""
+    Variable nObj = CountObjects(dfPath, 1)
     Variable iObj
-    nObj = CountObjects(dfPath, 1)
     for (iObj = 0; iObj < nObj; iObj += 1)
         String nm = GetIndexedObjName(dfPath, 1, iObj)
         Wave/Z w = $(dfPath + nm)
@@ -210,12 +197,21 @@ Function/S LJZ_EDCWB_ListEDCWaves(dfPath)
         if (!LJZ_EDCWB_Is1DWave(w))
             continue
         endif
-        if (StringMatch(LowerStr(nm), "*edc*"))
+
+        if (StringMatch(LowerStr(nm), "edc_show_*"))
             out = AddListItem(dfPath + nm, out, ";", Inf)
+            continue
+        endif
+        if (StringMatch(LowerStr(nm), "*edc*"))
+            fallback = AddListItem(dfPath + nm, fallback, ";", Inf)
         endif
     endfor
 
-    return out
+    if (ItemsInList(out, ";") > 0)
+        return out
+    endif
+
+    return fallback
 End
 
 Function/S LJZ_EDCWB_CurrentListStr()
@@ -485,6 +481,8 @@ Function LJZ_EDCWB_SyncPanelControls()
     NVAR eNorm   = $(LJZ_EDCWB_BaseDF() + ":EditNormMode")
     NVAR smMethod = $(LJZ_EDCWB_BaseDF() + ":SmoothMethod")
 
+    // Keep SetSyncingControls strictly paired in this function. UI callbacks use
+    // the flag to suppress re-entrant live updates while panel values are pushed.
     LJZ_EDCWB_SetSyncingControls(1)
     SetVariable svTarget win=$p, value=_STR:sTarget
 
@@ -641,6 +639,8 @@ Function LJZ_EDCWB_LoadCurrentWave()
 
     LJZ_EDCWB_EnsureResultRecord(curPath)
 
+    // Load priority is: persisted fit record, then manual edit snapshot, and
+    // only then a fresh autoguess for waves with no saved state at all.
     Variable ok = 0
     if (LJZ_EDCWB_HasFitRecord(curPath))
         ok = LJZ_EDCWB_LoadFitRecordToEditState(curPath)
@@ -981,12 +981,9 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
     if (CmpStr(name, "btnGuess") == 0)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_SyncAuxStateToPar()
-            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-            LJZ_EDCWB_RefreshGraph()
+            LJZ_EDCWB_ReguessCurrentWave(curPath, eModel, 1)
             LJZ_EDCWB_SyncPanelControls()
             LJZ_EDCWB_RefreshMetricBox()
-            LJZ_EDCWB_RefreshResultBox()
             LJZ_EDCWB_RefreshPanelTitles()
         endif
         return 0
@@ -1074,7 +1071,9 @@ End
 Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
     STRUCT WMSetVariableAction &sva
 
-    if ((sva.eventCode != 1) && (sva.eventCode != 2))
+    // Restrict SetVariable handling to the committed action event to stay in
+    // sync with Popup/Check callbacks and avoid accidental live-update reguess.
+    if (sva.eventCode != 2)
         return 0
     endif
 
@@ -1085,6 +1084,9 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
     if (LJZ_EDCWB_BeginUIBusy() != 0)
         return 0
     endif
+
+    // After BeginUIBusy succeeds, every explicit return in this function must
+    // first call EndUIBusy so the panel never remains stuck in the busy state.
 
     String name = sva.ctrlName
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
@@ -1137,6 +1139,9 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
     if (LJZ_EDCWB_BeginUIBusy() != 0)
         return 0
     endif
+
+    // After BeginUIBusy succeeds, every explicit return in this function must
+    // first call EndUIBusy so the panel never remains stuck in the busy state.
 
     String name = pa.ctrlName
     String ps   = pa.popStr
@@ -1207,6 +1212,8 @@ Function LJZ_EDCWB_CheckProc(cba) : CheckBoxControl
         return 0
     endif
 
+    // After BeginUIBusy succeeds, every explicit return in this function must
+    // first call EndUIBusy so the panel never remains stuck in the busy state.
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
     NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
 
