@@ -637,7 +637,7 @@ Function LJZ_EDCWB_Guess_SinglePeakFDConv(w, wPar)
         amp = max(1e-3, abs(yPeak))
     endif
 
-    // SinglePeakFDConv stores w as FWHM.
+    // SinglePeakFDConv stores w as FWHM; this half-height-width estimate yields FWHM.
     Variable fwhm = LJZ_EDCWB_HalfHeightWidth(w, iPeak, bgAtPeak)
     if (numtype(fwhm) != 0 || fwhm <= 0)
         fwhm = abs(DimDelta(w, 0)) * 6
@@ -847,6 +847,8 @@ Function LJZ_EDCWB_LorentzValue(x, x0, w)
     return 1 / (1 + ((x - x0) / gamma)^2)
 End
 
+// SinglePeakFDConv chain convention:
+//   w is always FWHM for both auto-guess, preview, and true fit function.
 Function LJZ_EDCWB_GaussValue(x, x0, w)
     Variable x, x0, w
 
@@ -904,8 +906,9 @@ Function/WAVE LJZ_EDCWB_BuildGuessCurveFromPar(srcWavePath, wPar)
         if (numtype(eta) != 0)
             eta = 0.5
         endif
+        eta = min(1, max(0, eta))
 
-        out = (bg0 + bg1 * x) + A * (eta * LJZ_EDCWB_LorentzValue(x, x0, w) + (1 - eta) * LJZ_EDCWB_GaussValue(x, x0, max(w, 1e-4)))
+        out = (bg0 + bg1 * x) + A * (eta * LJZ_EDCWB_LorentzValue(x, x0, w) + (1 - eta) * LJZ_EDCWB_GaussValue(x, x0, w))
         out *= LJZ_EDCWB_FDValue(x, T, EF)
         return out
     endif
@@ -1005,7 +1008,8 @@ Function LJZ_EDCWB_FitFDValue(x, T, EF)
     return 1 / (exp(arg) + 1)
 End
 
-// SinglePeakFDConv true fit also uses w as FWHM.
+// SinglePeakFDConv chain convention:
+//   w is always FWHM for both auto-guess, preview, and true fit function.
 Function LJZ_EDCWB_FitLor(x, x0, w)
     Variable x, x0, w
 
@@ -1018,6 +1022,8 @@ Function LJZ_EDCWB_FitLor(x, x0, w)
     return 1 / (1 + ((x - x0) / gamma)^2)
 End
 
+// SinglePeakFDConv chain convention:
+//   w is always FWHM for both auto-guess, preview, and true fit function.
 Function LJZ_EDCWB_FitGau(x, x0, w)
     Variable x, x0, w
 
