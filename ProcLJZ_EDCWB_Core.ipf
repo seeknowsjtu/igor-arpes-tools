@@ -840,3 +840,125 @@ Function LJZ_EDCWB_ClearFitRecord(srcWavePath)
 
     return 0
 End
+// ============================================================================
+//  Core patch : dirty state + lightweight record helpers
+//  建议放在 ProcLJZ_EDCWB_Core.ipf
+// ============================================================================
+
+Function LJZ_EDCWB_MarkDirty(flag)
+    Variable flag
+
+    LJZ_EDCWB_EnsureDF()
+
+    NVAR isDirty = $(LJZ_EDCWB_BaseDF() + ":Dirty")
+    isDirty = (flag != 0)
+
+    return 0
+End
+
+Function LJZ_EDCWB_IsDirty()
+    LJZ_EDCWB_EnsureDF()
+
+    NVAR isDirty = $(LJZ_EDCWB_BaseDF() + ":Dirty")
+    return isDirty
+End
+
+Function LJZ_EDCWB_ClearStoredFitOutputs(srcWavePath)
+    String srcWavePath
+
+    LJZ_EDCWB_EnsureResultRecord(srcWavePath)
+
+    Wave/Z wFit = $(LJZ_EDCWB_ResultFitPath(srcWavePath))
+    if (WaveExists(wFit))
+        wFit = NaN
+    endif
+
+    Wave/Z wRes = $(LJZ_EDCWB_ResultResPath(srcWavePath))
+    if (WaveExists(wRes))
+        wRes = NaN
+    endif
+
+    Wave/Z wSig = $(LJZ_EDCWB_ResultFitSigmaPath(srcWavePath))
+    if (WaveExists(wSig))
+        LJZ_EDCWB_EnsureNumWaveLen12(wSig, NaN)
+        wSig = NaN
+    endif
+
+    Wave/Z wInfo = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
+    if (WaveExists(wInfo))
+        LJZ_EDCWB_EnsureNumWaveLen16(wInfo, NaN)
+
+        // 只清掉真正属于“拟合输出”的槽位
+        wInfo[LJZ_EDCWB_FI_FitOK()]     = NaN
+        wInfo[LJZ_EDCWB_FI_FitRMSE()]   = NaN
+        wInfo[LJZ_EDCWB_FI_ChiSq()]     = NaN
+        wInfo[LJZ_EDCWB_FI_MaxAbsRes()] = NaN
+        wInfo[LJZ_EDCWB_FI_NROI()]      = NaN
+    endif
+
+    return 0
+End
+
+Function LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
+    String srcWavePath
+
+    LJZ_EDCWB_EnsureDF()
+    LJZ_EDCWB_EnsureResultRecord(srcWavePath)
+
+    NVAR eModel   = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
+    NVAR eXLo     = $(LJZ_EDCWB_BaseDF() + ":EditXLo")
+    NVAR eXHi     = $(LJZ_EDCWB_BaseDF() + ":EditXHi")
+    NVAR eTemp    = $(LJZ_EDCWB_BaseDF() + ":EditTemperature")
+    NVAR eEF      = $(LJZ_EDCWB_BaseDF() + ":EditEFermi")
+    NVAR eRes     = $(LJZ_EDCWB_BaseDF() + ":EditResolution")
+    NVAR eNorm    = $(LJZ_EDCWB_BaseDF() + ":EditNormMode")
+    NVAR fitOnSm  = $(LJZ_EDCWB_BaseDF() + ":FitOnSmooth")
+
+    Wave ePar     = $(LJZ_EDCWB_BaseDF() + ":EditPar")
+    Wave wCoef    = $(LJZ_EDCWB_ResultFitCoefPath(srcWavePath))
+    Wave wInfo    = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
+
+    LJZ_EDCWB_EnsureNumWaveLen12(wCoef, NaN)
+    LJZ_EDCWB_EnsureNumWaveLen16(wInfo, NaN)
+
+    wCoef = NaN
+    wCoef = ePar[p]
+
+    wInfo[LJZ_EDCWB_FI_ModelID()]     = eModel
+    wInfo[LJZ_EDCWB_FI_XLo()]         = eXLo
+    wInfo[LJZ_EDCWB_FI_XHi()]         = eXHi
+    wInfo[LJZ_EDCWB_FI_Temperature()] = eTemp
+    wInfo[LJZ_EDCWB_FI_Resolution()]  = eRes
+    wInfo[LJZ_EDCWB_FI_EFermi()]      = eEF
+    wInfo[LJZ_EDCWB_FI_NormMode()]    = eNorm
+    wInfo[LJZ_EDCWB_FI_SmoothUsed()]  = fitOnSm
+
+    return 0
+End
+
+Function LJZ_EDCWB_HasFitRecord(srcWavePath)
+    String srcWavePath
+
+    Wave/Z wCoef = $(LJZ_EDCWB_ResultFitCoefPath(srcWavePath))
+    Wave/Z wInfo = $(LJZ_EDCWB_ResultFitInfoPath(srcWavePath))
+
+    if (!WaveExists(wCoef) || !WaveExists(wInfo))
+        return 0
+    endif
+
+    LJZ_EDCWB_EnsureNumWaveLen12(wCoef, NaN)
+    LJZ_EDCWB_EnsureNumWaveLen16(wInfo, NaN)
+
+    // 至少要有 model 信息
+    if (numtype(wInfo[LJZ_EDCWB_FI_ModelID()]) != 0)
+        return 0
+    endif
+
+    // 至少参数里不能全是 NaN
+    WaveStats/Q wCoef
+    if (V_numNaNs >= numpnts(wCoef))
+        return 0
+    endif
+
+    return 1
+End
