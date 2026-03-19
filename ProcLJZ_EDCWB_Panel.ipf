@@ -109,6 +109,50 @@ Function LJZ_EDCWB_CurrentListCount()
     return ItemsInList(listStr, ";")
 End
 
+Function/S LJZ_EDCWB_ListEDCWaves(dfPath)
+    String dfPath
+
+    dfPath = LJZ_EDCWB_NormDFPath(dfPath)
+    if (strlen(dfPath) == 0)
+        return ""
+    endif
+
+    String out = ""
+    Wave/Z w0 = $(dfPath + "edc_show_0")
+    if (WaveExists(w0))
+        Variable k = 0
+        do
+            Wave/Z wk = $(dfPath + "edc_show_" + num2str(k))
+            if (!WaveExists(wk))
+                break
+            endif
+            if (LJZ_EDCWB_Is1DWave(wk))
+                out = AddListItem(dfPath + NameOfWave(wk), out, ";", Inf)
+            endif
+            k += 1
+        while (1)
+        return out
+    endif
+
+    Variable iObj, nObj
+    nObj = CountObjects(dfPath, 1)
+    for (iObj = 0; iObj < nObj; iObj += 1)
+        String nm = GetIndexedObjName(dfPath, 1, iObj)
+        Wave/Z w = $(dfPath + nm)
+        if (!WaveExists(w))
+            continue
+        endif
+        if (!LJZ_EDCWB_Is1DWave(w))
+            continue
+        endif
+        if (StringMatch(LowerStr(nm), "*edc*"))
+            out = AddListItem(dfPath + nm, out, ";", Inf)
+        endif
+    endfor
+
+    return out
+End
+
 Function/S LJZ_EDCWB_CurrentListStr()
     SVAR sTarget = $(LJZ_EDCWB_BaseDF() + ":TargetDF")
     return LJZ_EDCWB_ListEDCWaves(sTarget)
@@ -155,6 +199,36 @@ Function LJZ_EDCWB_SelectNextUnchecked()
     endfor
 
     return -1
+End
+
+Function LJZ_EDCWB_SelectRow(row)
+    Variable row
+
+    LJZ_EDCWB_EnsurePanelState()
+
+    String listStr = LJZ_EDCWB_CurrentListStr()
+    Variable n = ItemsInList(listStr, ";")
+    if (n <= 0)
+        return -1
+    endif
+
+    row = LJZ_EDCWB_ClampIndex(row, n)
+
+    NVAR curRow  = $(LJZ_EDCWB_BaseDF() + ":CurRow")
+    SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
+
+    Wave wSel = $(LJZ_EDCWB_BaseDF() + ":LB_Sel")
+    if (numpnts(wSel) != n)
+        Redimension/N=(n) wSel
+    endif
+
+    wSel = 0
+    wSel[row] = 1
+
+    curRow = row
+    curPath = StringFromList(row, listStr, ";")
+
+    return LJZ_EDCWB_LoadCurrentWave()
 End
 
 
@@ -226,9 +300,7 @@ Function LJZ_EDCWB_RefreshMetricBox()
         return 0
     endif
 
-    Wave/Z fi = $(ReplaceString("_fitcoef", LJZ_EDCWB_ResultFitInfoPath(curPath), "_fitinfo"))
-    fi = $(LJZ_EDCWB_ResultFitInfoPath(curPath))
-    Wave/Z fc = $(LJZ_EDCWB_ResultFitCoefPath(curPath))
+    Wave/Z fi = $(LJZ_EDCWB_ResultFitInfoPath(curPath))
 
     Variable n = 8
     Make/O/T/N=(n) $(LJZ_EDCWB_BaseDF() + ":MetricDisp")
@@ -335,6 +407,28 @@ Function LJZ_EDCWB_CreatePreviewGraph()
     return 0
 End
 
+Function LJZ_EDCWB_SyncPanelControls()
+    LJZ_EDCWB_EnsureDF()
+
+    String p = LJZ_EDCWB_PanelName()
+    if (WinType(p) == 0)
+        return 0
+    endif
+
+    SVAR sTarget = $(LJZ_EDCWB_BaseDF() + ":TargetDF")
+    NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
+    NVAR eNorm   = $(LJZ_EDCWB_BaseDF() + ":EditNormMode")
+    NVAR smMethod = $(LJZ_EDCWB_BaseDF() + ":SmoothMethod")
+
+    SetVariable svTarget win=$p, value=_STR:sTarget
+
+    PopupMenu pmModel win=$p, popvalue=LJZ_EDCWB_ModelName(eModel)
+    PopupMenu pmNorm win=$p, mode=(eNorm + 1)
+    PopupMenu pmSmMethod win=$p, mode=(smMethod + 1)
+
+    return 0
+End
+
 Function LJZ_EDCWB_RefreshGraph()
     LJZ_EDCWB_EnsureDF()
 
@@ -355,7 +449,7 @@ Function LJZ_EDCWB_RefreshGraph()
         LJZ_EDCWB_CreatePreviewGraph()
     endif
 
-    RemoveFromGraph/Z /W=$g
+    RemoveFromGraph/Z/W=$g /A
 
     if (shRaw)
         Wave/Z w0 = LJZ_EDCWB_GetDisplayRawWave(curPath)
@@ -463,6 +557,7 @@ Function LJZ_EDCWB_LoadCurrentWave()
     NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
 
     if (strlen(curPath) == 0)
+        LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshMetricBox()
         LJZ_EDCWB_RefreshResultBox()
         LJZ_EDCWB_RefreshPanelTitles()
@@ -470,6 +565,7 @@ Function LJZ_EDCWB_LoadCurrentWave()
     endif
 
     if (!LJZ_EDCWB_SourceWaveExists(curPath))
+        LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshMetricBox()
         LJZ_EDCWB_RefreshResultBox()
         LJZ_EDCWB_RefreshPanelTitles()
@@ -489,6 +585,7 @@ Function LJZ_EDCWB_LoadCurrentWave()
         LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
     endif
 
+    LJZ_EDCWB_SyncPanelControls()
     LJZ_EDCWB_RebuildAllWorkWaves(curPath)
     LJZ_EDCWB_RefreshGraph()
     LJZ_EDCWB_RefreshMetricBox()
@@ -612,7 +709,7 @@ Window LJZ_EDCWB_P() : Panel
     TitleBox tbT,pos={12,8},size={240,18},title="Target DF (default: EDCExtract runDF)",frame=0
 
     SetVariable svTarget,pos={12,28},size={500,20},proc=LJZ_EDCWB_SetVarProc,title="DF:"
-    SetVariable svTarget,value=_STR:""
+    SetVariable svTarget,value=_STR:"root:Packages:ARPES_LJZ:EDCWB:TargetDF"
 
     Button btnRebuild,pos={525,27},size={95,22},proc=LJZ_EDCWB_ButtonProc,title="Refresh"
 
@@ -624,35 +721,35 @@ Window LJZ_EDCWB_P() : Panel
     PopupMenu pmModel,mode=1,popvalue="SinglePeak*FD*GaussConv",value=#"LJZ_EDCWB_ModelPopupList()"
 
     CheckBox cbUseSmGuess,pos={435,64},size={120,16},proc=LJZ_EDCWB_CheckProc,title="Use Sm Guess"
-    CheckBox cbUseSmGuess,value=1
+    CheckBox cbUseSmGuess,variable=$(LJZ_EDCWB_BaseDF() + ":UseSmoothForGuess")
 
     CheckBox cbFitOnSm,pos={560,64},size={90,16},proc=LJZ_EDCWB_CheckProc,title="Fit On Sm"
-    CheckBox cbFitOnSm,value=0
+    CheckBox cbFitOnSm,variable=$(LJZ_EDCWB_BaseDF() + ":FitOnSmooth")
 
     Button btnPrev,pos={250,92},size={55,24},proc=LJZ_EDCWB_ButtonProc,title="Prev"
     Button btnNext,pos={315,92},size={55,24},proc=LJZ_EDCWB_ButtonProc,title="Next"
     Button btnNextUnchecked,pos={380,92},size={110,24},proc=LJZ_EDCWB_ButtonProc,title="Next Unchecked"
 
     SetVariable svXLo,pos={250,126},size={150,20},proc=LJZ_EDCWB_SetVarProc,title="xLo"
-    SetVariable svXLo,value=_NUM:0
+    SetVariable svXLo,variable=$(LJZ_EDCWB_BaseDF() + ":EditXLo")
 
     SetVariable svXHi,pos={415,126},size={150,20},proc=LJZ_EDCWB_SetVarProc,title="xHi"
-    SetVariable svXHi,value=_NUM:0
+    SetVariable svXHi,variable=$(LJZ_EDCWB_BaseDF() + ":EditXHi")
 
     SetVariable svTemp,pos={250,156},size={150,20},proc=LJZ_EDCWB_SetVarProc,title="T"
-    SetVariable svTemp,value=_NUM:10
+    SetVariable svTemp,variable=$(LJZ_EDCWB_BaseDF() + ":EditTemperature")
 
     SetVariable svEF,pos={415,156},size={150,20},proc=LJZ_EDCWB_SetVarProc,title="EF"
-    SetVariable svEF,value=_NUM:0
+    SetVariable svEF,variable=$(LJZ_EDCWB_BaseDF() + ":EditEFermi")
 
     SetVariable svRes,pos={580,156},size={120,20},proc=LJZ_EDCWB_SetVarProc,title="Res"
-    SetVariable svRes,value=_NUM:0.01
+    SetVariable svRes,variable=$(LJZ_EDCWB_BaseDF() + ":EditResolution")
 
     PopupMenu pmNorm,pos={250,186},size={160,20},proc=LJZ_EDCWB_PopupProc,title="Norm:"
     PopupMenu pmNorm,mode=1,popvalue="0:none",value="0:none;1:maxAbs;2:tailMean;3:ROIMax;"
 
     CheckBox cbSmEnable,pos={435,188},size={70,16},proc=LJZ_EDCWB_CheckProc,title="Smooth"
-    CheckBox cbSmEnable,value=0
+    CheckBox cbSmEnable,variable=$(LJZ_EDCWB_BaseDF() + ":SmoothEnable")
 
     PopupMenu pmSmMethod,pos={520,186},size={150,20},proc=LJZ_EDCWB_PopupProc,title=""
     PopupMenu pmSmMethod,mode=1,popvalue="0:none",value="0:none;1:Smooth;2:SmoothS;3:BLPF;"
@@ -664,21 +761,21 @@ Window LJZ_EDCWB_P() : Panel
     GroupBox gbParam,pos={244,424},size={470,154},title=""
 
     SetVariable svSmP1,pos={260,432},size={140,20},proc=LJZ_EDCWB_SetVarProc,title="SmP1"
-    SetVariable svSmP1,value=_NUM:5
+    SetVariable svSmP1,variable=$(LJZ_EDCWB_BaseDF() + ":SmoothParam1")
 
     SetVariable svSmP2,pos={420,432},size={140,20},proc=LJZ_EDCWB_SetVarProc,title="SmP2"
-    SetVariable svSmP2,value=_NUM:2
+    SetVariable svSmP2,variable=$(LJZ_EDCWB_BaseDF() + ":SmoothParam2")
 
     CheckBox cbShowRaw,pos={260,466},size={55,16},proc=LJZ_EDCWB_CheckProc,title="Raw"
-    CheckBox cbShowRaw,value=1
+    CheckBox cbShowRaw,variable=$(LJZ_EDCWB_BaseDF() + ":ShowRaw")
     CheckBox cbShowSm,pos={320,466},size={70,16},proc=LJZ_EDCWB_CheckProc,title="Smooth"
-    CheckBox cbShowSm,value=0
+    CheckBox cbShowSm,variable=$(LJZ_EDCWB_BaseDF() + ":ShowSmooth")
     CheckBox cbShowGuess,pos={400,466},size={70,16},proc=LJZ_EDCWB_CheckProc,title="Guess"
-    CheckBox cbShowGuess,value=1
+    CheckBox cbShowGuess,variable=$(LJZ_EDCWB_BaseDF() + ":ShowGuess")
     CheckBox cbShowFit,pos={480,466},size={55,16},proc=LJZ_EDCWB_CheckProc,title="Fit"
-    CheckBox cbShowFit,value=1
+    CheckBox cbShowFit,variable=$(LJZ_EDCWB_BaseDF() + ":ShowFit")
     CheckBox cbShowRes,pos={540,466},size={80,16},proc=LJZ_EDCWB_CheckProc,title="Residual"
-    CheckBox cbShowRes,value=1
+    CheckBox cbShowRes,variable=$(LJZ_EDCWB_BaseDF() + ":ShowResidual")
 
     Button btnGuess,pos={260,504},size={78,24},proc=LJZ_EDCWB_ButtonProc,title="Guess"
     Button btnFit,pos={346,504},size={78,24},proc=LJZ_EDCWB_ButtonProc,title="Fit"
@@ -728,6 +825,7 @@ Function LJZ_EDCWB_OpenPanel()
 
     Execute "LJZ_EDCWB_P()"
     LJZ_EDCWB_CreatePreviewGraph()
+    LJZ_EDCWB_SyncPanelControls()
 
     return 0
 End
@@ -745,6 +843,7 @@ Function LJZ_EDCWB()
     LJZ_EDCWB_OpenPanel()
     LJZ_EDCWB_OpenParamTable()
     LJZ_EDCWB_LoadCurrentWave()
+    LJZ_EDCWB_SyncPanelControls()
     LJZ_EDCWB_RefreshMetricBox()
     LJZ_EDCWB_RefreshResultBox()
     LJZ_EDCWB_RefreshPanelTitles()
@@ -792,6 +891,7 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
     if (CmpStr(name, "btnGuess") == 0)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_SyncAuxStateToPar()
+            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
             LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
             LJZ_EDCWB_RefreshGraph()
             LJZ_EDCWB_RefreshMetricBox()
@@ -883,6 +983,7 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
 
     String name = sva.ctrlName
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
+    NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
 
     if (CmpStr(name, "svTarget") == 0)
         LJZ_EDCWB_RebuildListWaves()
@@ -893,10 +994,12 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
     if ((CmpStr(name, "svTemp") == 0) || (CmpStr(name, "svEF") == 0) || (CmpStr(name, "svRes") == 0))
         LJZ_EDCWB_SyncAuxStateToPar()
         if (strlen(curPath) > 0)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, $(LJZ_EDCWB_BaseDF() + ":EditModelID"))
+            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
+            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
             LJZ_EDCWB_RefreshGraph()
             LJZ_EDCWB_RefreshResultBox()
         endif
+        LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
@@ -905,10 +1008,12 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
         LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, $(LJZ_EDCWB_BaseDF() + ":EditModelID"))
+            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
+            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
             LJZ_EDCWB_RefreshGraph()
             LJZ_EDCWB_RefreshResultBox()
         endif
+        LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
@@ -941,10 +1046,12 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
 
         LJZ_EDCWB_SetModel(eModel)
         if (strlen(curPath) > 0)
+            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
             LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
             LJZ_EDCWB_RefreshGraph()
             LJZ_EDCWB_RefreshResultBox()
         endif
+        LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
@@ -954,9 +1061,11 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
         LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
             LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
             LJZ_EDCWB_RefreshGraph()
         endif
+        LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
@@ -966,10 +1075,12 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
         LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
             LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
             LJZ_EDCWB_RefreshGraph()
             LJZ_EDCWB_RefreshResultBox()
         endif
+        LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
         return 0
     endif
@@ -997,6 +1108,7 @@ Function LJZ_EDCWB_CheckProc(cba) : CheckBoxControl
     LJZ_EDCWB_MarkDirty(1)
     if (strlen(curPath) > 0)
         LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+        LJZ_EDCWB_ClearStoredFitOutputs(curPath)
         LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
         LJZ_EDCWB_RefreshGraph()
         LJZ_EDCWB_RefreshResultBox()

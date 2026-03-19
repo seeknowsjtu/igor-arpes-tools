@@ -949,6 +949,7 @@ Function LJZ_EDCWB_AutoGuessAndSave(srcWavePath, modelID)
         return -1
     endif
 
+    LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
     LJZ_EDCWB_SaveGuessCurve(srcWavePath, wGuess)
     return 0
 End
@@ -1278,9 +1279,9 @@ Function LJZ_EDCWB_MaxAbsWave(w)
     return max(abs(V_max), abs(V_min))
 End
 
-Function LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, wCoefActive, wSigmaActive, fitOK)
+Function LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, wCoefActive, wSigmaActive, fitOK, chiSq)
     String srcWavePath
-    Variable modelID, fitOK
+    Variable modelID, fitOK, chiSq
     Wave wCoefActive, wSigmaActive
 
     LJZ_EDCWB_EnsureDF()
@@ -1340,8 +1341,7 @@ Function LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, wCoefActive, wSigm
         fitinfo16[8] = iHi - iLo + 1
     endif
 
-    // 这里不强依赖 V_chisq，避免不同 FuncFit 场景下不稳
-    fitinfo16[6] = NaN
+    fitinfo16[6] = chiSq
 
     LJZ_EDCWB_SaveFitCurve(srcWavePath, fitFull, resFull)
     LJZ_EDCWB_SaveFitVectors(srcWavePath, fitcoef12, fitsigma12, fitinfo16)
@@ -1395,7 +1395,11 @@ Function LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
 
     String holdStr = LJZ_EDCWB_BuildHoldStringForModel(modelID, wEditHold)
 
-    LJZ_EDCWB_AutoGuessAndSave(srcWavePath, modelID)
+    Wave/Z wGuess = LJZ_EDCWB_BuildGuessCurveFromPar(srcWavePath, wEditPar)
+    if (WaveExists(wGuess))
+        LJZ_EDCWB_SaveCurrentEditToCoef(srcWavePath)
+        LJZ_EDCWB_SaveGuessCurve(srcWavePath, wGuess)
+    endif
 
     if (modelID == LJZ_EDCWB_Model_SinglePeakFDConv())
         FuncFit/H=holdStr/Q LJZ_EDCWB_FitFunc_SinglePeakFDConv coefActive fitY /X=fitX
@@ -1420,7 +1424,12 @@ Function LJZ_EDCWB_DoFitModelApprox(srcWavePath, modelID)
         fitOK = 0
     endif
 
-    LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, coefActive, sigmaActive, fitOK)
+    Variable chiSq = NaN
+    if (fitOK)
+        chiSq = V_chisq
+    endif
+
+    LJZ_EDCWB_SaveFitResultGeneric(srcWavePath, modelID, coefActive, sigmaActive, fitOK, chiSq)
 
     if (!fitOK)
         return -2
