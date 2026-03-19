@@ -35,6 +35,59 @@ Function/S LJZ_EDCWB_ParamTableName()
     return "LJZ_EDCWB_Params"
 End
 
+Static Function LJZ_EDCWB_UIBusy()
+    NVAR uiBusy = $(LJZ_EDCWB_BaseDF() + ":UIBusy")
+    return (uiBusy != 0)
+End
+
+Static Function LJZ_EDCWB_BeginUIBusy()
+    NVAR uiBusy = $(LJZ_EDCWB_BaseDF() + ":UIBusy")
+    if (uiBusy != 0)
+        return -1
+    endif
+
+    uiBusy = 1
+    return 0
+End
+
+Static Function LJZ_EDCWB_EndUIBusy()
+    NVAR uiBusy = $(LJZ_EDCWB_BaseDF() + ":UIBusy")
+    uiBusy = 0
+    return 0
+End
+
+Static Function LJZ_EDCWB_IsSyncingControls()
+    NVAR syncControls = $(LJZ_EDCWB_BaseDF() + ":SyncingControls")
+    return (syncControls != 0)
+End
+
+Static Function LJZ_EDCWB_SetSyncingControls(flag)
+    Variable flag
+
+    NVAR syncControls = $(LJZ_EDCWB_BaseDF() + ":SyncingControls")
+    syncControls = (flag != 0)
+    return 0
+End
+
+Static Function LJZ_EDCWB_ReguessCurrentWave(curPath, modelID, refreshResultBox)
+    String curPath
+    Variable modelID, refreshResultBox
+
+    if (!LJZ_EDCWB_SourceWaveExists(curPath))
+        return -1
+    endif
+
+    LJZ_EDCWB_RebuildAllWorkWaves(curPath)
+    LJZ_EDCWB_ClearStoredFitOutputs(curPath)
+    LJZ_EDCWB_AutoGuessAndSave(curPath, modelID)
+    LJZ_EDCWB_RefreshGraph()
+    if (refreshResultBox)
+        LJZ_EDCWB_RefreshResultBox()
+    endif
+
+    return 0
+End
+
 Function LJZ_EDCWB_EnsurePanelState()
     LJZ_EDCWB_EnsureDF()
 
@@ -128,6 +181,7 @@ Function/S LJZ_EDCWB_ListEDCWaves(dfPath)
     String out = ""
     Wave/Z w0 = $(dfPath + "edc_show_0")
     if (WaveExists(w0))
+        Variable nObj = CountObjects(dfPath, 1)
         Variable k = 0
         do
             Wave/Z wk = $(dfPath + "edc_show_" + num2str(k))
@@ -138,11 +192,14 @@ Function/S LJZ_EDCWB_ListEDCWaves(dfPath)
                 out = AddListItem(dfPath + NameOfWave(wk), out, ";", Inf)
             endif
             k += 1
+            if (k > nObj)
+                break
+            endif
         while (1)
         return out
     endif
 
-    Variable iObj, nObj
+    Variable iObj
     nObj = CountObjects(dfPath, 1)
     for (iObj = 0; iObj < nObj; iObj += 1)
         String nm = GetIndexedObjName(dfPath, 1, iObj)
@@ -428,11 +485,13 @@ Function LJZ_EDCWB_SyncPanelControls()
     NVAR eNorm   = $(LJZ_EDCWB_BaseDF() + ":EditNormMode")
     NVAR smMethod = $(LJZ_EDCWB_BaseDF() + ":SmoothMethod")
 
+    LJZ_EDCWB_SetSyncingControls(1)
     SetVariable svTarget win=$p, value=_STR:sTarget
 
     PopupMenu pmModel win=$p, popvalue=LJZ_EDCWB_ModelName(eModel)
     PopupMenu pmNorm win=$p, mode=(eNorm + 1)
     PopupMenu pmSmMethod win=$p, mode=(smMethod + 1)
+    LJZ_EDCWB_SetSyncingControls(0)
 
     return 0
 End
@@ -890,6 +949,10 @@ Function LJZ_EDCWB_ButtonProc(ba) : ButtonControl
         return 0
     endif
 
+    if (LJZ_EDCWB_IsSyncingControls() || LJZ_EDCWB_UIBusy())
+        return 0
+    endif
+
     String name = ba.ctrlName
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
     NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
@@ -1011,7 +1074,15 @@ End
 Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
     STRUCT WMSetVariableAction &sva
 
-    if ((sva.eventCode != 1) && (sva.eventCode != 2) && (sva.eventCode != 3))
+    if ((sva.eventCode != 1) && (sva.eventCode != 2))
+        return 0
+    endif
+
+    if (LJZ_EDCWB_IsSyncingControls() || LJZ_EDCWB_UIBusy())
+        return 0
+    endif
+
+    if (LJZ_EDCWB_BeginUIBusy() != 0)
         return 0
     endif
 
@@ -1022,36 +1093,33 @@ Function LJZ_EDCWB_SetVarProc(sva) : SetVariableControl
     if (CmpStr(name, "svTarget") == 0)
         LJZ_EDCWB_RebuildListWaves()
         LJZ_EDCWB_LoadCurrentWave()
+        LJZ_EDCWB_EndUIBusy()
         return 0
     endif
 
     if ((CmpStr(name, "svTemp") == 0) || (CmpStr(name, "svEF") == 0) || (CmpStr(name, "svRes") == 0))
         LJZ_EDCWB_SyncAuxStateToPar()
         if (strlen(curPath) > 0)
-            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-            LJZ_EDCWB_RefreshGraph()
-            LJZ_EDCWB_RefreshResultBox()
+            LJZ_EDCWB_ReguessCurrentWave(curPath, eModel, 1)
         endif
         LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
+        LJZ_EDCWB_EndUIBusy()
         return 0
     endif
 
     if ((CmpStr(name, "svXLo") == 0) || (CmpStr(name, "svXHi") == 0) || (CmpStr(name, "svSmP1") == 0) || (CmpStr(name, "svSmP2") == 0))
         LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
-            LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-            LJZ_EDCWB_RefreshGraph()
-            LJZ_EDCWB_RefreshResultBox()
+            LJZ_EDCWB_ReguessCurrentWave(curPath, eModel, 1)
         endif
         LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
+        LJZ_EDCWB_EndUIBusy()
         return 0
     endif
 
+    LJZ_EDCWB_EndUIBusy()
     return 0
 End
 
@@ -1059,6 +1127,14 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
     STRUCT WMPopupAction &pa
 
     if (pa.eventCode != 2)
+        return 0
+    endif
+
+    if (LJZ_EDCWB_IsSyncingControls() || LJZ_EDCWB_UIBusy())
+        return 0
+    endif
+
+    if (LJZ_EDCWB_BeginUIBusy() != 0)
         return 0
     endif
 
@@ -1080,13 +1156,11 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
 
         LJZ_EDCWB_SetModel(eModel)
         if (strlen(curPath) > 0)
-            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-            LJZ_EDCWB_RefreshGraph()
-            LJZ_EDCWB_RefreshResultBox()
+            LJZ_EDCWB_ReguessCurrentWave(curPath, eModel, 1)
         endif
         LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
+        LJZ_EDCWB_EndUIBusy()
         return 0
     endif
 
@@ -1094,13 +1168,11 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
         smMethod = str2num(StringFromList(0, ps, ":"))
         LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
-            LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-            LJZ_EDCWB_RefreshGraph()
+            LJZ_EDCWB_ReguessCurrentWave(curPath, eModel, 0)
         endif
         LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
+        LJZ_EDCWB_EndUIBusy()
         return 0
     endif
 
@@ -1108,17 +1180,15 @@ Function LJZ_EDCWB_PopupProc(pa) : PopupMenuControl
         eNorm = str2num(StringFromList(0, ps, ":"))
         LJZ_EDCWB_MarkDirty(1)
         if (strlen(curPath) > 0)
-            LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-            LJZ_EDCWB_ClearStoredFitOutputs(curPath)
-            LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-            LJZ_EDCWB_RefreshGraph()
-            LJZ_EDCWB_RefreshResultBox()
+            LJZ_EDCWB_ReguessCurrentWave(curPath, eModel, 1)
         endif
         LJZ_EDCWB_SyncPanelControls()
         LJZ_EDCWB_RefreshPanelTitles()
+        LJZ_EDCWB_EndUIBusy()
         return 0
     endif
 
+    LJZ_EDCWB_EndUIBusy()
     return 0
 End
 
@@ -1129,6 +1199,14 @@ Function LJZ_EDCWB_CheckProc(cba) : CheckBoxControl
         return 0
     endif
 
+    if (LJZ_EDCWB_IsSyncingControls() || LJZ_EDCWB_UIBusy())
+        return 0
+    endif
+
+    if (LJZ_EDCWB_BeginUIBusy() != 0)
+        return 0
+    endif
+
     SVAR curPath = $(LJZ_EDCWB_BaseDF() + ":CurWavePath")
     NVAR eModel  = $(LJZ_EDCWB_BaseDF() + ":EditModelID")
 
@@ -1136,18 +1214,16 @@ Function LJZ_EDCWB_CheckProc(cba) : CheckBoxControl
         if (strlen(curPath) > 0)
             LJZ_EDCWB_RefreshGraph()
         endif
+        LJZ_EDCWB_EndUIBusy()
         return 0
     endif
 
     LJZ_EDCWB_MarkDirty(1)
     if (strlen(curPath) > 0)
-        LJZ_EDCWB_RebuildAllWorkWaves(curPath)
-        LJZ_EDCWB_ClearStoredFitOutputs(curPath)
-        LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
-        LJZ_EDCWB_RefreshGraph()
-        LJZ_EDCWB_RefreshResultBox()
+        LJZ_EDCWB_ReguessCurrentWave(curPath, eModel, 1)
     endif
     LJZ_EDCWB_RefreshPanelTitles()
+    LJZ_EDCWB_EndUIBusy()
 
     return 0
 End

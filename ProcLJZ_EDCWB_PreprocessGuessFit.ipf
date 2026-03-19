@@ -188,6 +188,9 @@ Function LJZ_EDCWB_ApplySmoothInPlace(w, method, p1, p2)
     if (win < 1)
         win = 1
     endif
+    if (win > npts - 1)
+        win = npts - 1
+    endif
 
     if (method == 0)
         return 0
@@ -199,6 +202,10 @@ Function LJZ_EDCWB_ApplySmoothInPlace(w, method, p1, p2)
     endif
 
     if (method == 2)
+        if (npts < 5)
+            return 0
+        endif
+
         Variable poly = round(abs(p2))
         if (poly < 2)
             poly = 2
@@ -206,6 +213,10 @@ Function LJZ_EDCWB_ApplySmoothInPlace(w, method, p1, p2)
         if (win < poly + 2)
             win = poly + 2
         endif
+        if (win > npts - 1)
+            win = npts - 1
+        endif
+        poly = min(poly, win - 2)
         Smooth/S=(poly) win, w
         return 0
     endif

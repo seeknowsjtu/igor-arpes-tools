@@ -246,6 +246,16 @@ Function LJZ_EDCWB_EnsureRuntimeState()
         Variable/G $(base + ":Dirty") = 0
     endif
 
+    NVAR/Z uiBusy = $(base + ":UIBusy")
+    if (!NVAR_Exists(uiBusy))
+        Variable/G $(base + ":UIBusy") = 0
+    endif
+
+    NVAR/Z syncControls = $(base + ":SyncingControls")
+    if (!NVAR_Exists(syncControls))
+        Variable/G $(base + ":SyncingControls") = 0
+    endif
+
     // ---------- preprocess / aux ----------
     NVAR/Z smEn = $(base + ":SmoothEnable")
     if (!NVAR_Exists(smEn))
