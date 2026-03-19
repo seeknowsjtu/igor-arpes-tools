@@ -1239,6 +1239,7 @@ Function LJZ_EDCWB_BuildFitROIWaves(srcWavePath)
 
     Make/D/O/N=(numpnts(fitY)) $(LJZ_EDCWB_TmpDF() + ":fitX")
     Wave fitX = $(LJZ_EDCWB_TmpDF() + ":fitX")
+    // fitX 是给 FuncFit /X= 使用的显式 x wave，不是仅靠 scaling 的占位波。
     fitX = DimOffset(wFitIn, 0) + (p + iLo) * DimDelta(wFitIn, 0)
 
     Variable/G $(LJZ_EDCWB_TmpDF() + ":Fit_iLo") = iLo
@@ -1264,6 +1265,8 @@ Function LJZ_EDCWB_GetLastFitROIRange(iLo, iHi)
     return 0
 End
 
+// 当传入显式 x wave 时，模型评估必须使用 wave values 本身。
+// 不能假设 x 轴一定是等间距 scaling。
 Function LJZ_EDCWB_EvalModelWave(modelID, wXRef, wCoef, wOut)
     Variable modelID
     Wave wXRef, wCoef, wOut
@@ -1275,7 +1278,10 @@ Function LJZ_EDCWB_EvalModelWave(modelID, wXRef, wCoef, wOut)
 
     Variable i, xv
     for (i = 0; i < n; i += 1)
-        xv = DimOffset(wXRef, 0) + i * DimDelta(wXRef, 0)
+        if (i >= numpnts(wXRef))
+            return -1
+        endif
+        xv = wXRef[i]
 
         if (modelID == LJZ_EDCWB_Model_SinglePeakFDConv())
             wOut[i] = LJZ_EDCWB_FitFunc_SinglePeakFDConv(wCoef, xv)
