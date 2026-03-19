@@ -314,12 +314,12 @@ Function LJZ_EDCWB_RefreshMetricBox()
     wM[1] = "Accept = " + num2str(acc)
 
     if (WaveExists(fi))
-        wM[2] = "ModelID = " + num2str(fi[0])
-        wM[3] = "FitOK = " + num2str(fi[3])
-        wM[4] = "FitRMSE = " + num2str(fi[5])
-        wM[5] = "ChiSq = " + num2str(fi[6])
-        wM[6] = "MaxAbsRes = " + num2str(fi[7])
-        wM[7] = "NROI = " + num2str(fi[8])
+        wM[2] = "ModelID = " + num2str(fi[LJZ_EDCWB_FI_ModelID()])
+        wM[3] = "FitOK = " + num2str(fi[LJZ_EDCWB_FI_FitOK()])
+        wM[4] = "FitRMSE = " + num2str(fi[LJZ_EDCWB_FI_FitRMSE()])
+        wM[5] = "ChiSq = " + num2str(fi[LJZ_EDCWB_FI_ChiSq()])
+        wM[6] = "MaxAbsRes = " + num2str(fi[LJZ_EDCWB_FI_MaxAbsRes()])
+        wM[7] = "NROI = " + num2str(fi[LJZ_EDCWB_FI_NROI()])
     else
         wM[2] = "ModelID = NaN"
         wM[3] = "FitOK = NaN"
@@ -580,6 +580,11 @@ Function LJZ_EDCWB_LoadCurrentWave()
         if (ok != 0)
             return -1
         endif
+    elseif (LJZ_EDCWB_HasEditSnapshot(curPath))
+        ok = LJZ_EDCWB_LoadEditSnapshotToEditState(curPath)
+        if (ok != 0)
+            return -1
+        endif
     else
         LJZ_EDCWB_SetModel(eModel)
         LJZ_EDCWB_AutoGuessAndSave(curPath, eModel)
@@ -626,8 +631,11 @@ Function LJZ_EDCWB_ExportSummaryToTargetDF()
     Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "fitOK") = NaN
     Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "fitRMSE") = NaN
     Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "chiSq") = NaN
+    Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "bg0") = NaN
+    Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "bg1") = NaN
     Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "x0") = NaN
     Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "w") = NaN
+    Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "eta") = NaN
     Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "Delta") = NaN
     Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "Gamma") = NaN
     Make/O/N=(n)   $(sTarget + LJZ_EDCWB_SummaryPrefix() + "A") = NaN
@@ -641,8 +649,11 @@ Function LJZ_EDCWB_ExportSummaryToTargetDF()
     Wave wFitOK  = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "fitOK")
     Wave wRMSE   = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "fitRMSE")
     Wave wChiSq  = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "chiSq")
+    Wave wbg0    = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "bg0")
+    Wave wbg1    = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "bg1")
     Wave wx0     = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "x0")
     Wave ww      = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "w")
+    Wave wEta    = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "eta")
     Wave wDelta  = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "Delta")
     Wave wGamma  = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "Gamma")
     Wave wA      = $(sTarget + LJZ_EDCWB_SummaryPrefix() + "A")
@@ -664,19 +675,27 @@ Function LJZ_EDCWB_ExportSummaryToTargetDF()
             continue
         endif
 
-        modelID   = fi[0]
+        modelID   = fi[LJZ_EDCWB_FI_ModelID()]
         wModel[i] = modelID
-        wFitOK[i] = fi[3]
-        wRMSE[i]  = fi[5]
-        wChiSq[i] = fi[6]
+        wFitOK[i] = fi[LJZ_EDCWB_FI_FitOK()]
+        wRMSE[i]  = fi[LJZ_EDCWB_FI_FitRMSE()]
+        wChiSq[i] = fi[LJZ_EDCWB_FI_ChiSq()]
+
+        if (LJZ_EDCWB_ModelHasParam(modelID, "bg0"))
+            wbg0[i] = fc[LJZ_EDCWB_ParamIndex(modelID, "bg0")]
+        endif
+        if (LJZ_EDCWB_ModelHasParam(modelID, "bg1"))
+            wbg1[i] = fc[LJZ_EDCWB_ParamIndex(modelID, "bg1")]
+        endif
 
         if (modelID == LJZ_EDCWB_Model_SinglePeakFDConv())
-            wx0[i]  = fc[LJZ_EDCWB_ParamIndex(modelID, "x0")]
-            ww[i]   = fc[LJZ_EDCWB_ParamIndex(modelID, "w")]
-            wA[i]   = fc[LJZ_EDCWB_ParamIndex(modelID, "A")]
-            wEF[i]  = fc[LJZ_EDCWB_ParamIndex(modelID, "EF")]
-            wT[i]   = fc[LJZ_EDCWB_ParamIndex(modelID, "T")]
-            wRes[i] = fc[LJZ_EDCWB_ParamIndex(modelID, "res")]
+            wx0[i]   = fc[LJZ_EDCWB_ParamIndex(modelID, "x0")]
+            ww[i]    = fc[LJZ_EDCWB_ParamIndex(modelID, "w")]
+            wEta[i]  = fc[LJZ_EDCWB_ParamIndex(modelID, "eta")]
+            wA[i]    = fc[LJZ_EDCWB_ParamIndex(modelID, "A")]
+            wEF[i]   = fc[LJZ_EDCWB_ParamIndex(modelID, "EF")]
+            wT[i]    = fc[LJZ_EDCWB_ParamIndex(modelID, "T")]
+            wRes[i]  = fc[LJZ_EDCWB_ParamIndex(modelID, "res")]
         elseif (modelID == LJZ_EDCWB_Model_EffectiveGap())
             wDelta[i] = fc[LJZ_EDCWB_ParamIndex(modelID, "Delta")]
             wGamma[i] = fc[LJZ_EDCWB_ParamIndex(modelID, "Gamma")]
