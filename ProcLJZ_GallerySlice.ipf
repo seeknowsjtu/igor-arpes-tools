@@ -289,6 +289,11 @@ Function sg_init_defaults_if_needed()
         Variable/G invertColors = 0
     endif
 
+    NVAR/Z displayMode = root:ARPES_LJZ:SliceGallery:displayMode
+    if (!NVAR_Exists(displayMode))
+        Variable/G displayMode = 0    // 0 raw, 1 second-derivative auto-view
+    endif
+
     NVAR/Z colorMode = root:ARPES_LJZ:SliceGallery:colorMode
     if (!NVAR_Exists(colorMode))
         Variable/G colorMode = 1      // 0 per-panel, 1 shared, 2 manual
@@ -1320,6 +1325,7 @@ Function sg_sync_panel_from_state()
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_y1
 
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_ck_lut
+    ControlUpdate/W=SLICEGALLERY_LJZ_P sg_ck_invert_ct
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_c0
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_c1
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tbf
@@ -1331,6 +1337,8 @@ Function sg_sync_panel_from_state()
     TitleBox sg_layers_txt,win=SLICEGALLERY_LJZ_P,title="Layers: " + sg_layers_to_string()
     TitleBox sg_vals_txt,win=SLICEGALLERY_LJZ_P,title="Dim2: " + sg_values_to_string()
     TitleBox sg_tb_ct_current,win=SLICEGALLERY_LJZ_P,title=sg_ct_display_string()
+    TitleBox sg_tb_mode_hint,win=SLICEGALLERY_LJZ_P,title=sg_color_mode_hint_string()
+    TitleBox sg_tb_range_hint,win=SLICEGALLERY_LJZ_P,title=sg_color_range_hint_string()
 
     sg_sync_popup_states()
     return 0
@@ -1391,6 +1399,7 @@ Function sg_sync_popup_states()
     SVAR selectionMode = root:ARPES_LJZ:SliceGallery:selectionMode
     SVAR layoutMode    = root:ARPES_LJZ:SliceGallery:layoutMode
 
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
     NVAR labelMode = root:ARPES_LJZ:SliceGallery:labelMode
     NVAR labelType = root:ARPES_LJZ:SliceGallery:labelType
@@ -1403,6 +1412,9 @@ Function sg_sync_popup_states()
 
     PopupMenu sg_pm_rstyle,win=SLICEGALLERY_LJZ_P,mode=sg_render_style_to_popup(renderStyle)
     PopupMenu sg_pm_rstyle,win=SLICEGALLERY_LJZ_P,popvalue=renderStyle
+
+    PopupMenu sg_pm_disp,win=SLICEGALLERY_LJZ_P,mode=max(1, min(2, displayMode + 1))
+    PopupMenu sg_pm_disp,win=SLICEGALLERY_LJZ_P,popvalue=sg_display_mode_to_string(displayMode)
 
     PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,mode=max(1, min(3, colorMode + 1))
     PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,popvalue=sg_color_mode_to_string(colorMode)
@@ -1469,6 +1481,20 @@ Function sg_render_style_to_popup(styleStr)
 
     return 1
 End
+
+Function/S sg_display_mode_to_string(modeNum)
+    Variable modeNum
+
+    switch (round(modeNum))
+        case 0:
+            return "Raw"
+        case 1:
+            return "SecondDerivAuto"
+    endswitch
+
+    return "Raw"
+End
+
 Function/S sg_color_mode_to_string(modeNum)
     Variable modeNum
 
@@ -1539,6 +1565,23 @@ Function sg_pm_rstyle_proc(ctrlName, popNumber, popText) : PopupMenuControl
 
     SVAR renderStyle = root:ARPES_LJZ:SliceGallery:renderStyle
     renderStyle = popText
+    return 0
+End
+
+Function sg_pm_display_proc(ctrlName, popNumber, popText) : PopupMenuControl
+    String ctrlName
+    Variable popNumber
+    String popText
+
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
+
+    if (StringMatch(popText, "SecondDerivAuto"))
+        displayMode = 1
+    else
+        displayMode = 0
+    endif
+
+    sg_sync_panel_from_state()
     return 0
 End
 
@@ -1803,49 +1846,55 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	CheckBox sg_ck_rev,variable= root:ARPES_LJZ:SliceGallery:reverseOrder
 	Button sg_btn_build,pos={531.00,390.60},size={117.00,24.00},proc=sg_btn_apply_selection,title="Build Layers"
 	Button sg_btn_clear,pos={669.00,390.60},size={117.00,24.00},proc=sg_btn_clear_layers_panel,title="Clear Layers"
-	GroupBox sg_gb_render,pos={840.00,57.00},size={187.80,180.60},title="Rendering Options"
+	GroupBox sg_gb_render,pos={840.00,57.00},size={187.80,205.20},title="Rendering Options"
 	PopupMenu sg_pm_layout,pos={852.00,84.00},size={40.20,20.40},proc=sg_pm_layout_proc
 	PopupMenu sg_pm_layout,mode=1,popvalue="Auto",value= #"\"Auto;1xN;2x3;2x4;3x3\""
 	PopupMenu sg_pm_rstyle,pos={852.00,60.00},size={162.00,20.40},proc=sg_pm_rstyle_proc
 	PopupMenu sg_pm_rstyle,mode=1,popvalue="LegacyTight",value= #"\"LegacyTight;EqualPlot\""
+	PopupMenu sg_pm_disp,pos={852.00,109.20},size={162.00,20.40},proc=sg_pm_display_proc
+	PopupMenu sg_pm_disp,mode=1,popvalue="Raw",value= #"\"Raw;SecondDerivAuto\""
 	CheckBox sg_ck_xuse,pos={906.60,84.60},size={42.60,18.00},title="Use X"
 	CheckBox sg_ck_xuse,variable= root:ARPES_LJZ:SliceGallery:xUse
-	SetVariable sg_sv_x0,pos={852.00,114.00},size={162.00,19.80},title="xMin"
+	SetVariable sg_sv_x0,pos={852.00,139.20},size={162.00,19.80},title="xMin"
 	SetVariable sg_sv_x0,value= root:ARPES_LJZ:SliceGallery:xMin
-	SetVariable sg_sv_x1,pos={852.00,141.60},size={162.00,19.80},title="xMax"
+	SetVariable sg_sv_x1,pos={852.00,166.80},size={162.00,19.80},title="xMax"
 	SetVariable sg_sv_x1,value= root:ARPES_LJZ:SliceGallery:xMax
 	CheckBox sg_ck_yuse,pos={957.60,87.00},size={42.60,18.00},title="Use Y"
 	CheckBox sg_ck_yuse,variable= root:ARPES_LJZ:SliceGallery:yUse
-	SetVariable sg_sv_y0,pos={852.00,171.60},size={162.00,19.80},title="yMin"
+	SetVariable sg_sv_y0,pos={852.00,196.80},size={162.00,19.80},title="yMin"
 	SetVariable sg_sv_y0,value= root:ARPES_LJZ:SliceGallery:yMin
-	SetVariable sg_sv_y1,pos={852.00,201.00},size={162.00,19.80},title="yMax"
+	SetVariable sg_sv_y1,pos={852.00,224.40},size={162.00,19.80},title="yMax"
 	SetVariable sg_sv_y1,value= root:ARPES_LJZ:SliceGallery:yMax
-	GroupBox sg_gb_color,pos={840.00,246.00},size={186.60,174.00},title="Color Settings"
+	GroupBox sg_gb_color,pos={840.00,271.20},size={186.60,211.20},title="Color Settings"
     TitleBox sg_tb_ct_current,pos={852.00,270.60},size={126.00,18.00},title="CT: Current"
     TitleBox sg_tb_ct_current,frame=0
 
     Button sg_btn_browse_ct,pos={984.00,267.60},size={30.00,18.60},proc=sg_btn_open_ct_browser,title="..."
 
-    CheckBox sg_ck_lut,pos={852.00,300.60},size={56.40,18.00},title="Use LUT"
+    TitleBox sg_tb_mode_hint,pos={852.00,294.60},size={168.00,26.40},title="Mode: Raw slices; color popup controls"
+    TitleBox sg_tb_mode_hint,fSize=10,frame=0
+    CheckBox sg_ck_lut,pos={852.00,329.40},size={56.40,18.00},title="Use LUT"
 	CheckBox sg_ck_lut,variable= root:ARPES_LJZ:SliceGallery:useLUT
-	CheckBox sg_ck_invert_ct,pos={930.00,300.60},size={78.00,18.00},title="Invert"
+	CheckBox sg_ck_invert_ct,pos={930.00,329.40},size={78.00,18.00},title="Invert"
 	CheckBox sg_ck_invert_ct,variable= root:ARPES_LJZ:SliceGallery:invertColors
-	PopupMenu sg_pm_color,pos={852.00,330.60},size={78.60,20.40},proc=sg_pm_color_proc
+	PopupMenu sg_pm_color,pos={852.00,359.40},size={78.60,20.40},proc=sg_pm_color_proc
 	PopupMenu sg_pm_color,mode=2,popvalue="SharedAuto",value= #"\"PerPanelAuto;SharedAuto;Manual\""
-	SetVariable sg_sv_c0,pos={852.00,360.60},size={78.00,19.80},title="cMin"
+	SetVariable sg_sv_c0,pos={852.00,389.40},size={78.00,19.80},title="cMin"
 	SetVariable sg_sv_c0,value= root:ARPES_LJZ:SliceGallery:cMin
-	SetVariable sg_sv_c1,pos={852.00,387.60},size={78.00,19.80},title="cMax"
+	SetVariable sg_sv_c1,pos={852.00,416.40},size={78.00,19.80},title="cMax"
 	SetVariable sg_sv_c1,value= root:ARPES_LJZ:SliceGallery:cMax
-	GroupBox sg_gb_label,pos={840.00,429.00},size={106.80,213.60},title="Label Settings"
-	PopupMenu sg_pm_label,pos={852.00,456.00},size={72.60,20.40},proc=sg_pm_label_proc
+    TitleBox sg_tb_range_hint,pos={852.00,442.80},size={168.00,30.00},title="Suggested c range: cMin=auto(min), cMax=0"
+    TitleBox sg_tb_range_hint,fSize=10,frame=0
+	GroupBox sg_gb_label,pos={840.00,492.00},size={106.80,150.60},title="Label Settings"
+	PopupMenu sg_pm_label,pos={852.00,519.00},size={72.60,20.40},proc=sg_pm_label_proc
 	PopupMenu sg_pm_label,mode=3,popvalue="Dim2Value",value= #"\"None;Index;Dim2Value;Index+Value\""
-	PopupMenu sg_pm_labtype,pos={867.00,492.00},size={44.40,20.40},proc=sg_pm_labeltype_proc
+	PopupMenu sg_pm_labtype,pos={867.00,555.00},size={44.40,20.40},proc=sg_pm_labeltype_proc
 	PopupMenu sg_pm_labtype,mode=3,popvalue="Delay",value= #"\"None;Fluence;Delay;Temp\""
-	SetVariable sg_sv_tbf,pos={852.00,555.00},size={78.00,19.80},title="Font"
+	SetVariable sg_sv_tbf,pos={852.00,588.00},size={78.00,19.80},title="Font"
 	SetVariable sg_sv_tbf,limits={6,72,1},value= root:ARPES_LJZ:SliceGallery:tbFont
-	SetVariable sg_sv_tbx,pos={852.00,582.00},size={78.00,19.80},title="X%"
+	SetVariable sg_sv_tbx,pos={852.00,612.60},size={78.00,19.80},title="X%"
 	SetVariable sg_sv_tbx,value= root:ARPES_LJZ:SliceGallery:tbX
-	SetVariable sg_sv_tby,pos={852.00,609.60},size={78.00,19.80},title="Y%"
+	SetVariable sg_sv_tby,pos={852.00,637.20},size={78.00,19.80},title="Y%"
 	SetVariable sg_sv_tby,value= root:ARPES_LJZ:SliceGallery:tbY
 	GroupBox sg_gb_summary,pos={6.60,576.00},size={810.60,84.60},title="Summary Information"
 	TitleBox sg_layers_txt,pos={18.60,600.00},size={114.00,18.00},title="Layers: 0, 1, 2, 3, 4, 5"
@@ -2048,6 +2097,58 @@ End
 // Slice extraction
 //============================================================
 
+Function sg_second_derivative_view_enabled()
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
+    return (round(displayMode) == 1)
+End
+
+Function sg_apply_second_derivative_to_image(imgWave)
+    Wave imgWave
+
+    if (!WaveExists(imgWave))
+        return -1
+    endif
+
+    if (WaveDims(imgWave) != 2)
+        return -1
+    endif
+
+    if (DimSize(imgWave, 0) < 3 || DimSize(imgWave, 1) < 3)
+        return -1
+    endif
+
+    Duplicate/FREE imgWave, tmpDx2
+    Duplicate/FREE imgWave, tmpDy2
+
+    Differentiate/DIM=0 tmpDx2
+    Differentiate/DIM=0 tmpDx2
+
+    Differentiate/DIM=1 tmpDy2
+    Differentiate/DIM=1 tmpDy2
+
+    imgWave[][] = tmpDx2[p][q] + tmpDy2[p][q]
+    return 0
+End
+
+Function sg_set_second_deriv_color_range(globalMin, globalMax)
+    Variable globalMin, globalMax
+
+    NVAR cMin = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMax = root:ARPES_LJZ:SliceGallery:cMax
+
+    if (numtype(globalMin) != 0)
+        return -1
+    endif
+
+    if (globalMin >= 0)
+        globalMin = min(globalMin, -1e-12)
+    endif
+
+    cMin = globalMin
+    cMax = 0
+    return 0
+End
+
 Function sg_extract_selected_slices_to_preview_tmp()
     sg_init_defaults_if_needed()
 
@@ -2085,6 +2186,10 @@ Function sg_extract_selected_slices_to_preview_tmp()
 
         SetScale/P x DimOffset(sourceWave, 0), DimDelta(sourceWave, 0), imgWave
         SetScale/P y DimOffset(sourceWave, 1), DimDelta(sourceWave, 1), imgWave
+
+        if (sg_second_derivative_view_enabled())
+            sg_apply_second_derivative_to_image(imgWave)
+        endif
     endfor
 
     SetDataFolder df0
@@ -2102,6 +2207,7 @@ Function sg_compute_shared_color_range()
     Wave selLayers = root:ARPES_LJZ:SliceGallery:selLayers
     NVAR cMin = root:ARPES_LJZ:SliceGallery:cMin
     NVAR cMax = root:ARPES_LJZ:SliceGallery:cMax
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
 
     Variable nSel = DimSize(selLayers, 0)
 
@@ -2132,6 +2238,10 @@ Function sg_compute_shared_color_range()
 
     if (numtype(globalMin) != 0 || numtype(globalMax) != 0)
         return NaN
+    endif
+
+    if (round(displayMode) == 1)
+        return sg_set_second_deriv_color_range(globalMin, globalMax)
     endif
 
     if (globalMin == globalMax)
@@ -2244,6 +2354,7 @@ Function sg_prepare_ct_snapshot_for_image(graphName, imageName)
     SVAR ctPick       = root:ARPES_LJZ:SliceGallery:ctPick
     NVAR useLUT       = root:ARPES_LJZ:SliceGallery:useLUT
     NVAR invertColors = root:ARPES_LJZ:SliceGallery:invertColors
+    NVAR displayMode  = root:ARPES_LJZ:SliceGallery:displayMode
 
     Wave/Z/W/U srcCT = root:ARPES_LJZ:CTLUZ:ct_table
     Wave/Z srcLUT    = root:ARPES_LJZ:CTLUZ:ct_lut
@@ -2259,10 +2370,15 @@ Function sg_prepare_ct_snapshot_for_image(graphName, imageName)
         return -1
     endif
 
+    Variable effectiveInvert = invertColors
+    if (round(displayMode) == 1)
+        effectiveInvert = 1
+    endif
+
     String ctPath  = sg_ct_snapshot_ct_path(graphName, imageName)
     String lutPath = sg_ct_snapshot_lut_path(graphName, imageName)
 
-    if (invertColors)
+    if (effectiveInvert)
         Duplicate/O srcCT, $ctPath
         Wave/W/U snapCT = $ctPath
         sg_build_effective_ct(snapCT, srcCT, srcLUT, useLUT, 1)
@@ -2433,13 +2549,24 @@ Function sg_render_preview_legacytight()
     endif
 
     SVAR layoutMode = root:ARPES_LJZ:SliceGallery:layoutMode
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode  = root:ARPES_LJZ:SliceGallery:colorMode
 
     Variable useFixedRange = 0
     Variable fixedC0 = NaN
     Variable fixedC1 = NaN
 
-    if (colorMode == 1)
+    if (round(displayMode) == 1)
+        if (sg_compute_shared_color_range() != 0)
+            DoAlert 0, "SliceGallery: failed to compute second-derivative color range."
+            return -1
+        endif
+        NVAR cMinDeriv = root:ARPES_LJZ:SliceGallery:cMin
+        NVAR cMaxDeriv = root:ARPES_LJZ:SliceGallery:cMax
+        useFixedRange = 1
+        fixedC0 = cMinDeriv
+        fixedC1 = cMaxDeriv
+    elseif (colorMode == 1)
         if (sg_compute_shared_color_range() != 0)
             DoAlert 0, "SliceGallery: failed to compute shared color range."
             return -1
@@ -2627,13 +2754,24 @@ Function sg_render_preview_equalplot()
     endif
 
     SVAR layoutMode = root:ARPES_LJZ:SliceGallery:layoutMode
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode  = root:ARPES_LJZ:SliceGallery:colorMode
 
     Variable useFixedRange = 0
     Variable fixedC0 = NaN
     Variable fixedC1 = NaN
 
-    if (colorMode == 1)
+    if (round(displayMode) == 1)
+        if (sg_compute_shared_color_range() != 0)
+            DoAlert 0, "SliceGallery: failed to compute second-derivative color range."
+            return -1
+        endif
+        NVAR cMinDeriv = root:ARPES_LJZ:SliceGallery:cMin
+        NVAR cMaxDeriv = root:ARPES_LJZ:SliceGallery:cMax
+        useFixedRange = 1
+        fixedC0 = cMinDeriv
+        fixedC1 = cMaxDeriv
+    elseif (colorMode == 1)
         if (sg_compute_shared_color_range() != 0)
             DoAlert 0, "SliceGallery: failed to compute shared color range."
             return -1
@@ -2896,13 +3034,14 @@ Function sg_export_current_preview()
 
     SVAR layoutMode = root:ARPES_LJZ:SliceGallery:layoutMode
     SVAR renderStyle = root:ARPES_LJZ:SliceGallery:renderStyle
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
 
     Variable useFixedRange = 0
     Variable fixedC0 = NaN
     Variable fixedC1 = NaN
 
-    if (colorMode == 1)
+    if (round(displayMode) == 1 || colorMode == 1)
         // 用导出后的永久 wave 算 shared range
         Variable globalMin = NaN, globalMax = NaN
         for (i = 0; i < nSel; i += 1)
@@ -2920,13 +3059,23 @@ Function sg_export_current_preview()
             endif
         endfor
         if (numtype(globalMin) == 0 && numtype(globalMax) == 0)
-            if (globalMin == globalMax)
-                globalMin -= 1e-12
-                globalMax += 1e-12
+            if (round(displayMode) == 1)
+                if (sg_set_second_deriv_color_range(globalMin, globalMax) == 0)
+                    NVAR cMinDeriv = root:ARPES_LJZ:SliceGallery:cMin
+                    NVAR cMaxDeriv = root:ARPES_LJZ:SliceGallery:cMax
+                    useFixedRange = 1
+                    fixedC0 = cMinDeriv
+                    fixedC1 = cMaxDeriv
+                endif
+            else
+                if (globalMin == globalMax)
+                    globalMin -= 1e-12
+                    globalMax += 1e-12
+                endif
+                useFixedRange = 1
+                fixedC0 = globalMin
+                fixedC1 = globalMax
             endif
-            useFixedRange = 1
-            fixedC0 = globalMin
-            fixedC1 = globalMax
         endif
     elseif (colorMode == 2)
         if (sg_validate_manual_color_range() != 0)
@@ -3160,6 +3309,51 @@ Function/S sg_ct_display_string()
     endif
 
     return "CT: " + ctPick
+End
+
+Function/S sg_color_mode_hint_string()
+    sg_init_defaults_if_needed()
+
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
+
+    if (round(displayMode) == 1)
+        return "Mode: 2nd deriv slices + inverted CT + c range [auto min, 0]"
+    endif
+
+    return "Mode: Raw slices; color popup controls PerPanel/Shared/Manual"
+End
+
+Function/S sg_color_range_hint_string()
+    sg_init_defaults_if_needed()
+
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
+    NVAR colorMode   = root:ARPES_LJZ:SliceGallery:colorMode
+    NVAR cMin        = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMax        = root:ARPES_LJZ:SliceGallery:cMax
+
+    String outStr
+    if (round(displayMode) == 1)
+        if (numtype(cMin) == 0)
+            sprintf outStr, "Suggested c range: cMin≈%.4g, cMax=0", cMin
+        else
+            outStr = "Suggested c range: cMin=auto(min), cMax=0"
+        endif
+        return outStr
+    endif
+
+    if (round(colorMode) == 2)
+        if (numtype(cMin) == 0 && numtype(cMax) == 0)
+            sprintf outStr, "Manual c range: [%.4g, %.4g]", cMin, cMax
+        else
+            outStr = "Manual c range: enter numeric cMin < cMax"
+        endif
+    elseif (round(colorMode) == 1)
+        outStr = "SharedAuto: preview/export will fill cMin/cMax from selected slices"
+    else
+        outStr = "PerPanelAuto: each panel uses its own auto range"
+    endif
+
+    return outStr
 End
 
 
