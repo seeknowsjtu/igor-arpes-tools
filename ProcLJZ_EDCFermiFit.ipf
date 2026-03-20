@@ -184,9 +184,9 @@ Function LJZ_EDCFermiFit_EnsureDF()
         Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":SB") = 0
     endif
 
-    NVAR/Z BGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":BGSlope")
-    if (!NVAR_Exists(BGSlope))
-        Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":BGSlope") = 0
+    NVAR/Z OccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":OccSlope")
+    if (!NVAR_Exists(OccSlope))
+        Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":OccSlope") = 0
     endif
 
     NVAR/Z HHeight = $(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
@@ -219,9 +219,9 @@ Function LJZ_EDCFermiFit_EnsureDF()
         Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":HSB") = 0
     endif
 
-    NVAR/Z HBGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HBGSlope")
-    if (!NVAR_Exists(HBGSlope))
-        Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":HBGSlope") = 1
+    NVAR/Z HOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
+    if (!NVAR_Exists(HOccSlope))
+        Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope") = 1
     endif
 
     SVAR/Z sWorkSrc = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource")
@@ -269,9 +269,9 @@ Function LJZ_EDCFermiFit_EnsureDF()
         Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":LastSB") = NaN
     endif
 
-    NVAR/Z LastBGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastBGSlope")
-    if (!NVAR_Exists(LastBGSlope))
-        Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":LastBGSlope") = NaN
+    NVAR/Z LastOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope")
+    if (!NVAR_Exists(LastOccSlope))
+        Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope") = NaN
     endif
 
     NVAR/Z LastChiSq = $(LJZ_EDCFermiFit_BaseDF() + ":LastChiSq")
@@ -639,7 +639,7 @@ Function LJZ_EDCFermiFit_EnsureResultWaves()
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_bg", nResult)
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_res", nResult)
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_sb", nResult)
-    LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_bgslope", nResult)
+    LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_occslope", nResult)
 
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_height_sig", nResult)
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_ef_sig", nResult)
@@ -647,7 +647,7 @@ Function LJZ_EDCFermiFit_EnsureResultWaves()
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_bg_sig", nResult)
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_res_sig", nResult)
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_sb_sig", nResult)
-    LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_bgslope_sig", nResult)
+    LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_occslope_sig", nResult)
 
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_chisq", nResult)
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_ok", nResult)
@@ -667,14 +667,14 @@ Function LJZ_EDCFermiFit_ClearAllResultWaves()
     Wave/Z w4 = $(dfStr + "edc_ff_bg")
     Wave/Z w5 = $(dfStr + "edc_ff_res")
     Wave/Z w6 = $(dfStr + "edc_ff_sb")
-    Wave/Z w7 = $(dfStr + "edc_ff_bgslope")
+    Wave/Z w7 = $(dfStr + "edc_ff_occslope")
     Wave/Z w8 = $(dfStr + "edc_ff_height_sig")
     Wave/Z w9 = $(dfStr + "edc_ff_ef_sig")
     Wave/Z w10 = $(dfStr + "edc_ff_te_sig")
     Wave/Z w11 = $(dfStr + "edc_ff_bg_sig")
     Wave/Z w12 = $(dfStr + "edc_ff_res_sig")
     Wave/Z w13 = $(dfStr + "edc_ff_sb_sig")
-    Wave/Z w14 = $(dfStr + "edc_ff_bgslope_sig")
+    Wave/Z w14 = $(dfStr + "edc_ff_occslope_sig")
     Wave/Z w15 = $(dfStr + "edc_ff_chisq")
     Wave/Z w16 = $(dfStr + "edc_ff_ok")
 
@@ -737,7 +737,7 @@ Function LJZ_EDCFermiFit_ClearCurrentResultDisplay()
     NVAR LastBG = $(LJZ_EDCFermiFit_BaseDF() + ":LastBG")
     NVAR LastRes = $(LJZ_EDCFermiFit_BaseDF() + ":LastRes")
     NVAR LastSB = $(LJZ_EDCFermiFit_BaseDF() + ":LastSB")
-    NVAR LastBGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastBGSlope")
+    NVAR LastOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope")
     NVAR LastChiSq = $(LJZ_EDCFermiFit_BaseDF() + ":LastChiSq")
     NVAR LastOK = $(LJZ_EDCFermiFit_BaseDF() + ":LastOK")
 
@@ -747,7 +747,7 @@ Function LJZ_EDCFermiFit_ClearCurrentResultDisplay()
     LastBG = NaN
     LastRes = NaN
     LastSB = NaN
-    LastBGSlope = NaN
+    LastOccSlope = NaN
     LastChiSq = NaN
     LastOK = 0
 
@@ -779,11 +779,11 @@ Function LJZ_EDCFermiFit_LoadStoredResultForSelection()
     Wave/Z wBG = $(dfStr + "edc_ff_bg")
     Wave/Z wRes = $(dfStr + "edc_ff_res")
     Wave/Z wSB = $(dfStr + "edc_ff_sb")
-    Wave/Z wBGSlope = $(dfStr + "edc_ff_bgslope")
+    Wave/Z wOccSlope = $(dfStr + "edc_ff_occslope")
     Wave/Z wCS = $(dfStr + "edc_ff_chisq")
     Wave/Z wOK = $(dfStr + "edc_ff_ok")
 
-    if (!WaveExists(wH) || !WaveExists(wEF) || !WaveExists(wTe) || !WaveExists(wBG) || !WaveExists(wRes) || !WaveExists(wSB) || !WaveExists(wBGSlope) || !WaveExists(wCS) || !WaveExists(wOK))
+    if (!WaveExists(wH) || !WaveExists(wEF) || !WaveExists(wTe) || !WaveExists(wBG) || !WaveExists(wRes) || !WaveExists(wSB) || !WaveExists(wOccSlope) || !WaveExists(wCS) || !WaveExists(wOK))
         return -1
     endif
     if (idx < 0 || idx >= numpnts(wH))
@@ -796,7 +796,7 @@ Function LJZ_EDCFermiFit_LoadStoredResultForSelection()
     NVAR LastBG = $(LJZ_EDCFermiFit_BaseDF() + ":LastBG")
     NVAR LastRes = $(LJZ_EDCFermiFit_BaseDF() + ":LastRes")
     NVAR LastSB = $(LJZ_EDCFermiFit_BaseDF() + ":LastSB")
-    NVAR LastBGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastBGSlope")
+    NVAR LastOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope")
     NVAR LastChiSq = $(LJZ_EDCFermiFit_BaseDF() + ":LastChiSq")
     NVAR LastOK = $(LJZ_EDCFermiFit_BaseDF() + ":LastOK")
 
@@ -806,7 +806,7 @@ Function LJZ_EDCFermiFit_LoadStoredResultForSelection()
     LastBG = wBG[idx]
     LastRes = wRes[idx]
     LastSB = wSB[idx]
-    LastBGSlope = wBGSlope[idx]
+    LastOccSlope = wOccSlope[idx]
     LastChiSq = wCS[idx]
     LastOK = wOK[idx]
 
@@ -834,14 +834,14 @@ Function LJZ_EDCFermiFit_WriteResultForWave(wPath, pw, sigw, chisqVal, okFlag)
     Wave/Z wBG = $(dfStr + "edc_ff_bg")
     Wave/Z wRes = $(dfStr + "edc_ff_res")
     Wave/Z wSB = $(dfStr + "edc_ff_sb")
-    Wave/Z wBGSlope = $(dfStr + "edc_ff_bgslope")
+    Wave/Z wOccSlope = $(dfStr + "edc_ff_occslope")
     Wave/Z wHs = $(dfStr + "edc_ff_height_sig")
     Wave/Z wEFs = $(dfStr + "edc_ff_ef_sig")
     Wave/Z wTes = $(dfStr + "edc_ff_te_sig")
     Wave/Z wBGs = $(dfStr + "edc_ff_bg_sig")
     Wave/Z wRess = $(dfStr + "edc_ff_res_sig")
     Wave/Z wSBs = $(dfStr + "edc_ff_sb_sig")
-    Wave/Z wBGSlopeSig = $(dfStr + "edc_ff_bgslope_sig")
+    Wave/Z wOccSlopeSig = $(dfStr + "edc_ff_occslope_sig")
     Wave/Z wCS = $(dfStr + "edc_ff_chisq")
     Wave/Z wOK = $(dfStr + "edc_ff_ok")
 
@@ -855,7 +855,7 @@ Function LJZ_EDCFermiFit_WriteResultForWave(wPath, pw, sigw, chisqVal, okFlag)
     wBG[idx]  = pw[3]
     wRes[idx] = pw[4]
     wSB[idx]  = pw[5]
-    wBGSlope[idx] = pw[6]
+    wOccSlope[idx] = pw[6]
 
     wHs[idx]   = sigw[0]
     wEFs[idx]  = sigw[1]
@@ -863,7 +863,7 @@ Function LJZ_EDCFermiFit_WriteResultForWave(wPath, pw, sigw, chisqVal, okFlag)
     wBGs[idx]  = sigw[3]
     wRess[idx] = sigw[4]
     wSBs[idx]  = sigw[5]
-    wBGSlopeSig[idx] = sigw[6]
+    wOccSlopeSig[idx] = sigw[6]
 
     wCS[idx] = chisqVal
     wOK[idx] = okFlag
@@ -874,7 +874,7 @@ Function LJZ_EDCFermiFit_WriteResultForWave(wPath, pw, sigw, chisqVal, okFlag)
     NVAR LastBG = $(LJZ_EDCFermiFit_BaseDF() + ":LastBG")
     NVAR LastRes = $(LJZ_EDCFermiFit_BaseDF() + ":LastRes")
     NVAR LastSB = $(LJZ_EDCFermiFit_BaseDF() + ":LastSB")
-    NVAR LastBGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastBGSlope")
+    NVAR LastOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope")
     NVAR LastChiSq = $(LJZ_EDCFermiFit_BaseDF() + ":LastChiSq")
     NVAR LastOK = $(LJZ_EDCFermiFit_BaseDF() + ":LastOK")
 
@@ -884,7 +884,7 @@ Function LJZ_EDCFermiFit_WriteResultForWave(wPath, pw, sigw, chisqVal, okFlag)
     LastBG = pw[3]
     LastRes = pw[4]
     LastSB = pw[5]
-    LastBGSlope = pw[6]
+    LastOccSlope = pw[6]
     LastChiSq = chisqVal
     LastOK = okFlag
 
@@ -1008,9 +1008,9 @@ Function/S LJZ_EDCFermiFit_HoldString()
     NVAR HBG = $(LJZ_EDCFermiFit_BaseDF() + ":HBG")
     NVAR HRes = $(LJZ_EDCFermiFit_BaseDF() + ":HRes")
     NVAR HSB = $(LJZ_EDCFermiFit_BaseDF() + ":HSB")
-    NVAR HBGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HBGSlope")
+    NVAR HOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
 
-    return num2str(HHeight) + num2str(HEF) + num2str(HTe) + num2str(HBG) + num2str(HRes) + num2str(HSB) + num2str(HBGSlope)
+    return num2str(HHeight) + num2str(HEF) + num2str(HTe) + num2str(HBG) + num2str(HRes) + num2str(HSB) + num2str(HOccSlope)
 End
 
 Function LJZ_EDCFermiFit_ClearCurrentWorkWave()
@@ -1160,7 +1160,7 @@ Function LJZ_EDCFermiFit_UIToCoefWave(pw)
     NVAR BG = $(LJZ_EDCFermiFit_BaseDF() + ":BG")
     NVAR Res = $(LJZ_EDCFermiFit_BaseDF() + ":Res")
     NVAR SB = $(LJZ_EDCFermiFit_BaseDF() + ":SB")
-    NVAR BGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":BGSlope")
+    NVAR OccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":OccSlope")
 
     pw[0] = Height
     pw[1] = EF
@@ -1168,7 +1168,7 @@ Function LJZ_EDCFermiFit_UIToCoefWave(pw)
     pw[3] = BG
     pw[4] = LJZ_EDCFermiFit_FWHMMeV_to_SigmaEV(Res)
     pw[5] = SB
-    pw[6] = BGSlope
+    pw[6] = OccSlope
     return 0
 End
 
@@ -1181,7 +1181,7 @@ Function LJZ_EDCFermiFit_CoefWaveToUI(pw)
     NVAR BG = $(LJZ_EDCFermiFit_BaseDF() + ":BG")
     NVAR Res = $(LJZ_EDCFermiFit_BaseDF() + ":Res")
     NVAR SB = $(LJZ_EDCFermiFit_BaseDF() + ":SB")
-    NVAR BGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":BGSlope")
+    NVAR OccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":OccSlope")
 
     Height = pw[0]
     EF = pw[1]
@@ -1189,7 +1189,7 @@ Function LJZ_EDCFermiFit_CoefWaveToUI(pw)
     BG = pw[3]
     Res = LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pw[4])
     SB = pw[5]
-    BGSlope = pw[6]
+    OccSlope = pw[6]
     return 0
 End
 
@@ -1338,19 +1338,54 @@ Function LJZ_EDCFermiFit_GuessParamsFromWave(w, x1, x2, outPW)
     Variable sbGuess = max(0, min(0.35 * abs(height), max(0, hiLevel - LJZ_EDCFermiFit_WindowMean(ySm, spanN - max(3, round(spanN * 0.08)), spanN - 1))))
     Variable xLeft = pnt2x(w, pLo)
     Variable xRight = pnt2x(w, pHi)
-    Variable slopeGuess = 0
-    Variable edgeSpan = xRight - xLeft
-    Variable edgeSpanAbs = abs(edgeSpan)
-    if (numtype(edgeSpanAbs) != 0 || edgeSpanAbs < 1e-9)
-        edgeSpanAbs = max(abs(DimDelta(w, 0)) * max(spanN - 1, 1), 1e-4)
+    Variable fitSpan = abs(xRight - xLeft)
+    if (numtype(fitSpan) != 0 || fitSpan < 1e-9)
+        fitSpan = max(abs(DimDelta(w, 0)) * max(spanN - 1, 1), 1e-4)
     endif
-    if (numtype(edgeSpan) == 0 && abs(edgeSpan) > 1e-9)
-        slopeGuess = (meanR - meanL) / edgeSpan
+
+    Variable occMeanFar, occMeanNear, occXFar, occXNear
+    Variable occP1, occP2, occP3, occP4
+    Variable occSlopeGuess = 0
+    Variable occClamp = max(0.35 * abs(height) / fitSpan, 1e-3)
+
+    if (descending)
+        occP1 = 0
+        occP2 = min(spanN - 1, max(nSeg - 1, 1))
+        occP3 = x2pnt(ySm, ef - 0.18 * fitSpan)
+        occP4 = x2pnt(ySm, ef - 0.04 * fitSpan)
+        if (numtype(occP3) != 0)
+            occP3 = max(occP2, round(0.55 * spanN))
+        endif
+        if (numtype(occP4) != 0)
+            occP4 = max(occP3, round(0.82 * spanN))
+        endif
+        occP3 = LJZ_EDCFermiFit_Clamp(round(occP3), 0, spanN - 1)
+        occP4 = LJZ_EDCFermiFit_Clamp(round(occP4), 0, spanN - 1)
+    else
+        occP4 = spanN - 1
+        occP3 = max(0, min(spanN - 2, spanN - nSeg))
+        occP2 = x2pnt(ySm, ef + 0.18 * fitSpan)
+        occP1 = x2pnt(ySm, ef + 0.04 * fitSpan)
+        if (numtype(occP1) != 0)
+            occP1 = min(occP3, round(0.18 * spanN))
+        endif
+        if (numtype(occP2) != 0)
+            occP2 = min(occP3, round(0.45 * spanN))
+        endif
+        occP1 = LJZ_EDCFermiFit_Clamp(round(occP1), 0, spanN - 1)
+        occP2 = LJZ_EDCFermiFit_Clamp(round(occP2), 0, spanN - 1)
     endif
-    Variable slopeClamp = max(abs(height) / edgeSpanAbs, 1e-3)
-    slopeClamp = max(slopeClamp, abs(bg) * 2 / edgeSpanAbs)
-    slopeClamp *= 3
-    slopeGuess = LJZ_EDCFermiFit_Clamp(slopeGuess, -slopeClamp, slopeClamp)
+
+    occP1 = min(occP1, occP2)
+    occP3 = min(occP3, occP4)
+    occMeanFar = LJZ_EDCFermiFit_WindowMean(ySm, occP1, occP2)
+    occMeanNear = LJZ_EDCFermiFit_WindowMean(ySm, occP3, occP4)
+    occXFar = 0.5 * (pnt2x(ySm, occP1) + pnt2x(ySm, occP2))
+    occXNear = 0.5 * (pnt2x(ySm, occP3) + pnt2x(ySm, occP4))
+    if (numtype(occMeanFar) == 0 && numtype(occMeanNear) == 0 && numtype(occXFar) == 0 && numtype(occXNear) == 0 && abs(occXNear - occXFar) > 1e-9)
+        occSlopeGuess = (occMeanNear - occMeanFar) / (occXNear - occXFar)
+    endif
+    occSlopeGuess = LJZ_EDCFermiFit_Clamp(occSlopeGuess, -occClamp, occClamp)
 
     outPW[0] = max(height, 1e-6)
     outPW[1] = ef
@@ -1358,7 +1393,7 @@ Function LJZ_EDCFermiFit_GuessParamsFromWave(w, x1, x2, outPW)
     outPW[3] = bg
     outPW[4] = LJZ_EDCFermiFit_FWHMMeV_to_SigmaEV(resGuessMeV)
     outPW[5] = sbGuess
-    outPW[6] = slopeGuess
+    outPW[6] = occSlopeGuess
 
     return 0
 End
@@ -1378,7 +1413,7 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
     Variable BG  = pw[3]
     Variable sig = abs(pw[4])
     Variable SB  = max(pw[5], 0)
-    Variable BGSlope = pw[6]
+    Variable OccSlope = pw[6]
 
     Variable dx
     if (n > 1)
@@ -1397,17 +1432,18 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
     Variable padN = max(24, ceil(8 * blurEV / dxAbs))
     Variable nExt = n + 2 * padN
 
-    Make/FREE/D/N=(nExt) xExt, yFD
+    Make/FREE/D/N=(nExt) xExt, yBare
     xExt = xw[0] + (p - padN) * dx
-    Variable i, arg
+    Variable i, arg, occAmp
     for (i = 0; i < nExt; i += 1)
         arg = (xExt[i] - EF) / (kB * T)
+        occAmp = A + OccSlope * (xExt[i] - EF)
         if (arg > 60)
-            yFD[i] = 0
+            yBare[i] = 0
         elseif (arg < -60)
-            yFD[i] = A
+            yBare[i] = occAmp
         else
-            yFD[i] = A / (1 + exp(arg))
+            yBare[i] = occAmp / (1 + exp(arg))
         endif
     endfor
 
@@ -1421,11 +1457,11 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
             gsum = 1
         endif
         gk /= gsum
-        Convolve/A gk, yFD
+        Convolve/A gk, yBare
     endif
 
     Make/FREE/D/N=(n) yCrop, yTail, shirleyShape
-    yCrop = yFD[p + padN]
+    yCrop = yBare[p + padN]
 
     Variable rightRef = yCrop[n - 1]
     yTail = max(yCrop[p] - rightRef, 0)
@@ -1441,7 +1477,7 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
         shirleyShape /= shMax
     endif
 
-    yw = yCrop[p] + BG + SB * shirleyShape[p] + BGSlope * (xw[p] - EF)
+    yw = yCrop[p] + BG + SB * shirleyShape[p]
     return 0
 End
 
@@ -1943,7 +1979,7 @@ Function LJZ_EDCFermiFit_UpdateGraphMarks()
     NVAR LastEF = $(LJZ_EDCFermiFit_BaseDF() + ":LastEF")
     NVAR LastTe = $(LJZ_EDCFermiFit_BaseDF() + ":LastTe")
     NVAR LastRes = $(LJZ_EDCFermiFit_BaseDF() + ":LastRes")
-    NVAR LastBGSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastBGSlope")
+    NVAR LastOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope")
     NVAR LastChiSq = $(LJZ_EDCFermiFit_BaseDF() + ":LastChiSq")
     NVAR LastOK = $(LJZ_EDCFermiFit_BaseDF() + ":LastOK")
 
@@ -1957,8 +1993,8 @@ Function LJZ_EDCFermiFit_UpdateGraphMarks()
     if (numtype(LastRes) == 0)
         tb += "Res = " + num2str(LastRes) + " meV\r"
     endif
-    if (numtype(LastBGSlope) == 0)
-        tb += "Slope = " + num2str(LastBGSlope) + "\r"
+    if (numtype(LastOccSlope) == 0)
+        tb += "OccSlope = " + num2str(LastOccSlope) + "\r"
     endif
     if (numtype(LastChiSq) == 0)
         tb += "ChiSq = " + num2str(LastChiSq) + "\r"
@@ -2144,9 +2180,9 @@ Function LJZ_EDCFermiFit_OpenPanel()
     SetVariable svSB,variable=$(LJZ_EDCFermiFit_BaseDF() + ":SB"),proc=LJZ_EDCFermiFit_SetVarProc
     CheckBox cbHSB,pos={635,624},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HSB")
 
-    SetVariable svBGSlope,pos={250,648},size={175,20},title="Slope"
-    SetVariable svBGSlope,variable=$(LJZ_EDCFermiFit_BaseDF() + ":BGSlope"),proc=LJZ_EDCFermiFit_SetVarProc
-    CheckBox cbHBGSlope,pos={635,650},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HBGSlope")
+    SetVariable svOccSlope,pos={250,648},size={175,20},title="OccSlope"
+    SetVariable svOccSlope,variable=$(LJZ_EDCFermiFit_BaseDF() + ":OccSlope"),proc=LJZ_EDCFermiFit_SetVarProc
+    CheckBox cbHOccSlope,pos={635,650},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
 
     TitleBox tbLast,pos={690,466},size={180,18},frame=0,title="Stored result for selection"
 
@@ -2168,8 +2204,8 @@ Function LJZ_EDCFermiFit_OpenPanel()
     SetVariable svLastOK,pos={690,622},size={170,20},title="Last OK"
     SetVariable svLastOK,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastOK"),noedit=1
 
-    SetVariable svLastBGSlope,pos={690,648},size={170,20},title="Last Slope"
-    SetVariable svLastBGSlope,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastBGSlope"),noedit=1
+    SetVariable svLastOccSlope,pos={690,648},size={170,20},title="Last OccSlope"
+    SetVariable svLastOccSlope,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope"),noedit=1
 
     Button btPlotResult,pos={875,618},size={80,24},title="Plot",proc=LJZ_EDCFermiFit_ButtonProc
 
@@ -2177,7 +2213,7 @@ Function LJZ_EDCFermiFit_OpenPanel()
     SetVariable svSelWave,value=_STR:LJZ_EDCFermiFit_BaseDF() + ":WaveSel",noedit=1
 
     TitleBox tbWorkMode,pos={10,700},size={945,18},frame=0,title="Showing source wave"
-    TitleBox tbMsg,pos={10,720},size={945,18},frame=0,title="Model: [FD step convolved with Gaussian] + BG0 + BG1*(E-EF) + normalized Shirley; slope defaults to hold"
+    TitleBox tbMsg,pos={10,720},size={945,18},frame=0,title="Model: [(Height + OccSlope*(E-EF)) * FD] convolved with Gaussian + BG + normalized Shirley"
 
     LJZ_EDCFermiFit_CreateGraphSubwindow()
     return 0
