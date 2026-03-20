@@ -1114,9 +1114,73 @@ Function LJZ_EDCFermiFit_GetFitPointWindow(w, x1, x2, pLoOut, pHiOut)
     return 0
 End
 
-Function LJZ_EDCFermiFit_ParamsLookValid(w, x1, x2, pw)
+Function LJZ_EDCFermiFit_StartParamsUsable(pw)
+    Wave pw
+
+    Variable i
+    for (i = 0; i < 7; i += 1)
+        if (numtype(pw[i]) != 0)
+            return 0
+        endif
+    endfor
+
+    if (pw[2] <= 0)
+        return 0
+    endif
+    if (pw[4] <= 0)
+        return 0
+    endif
+
+    return 1
+End
+
+Function LJZ_EDCFermiFit_ComputeWindowRMS(wData, wModel, pLo, pHi, residRMSOut, dataRMSOut)
+    Wave wData, wModel
+    Variable pLo, pHi
+    Variable &residRMSOut, &dataRMSOut
+
+    Variable n = numpnts(wData)
+    if (!WaveExists(wData) || !WaveExists(wModel) || n <= 0 || numpnts(wModel) != n)
+        residRMSOut = NaN
+        dataRMSOut = NaN
+        return -1
+    endif
+
+    pLo = LJZ_EDCFermiFit_Clamp(round(pLo), 0, n - 1)
+    pHi = LJZ_EDCFermiFit_Clamp(round(pHi), 0, n - 1)
+    if (pHi < pLo)
+        Variable tmpP = pLo
+        pLo = pHi
+        pHi = tmpP
+    endif
+
+    Variable i, count = 0
+    Variable sumResid2 = 0
+    Variable sumData2 = 0
+    for (i = pLo; i <= pHi; i += 1)
+        if (numtype(wData[i]) != 0 || numtype(wModel[i]) != 0)
+            continue
+        endif
+        Variable resid = wData[i] - wModel[i]
+        sumResid2 += resid^2
+        sumData2 += wData[i]^2
+        count += 1
+    endfor
+
+    if (count <= 0)
+        residRMSOut = NaN
+        dataRMSOut = NaN
+        return -1
+    endif
+
+    residRMSOut = sqrt(sumResid2 / count)
+    dataRMSOut = sqrt(sumData2 / count)
+    return 0
+End
+
+Function LJZ_EDCFermiFit_PostFitLooksReasonable(w, x1, x2, pw, residRMS, dataRMS)
     Wave w, pw
-    Variable x1, x2
+    Variable x1, x2, residRMS, dataRMS
 
     Variable pLo, pHi
     LJZ_EDCFermiFit_GetFitPointWindow(w, x1, x2, pLo, pHi)
@@ -1124,27 +1188,31 @@ Function LJZ_EDCFermiFit_ParamsLookValid(w, x1, x2, pw)
     Variable xHi = max(pnt2x(w, pLo), pnt2x(w, pHi))
     Variable span = abs(xHi - xLo)
     Variable sigmaMax = max(span, abs(DimDelta(w, 0))) * 0.8
-
-    if (numtype(pw[0]) != 0 || abs(pw[0]) < 1e-9)
-        return 0
-    endif
-    if (numtype(pw[1]) != 0 || pw[1] < xLo - 0.35 * span || pw[1] > xHi + 0.35 * span)
-        return 0
-    endif
-    if (numtype(pw[2]) != 0 || abs(pw[2]) < 0.2 || abs(pw[2]) > 600)
-        return 0
-    endif
-    if (numtype(pw[3]) != 0)
-        return 0
-    endif
-    if (numtype(pw[4]) != 0 || abs(pw[4]) < 1e-6 || abs(pw[4]) > sigmaMax)
-        return 0
-    endif
-    if (numtype(pw[5]) != 0)
-        return 0
-    endif
     Variable slopeMax = max(20 * abs(pw[0]) / max(span, 1e-4), 10 * abs(DimDelta(w, 0)))
-    if (numtype(pw[6]) != 0 || abs(pw[6]) > slopeMax)
+    Variable residRatio = residRMS / max(dataRMS, 1e-12)
+
+    if (!LJZ_EDCFermiFit_StartParamsUsable(pw))
+        return 0
+    endif
+    if (abs(pw[0]) < 1e-9)
+        return 0
+    endif
+    if (pw[1] < xLo - 0.35 * span || pw[1] > xHi + 0.35 * span)
+        return 0
+    endif
+    if (pw[2] < 0.2 || pw[2] > 1000)
+        return 0
+    endif
+    if (pw[4] < 1e-8 || pw[4] > sigmaMax)
+        return 0
+    endif
+    if (abs(pw[6]) > slopeMax)
+        return 0
+    endif
+    if (numtype(residRMS) != 0 || numtype(dataRMS) != 0)
+        return 0
+    endif
+    if (residRatio > 0.2)
         return 0
     endif
 
@@ -1164,9 +1232,9 @@ Function LJZ_EDCFermiFit_UIToCoefWave(pw)
 
     pw[0] = Height
     pw[1] = EF
-    pw[2] = max(abs(Te), 0.2)
+    pw[2] = Te
     pw[3] = BG
-    pw[4] = LJZ_EDCFermiFit_FWHMMeV_to_SigmaEV(Res)
+    pw[4] = Res / (2 * sqrt(2 * ln(2)) * 1000)
     pw[5] = SB
     pw[6] = OccSlope
     return 0
@@ -1663,11 +1731,11 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
 
     Make/FREE/D/N=7 startPW
     startPW = initPW[p]
-    if (!LJZ_EDCFermiFit_ParamsLookValid(wFit, xLo, xHi, startPW))
+    if (!LJZ_EDCFermiFit_StartParamsUsable(startPW))
         if (LJZ_EDCFermiFit_GuessParamsFromWave(wFit, xLo, xHi, startPW) != 0)
             LJZ_EDCFermiFit_ClearResultForWave(wPath)
             if (doAlertOnFail)
-                DoAlert 0, "当前波形无法生成稳定初值，请先调整拟合窗口。"
+                DoAlert 0, "当前初值含 NaN/Inf 或 T/Res 非法，且自动 Guess 兜底失败。请检查参数或拟合窗口。"
             endif
             return -1
         endif
@@ -1688,29 +1756,27 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     Make/FREE/D/N=7 pwOut = NaN
     Make/FREE/D/N=7 sigOut = NaN
 
-Variable ok = 1
-Variable i
-for (i = 0; i < 7; i += 1)
-    if (numtype(pw_fit[i]) != 0)
-        ok = 0
-    endif
-endfor
+    Variable ok = 1
+    Variable i
+    for (i = 0; i < 7; i += 1)
+        if (numtype(pw_fit[i]) != 0)
+            ok = 0
+        endif
+    endfor
 
-// 先不要因为 V_FitError 非零就直接判死
-// 只把它当调试信息
-if (numtype(fitErr) != 0)
-    ok = 0
-endif
+    if (numtype(fitErr) != 0)
+        ok = 0
+    endif
 
-// 后验筛选先放宽：只筛明显离谱的结果
-if (ok)
-    if (abs(pw_fit[2]) < 0.2 || abs(pw_fit[2]) > 1000)
-        ok = 0
+    Variable residRMS = NaN
+    Variable dataRMS = NaN
+    if (ok)
+        Make/FREE/D/N=(n) xFullEval, modelFull
+        xFullEval = pnt2x(wFit, p)
+        LJZ_EDCFermiFit_EvalModel(pw_fit, modelFull, xFullEval)
+        LJZ_EDCFermiFit_ComputeWindowRMS(wFit, modelFull, pLo, pHi, residRMS, dataRMS)
+        ok = LJZ_EDCFermiFit_PostFitLooksReasonable(wFit, xLo, xHi, pw_fit, residRMS, dataRMS)
     endif
-    if (abs(pw_fit[4]) < 1e-8)
-        ok = 0
-    endif
-endif
 
     Wave/Z wSig = W_sigma
     if (WaveExists(wSig) && numpnts(wSig) >= 7)
