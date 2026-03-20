@@ -1578,6 +1578,19 @@ Function sg_pm_rstyle_proc(ctrlName, popNumber, popText) : PopupMenuControl
     return 0
 End
 
+Function sg_apply_display_mode_linked_options()
+    sg_init_defaults_if_needed()
+
+    NVAR displayMode   = root:ARPES_LJZ:SliceGallery:displayMode
+    NVAR invertColors  = root:ARPES_LJZ:SliceGallery:invertColors
+
+    if (round(displayMode) == 0)
+        invertColors = 0
+    else
+        invertColors = 1
+    endif
+End
+
 Function sg_pm_display_proc(ctrlName, popNumber, popText) : PopupMenuControl
     String ctrlName
     Variable popNumber
@@ -1595,6 +1608,7 @@ Function sg_pm_display_proc(ctrlName, popNumber, popText) : PopupMenuControl
         displayMode = 0
     endif
 
+    sg_apply_display_mode_linked_options()
     sg_sync_panel_from_state()
     return 0
 End
@@ -1875,7 +1889,7 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	SetVariable sg_sv_x0,value= root:ARPES_LJZ:SliceGallery:xMin
 	SetVariable sg_sv_x1,pos={852.00,165.60},size={162.00,19.80},title="xMax"
 	SetVariable sg_sv_x1,value= root:ARPES_LJZ:SliceGallery:xMax
-	CheckBox sg_ck_yuse,pos={957.00,87.00},size={42.60,18.00},title="Use Y"
+	CheckBox sg_ck_yuse,pos={967.00,84.00},size={42.60,18.00},title="Use Y"
 	CheckBox sg_ck_yuse,variable= root:ARPES_LJZ:SliceGallery:yUse
 	SetVariable sg_sv_y0,pos={852.00,195.60},size={162.00,19.80},title="yMin"
 	SetVariable sg_sv_y0,value= root:ARPES_LJZ:SliceGallery:yMin
