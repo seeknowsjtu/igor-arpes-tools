@@ -1552,6 +1552,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     KillWaves/Z W_sigma
 
     FuncFit/Q/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_ModelAA pw_fit wFit[pLo, pHi]
+    variable V_FitError
     Variable fitErr = V_FitError
     Variable chiSq = V_chisq
 
@@ -1559,19 +1560,29 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     Make/FREE/D/N=6 pwOut = NaN
     Make/FREE/D/N=6 sigOut = NaN
 
-    Variable ok = 0
-    if (numtype(fitErr) == 0 && fitErr == 0)
-        ok = 1
-    endif
-    Variable i
-    for (i = 0; i < 6; i += 1)
-        if (numtype(pw_fit[i]) != 0)
-            ok = 0
-        endif
-    endfor
-    if (ok && !LJZ_EDCFermiFit_ParamsLookValid(wFit, xLo, xHi, pw_fit))
+Variable ok = 1
+Variable i
+for (i = 0; i < 6; i += 1)
+    if (numtype(pw_fit[i]) != 0)
         ok = 0
     endif
+endfor
+
+// 先不要因为 V_FitError 非零就直接判死
+// 只把它当调试信息
+if (numtype(fitErr) != 0)
+    ok = 0
+endif
+
+// 后验筛选先放宽：只筛明显离谱的结果
+if (ok)
+    if (abs(pw_fit[2]) < 0.2 || abs(pw_fit[2]) > 1000)
+        ok = 0
+    endif
+    if (abs(pw_fit[4]) < 1e-8)
+        ok = 0
+    endif
+endif
 
     Wave/Z wSig = W_sigma
     if (WaveExists(wSig) && numpnts(wSig) >= 6)
