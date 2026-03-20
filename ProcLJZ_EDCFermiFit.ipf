@@ -224,6 +224,11 @@ Function LJZ_EDCFermiFit_EnsureDF()
         String/G $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveLabel") = ""
     endif
 
+    SVAR/Z sWorkStatus = $(LJZ_EDCFermiFit_BaseDF() + ":WorkStatus")
+    if (!SVAR_Exists(sWorkStatus))
+        String/G $(LJZ_EDCFermiFit_BaseDF() + ":WorkStatus") = ""
+    endif
+
     NVAR/Z LastHeight = $(LJZ_EDCFermiFit_BaseDF() + ":LastHeight")
     if (!NVAR_Exists(LastHeight))
         Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":LastHeight") = NaN
@@ -974,12 +979,35 @@ End
 Function LJZ_EDCFermiFit_ClearCurrentWorkWave()
     SVAR sWorkSrc = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource")
     SVAR sWorkLabel = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveLabel")
+    SVAR sWorkStatus = $(LJZ_EDCFermiFit_BaseDF() + ":WorkStatus")
     sWorkSrc = ""
     sWorkLabel = ""
+    sWorkStatus = ""
 
     Wave workW = $(LJZ_EDCFermiFit_BaseDF() + ":CurrentWorkWave")
     Wave workMask = $(LJZ_EDCFermiFit_BaseDF() + ":CurrentWorkMask")
     Redimension/N=(0) workW, workMask
+    return 0
+End
+
+Function/S LJZ_EDCFermiFit_CurrentWorkStatusText()
+    SVAR/Z sWorkSrc = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource")
+    SVAR/Z sWorkStatus = $(LJZ_EDCFermiFit_BaseDF() + ":WorkStatus")
+    Wave/Z workW = $(LJZ_EDCFermiFit_BaseDF() + ":CurrentWorkWave")
+
+    if (SVAR_Exists(sWorkSrc) && SVAR_Exists(sWorkStatus) && WaveExists(workW))
+        if ((strlen(sWorkSrc) > 0) && (strlen(sWorkStatus) > 0) && (numpnts(workW) > 0))
+            return sWorkStatus
+        endif
+    endif
+
+    return "Showing source wave"
+End
+
+Function LJZ_EDCFermiFit_ResetCurrentWork()
+    LJZ_EDCFermiFit_ClearCurrentWorkWave()
+    LJZ_EDCFermiFit_ShowCurrentWave()
+    LJZ_EDCFermiFit_RefreshTitleBoxes()
     return 0
 End
 
@@ -1763,10 +1791,13 @@ Function LJZ_EDCFermiFit_RmBGCurrent()
 
     SVAR sWorkSrc = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource")
     SVAR sWorkLabel = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveLabel")
+    SVAR sWorkStatus = $(LJZ_EDCFermiFit_BaseDF() + ":WorkStatus")
     sWorkSrc = sWave
-    sWorkLabel = "RmBG current (offset=" + num2str(bgShift) + ")"
+    sWorkLabel = "Showing background-subtracted copy"
+    sWorkStatus = "Work mode: RmBG (showing background-subtracted copy; offset=" + num2str(bgShift) + ")"
 
     LJZ_EDCFermiFit_ShowCurrentWave()
+    LJZ_EDCFermiFit_RefreshTitleBoxes()
     return 0
 End
 
@@ -1808,11 +1839,14 @@ Function LJZ_EDCFermiFit_CreateGraphSubwindow()
     String dataNm = NameOfWave(w)
     ModifyGraph/W=$graphPath rgb($dataNm)=(0,0,0),lsize($dataNm)=1.5
     String dispLabel = LJZ_EDCFermiFit_GetDisplayLabelForPath(sWave)
+    String workStatus = LJZ_EDCFermiFit_CurrentWorkStatusText()
+    String dataNote = workStatus
     if (strlen(dispLabel) > 0)
-        TextBox/W=$graphPath/K/N=tbData
-        TextBox/W=$graphPath/C/N=tbData/F=0/A=LT dispLabel
-    else
-        TextBox/W=$graphPath/K/N=tbData
+        dataNote += "\r" + dispLabel
+    endif
+    TextBox/W=$graphPath/K/N=tbData
+    if (strlen(dataNote) > 0)
+        TextBox/W=$graphPath/C/N=tbData/F=0/A=LT dataNote
     endif
 
     Variable idx = LJZ_EDCFermiFit_ParseWaveIndex(NameOfWave($sWave))
@@ -1983,7 +2017,7 @@ Function LJZ_EDCFermiFit_OpenPanel()
     String p = LJZ_EDCFermiFit_PanelName()
     DoWindow/F $p
     if (V_flag == 0)
-        NewPanel/N=$p /W=(80,80,1045,690)
+        NewPanel/N=$p /W=(80,80,1105,730)
     else
         DoWindow/F $p
         LJZ_EDCFermiFit_CreateGraphSubwindow()
@@ -2002,10 +2036,11 @@ Function LJZ_EDCFermiFit_OpenPanel()
     Button btAutoWin,pos={340,364},size={82,28},title="AutoWin",proc=LJZ_EDCFermiFit_ButtonProc
     Button btCursor,pos={430,364},size={82,28},title="Cursors",proc=LJZ_EDCFermiFit_ButtonProc
     Button btRmBG,pos={520,364},size={82,28},title="RmBG",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btGuess,pos={610,364},size={82,28},title="Guess",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btFit,pos={700,364},size={72,28},title="Fit",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btFitAll,pos={780,364},size={82,28},title="Fit All",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btFitNext,pos={870,364},size={88,28},title="Fit+Next",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btResetWork,pos={610,364},size={82,28},title="Reset",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btGuess,pos={700,364},size={82,28},title="Guess",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btFit,pos={790,364},size={72,28},title="Fit",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btFitAll,pos={870,364},size={82,28},title="Fit All",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btFitNext,pos={958,364},size={88,28},title="Fit+Next",proc=LJZ_EDCFermiFit_ButtonProc
 
     TitleBox tbWin,pos={250,404},size={160,18},frame=0,title="Fit window"
     SetVariable svFitX1,pos={250,428},size={150,20},title="Fit x1"
@@ -2066,7 +2101,8 @@ Function LJZ_EDCFermiFit_OpenPanel()
     SetVariable svSelWave,pos={10,654},size={945,20},title="Selected Wave:"
     SetVariable svSelWave,value=_STR:LJZ_EDCFermiFit_BaseDF() + ":WaveSel",noedit=1
 
-    TitleBox tbMsg,pos={10,676},size={945,18},frame=0,title="Model: [FD step convolved with Gaussian] + BG + normalized Shirley; RmBG only offsets current work wave"
+    TitleBox tbWorkMode,pos={10,676},size={945,18},frame=0,title="Showing source wave"
+    TitleBox tbMsg,pos={10,696},size={945,18},frame=0,title="Model: [FD step convolved with Gaussian] + BG + normalized Shirley; RmBG only offsets runtime work wave"
 
     LJZ_EDCFermiFit_CreateGraphSubwindow()
     return 0
@@ -2083,6 +2119,7 @@ Function LJZ_EDCFermiFit_RefreshTitleBoxes()
 
     SetVariable svSourceDF win=$p, value=_STR:sDF
     SetVariable svSelWave  win=$p, value=_STR:sWave
+    TitleBox tbWorkMode win=$p, title=LJZ_EDCFermiFit_CurrentWorkStatusText()
 
     return 0
 End
@@ -2135,6 +2172,11 @@ Function LJZ_EDCFermiFit_ButtonProc(ba) : ButtonControl
         return 0
     endif
 
+    if (CmpStr(ctrlName, "btResetWork") == 0)
+        LJZ_EDCFermiFit_ResetCurrentWork()
+        return 0
+    endif
+
     if (CmpStr(ctrlName, "btGuess") == 0)
         LJZ_EDCFermiFit_GuessCurrent()
         LJZ_EDCFermiFit_UpdateGraphMarks()
@@ -2177,6 +2219,9 @@ Function LJZ_EDCFermiFit_SetVarProc(sva) : SetVariableControl
         SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
         sDF = LJZ_EDCFermiFit_df_with_colon(sva.sval)
         LJZ_EDCFermiFit_ClearCurrentWorkWave()
+        LJZ_EDCFermiFit_RebuildWaveList()
+        LJZ_EDCFermiFit_RefreshCurrentSelection()
+        LJZ_EDCFermiFit_RefreshTitleBoxes()
         return 0
     endif
 
