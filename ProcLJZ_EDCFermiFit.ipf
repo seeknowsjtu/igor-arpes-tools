@@ -1110,12 +1110,12 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
     endif
 
     Variable kB = 8.617333262e-5
-    Variable A = pw[0]
-    Variable EF = pw[1]
-    Variable T = max(abs(pw[2]), 0.2)
-    Variable BG = pw[3]
+    Variable A   = pw[0]
+    Variable EF  = pw[1]
+    Variable T   = max(abs(pw[2]), 0.2)
+    Variable BG  = pw[3]
     Variable sig = abs(pw[4])
-    Variable SB = pw[5]
+    Variable SB  = pw[5]
 
     if (n == 1)
         Variable x0 = xw[0]
@@ -1124,74 +1124,55 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
         return 0
     endif
 
-    Variable dxRaw = xw[1] - xw[0]
-    if (dxRaw == 0)
-        dxRaw = (xw[n-1] - xw[0]) / max(1, n - 1)
+    Variable dx = xw[1] - xw[0]
+    if (dx == 0)
+        dx = (xw[n-1] - xw[0]) / max(1, n - 1)
     endif
-    if (dxRaw == 0)
-        dxRaw = 1e-4
+    if (dx == 0)
+        dx = 1e-4
     endif
-    Variable dxAbs = abs(dxRaw)
+    Variable dxAbs = abs(dx)
 
-    Variable m = 0
-    if (sig > 1e-12)
-        m = ceil(4 * sig / dxAbs)
-    endif
-    m = max(0, m)
+    // legacy-like fixed padding, same spirit as old InsertPoints 1000
+    Variable padN = 1000
+    Variable nExt = n + 2 * padN
+    Variable xStart = xw[0] - padN * dx
 
-    Variable nExt = n + 2 * m
-    Make/FREE/D/N=(nExt) xExt, yBaseExt, yConvExt, yShirExt
+    Make/FREE/D/N=(nExt) yFD
+    SetScale/P x, xStart, dx, "", yFD
+    yFD = A / (1 + exp((x - EF) / (kB * T)))
 
-    Variable i, j, k, q
-    for (i = 0; i < nExt; i += 1)
-        xExt[i] = xw[0] + (i - m) * dxRaw
-        yBaseExt[i] = A / (1 + exp((xExt[i] - EF) / (kB * T)))
-    endfor
+    // legacy-like Gaussian kernel
+    Variable nSig = round(sig / dxAbs)
+    Variable gN = 8 * max(0, nSig) + 1
 
-    if (m <= 0)
-        yConvExt = yBaseExt[p]
-    else
-        Make/FREE/D/N=(2*m + 1) gk
-        Variable gsum = 0
-        for (k = -m; k <= m; k += 1)
-            Variable gx = k * dxAbs
-            Variable gv = exp(-(gx * gx) / (2 * sig * sig))
-            gk[k + m] = gv
-            gsum += gv
-        endfor
-        if (gsum <= 0)
+    if (gN > 1 && sig > 1e-15)
+        Make/FREE/D/N=(gN) gk
+        Variable rad = (gN - 1) / 2
+        SetScale/P x, -rad * dxAbs, dxAbs, "", gk
+        gk = exp(-(x^2) / (2 * sig^2))
+
+        Variable gsum = sum(gk, -inf, inf)
+        if (numtype(gsum) != 0 || gsum <= 0)
             gsum = 1
         endif
         gk /= gsum
 
-        for (i = 0; i < nExt; i += 1)
-            Variable acc = 0
-            Variable wsum = 0
-            for (k = -m; k <= m; k += 1)
-                q = i - k
-                if (q < 0 || q >= nExt)
-                    continue
-                endif
-                acc += yBaseExt[q] * gk[k + m]
-                wsum += gk[k + m]
-            endfor
-            if (wsum > 0)
-                yConvExt[i] = acc / wsum
-            else
-                yConvExt[i] = yBaseExt[i]
-            endif
-        endfor
+        Convolve/A gk, yFD
     endif
 
-    yShirExt[nExt - 1] = 0
-    for (i = nExt - 2; i >= 0; i -= 1)
-        yShirExt[i] = yShirExt[i + 1] + 0.5 * (yConvExt[i] + yConvExt[i + 1]) * dxAbs
-    endfor
+    // crop back to original range first
+    Make/FREE/D/N=(n) yCrop, ttem
+    SetScale/P x, xw[0], dx, "", yCrop
+    yCrop = yFD[p + padN]
 
-    for (i = 0; i < n; i += 1)
-        yw[i] = yConvExt[i + m] + BG + SB * yShirExt[i + m]
-    endfor
+    // legacy-like Shirley: compute after crop
+    Duplicate/FREE yCrop, ttem
+    Reverse ttem
+    Integrate ttem
+    Reverse ttem
 
+    yw = yCrop[p] + BG + SB * ttem[p]
     return 0
 End
 
@@ -1221,6 +1202,13 @@ Function LJZ_EDCFermiFit_CreateStoredFitWave(wPath, pwFit)
     Make/FREE/D/N=(n) xFull
     xFull = pnt2x(fitW, p)
     LJZ_EDCFermiFit_EvalModel(pwFit, fitW, xFull)
+
+    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
+    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
+    Variable xLo = min(FitX1, FitX2)
+    Variable xHi = max(FitX1, FitX2)
+
+    fitW[(x < xLo) || (x > xHi)] = NaN
     return 0
 End
 
@@ -1379,7 +1367,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     KillWaves/Z W_sigma
 
     FuncFit/Q/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_ModelAA pw_fit $wPath [xLo, xHi]
-
+    variable v_fiterror
     Variable fitErr = V_FitError
     Variable chiSq = V_chisq
 
@@ -1390,15 +1378,13 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     Variable ok = 1
     Variable i
 
+    // legacy-style: do not fail only because V_FitError != 0
+    // only fail when fitted parameters are truly invalid
     for (i = 0; i < 6; i += 1)
         if (numtype(pw_fit[i]) != 0)
             ok = 0
         endif
     endfor
-
-    if (fitErr != 0)
-        ok = 0
-    endif
 
     Wave/Z wSig = W_sigma
     if (WaveExists(wSig))
@@ -1407,18 +1393,25 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
         endfor
     endif
 
+    if (numtype(chiSq) != 0)
+        chiSq = NaN
+    endif
+
     if (ok)
         pwOut = pw_fit[p]
         initPW = pw_fit[p]
+
         LJZ_EDCFermiFit_ResultPWToStorePW(pwOut, pwStore)
         LJZ_EDCFermiFit_ResultSigToStoreSig(sigOut, sigStore)
         LJZ_EDCFermiFit_WriteResultForWave(wPath, pwStore, sigStore, chiSq, 1)
         LJZ_EDCFermiFit_CreateStoredFitWave(wPath, pwOut)
+
         if (updateUI)
             LJZ_EDCFermiFit_CoefWaveToUI(pwOut)
         endif
     else
         LJZ_EDCFermiFit_ClearResultForWave(wPath)
+
         if (doAlertOnFail)
             DoAlert 0, "Fermi 拟合失败，请检查拟合窗口、初值和 hold 设置。"
         endif
