@@ -1,164 +1,60 @@
 # igor-arpes-tools
 
-A modular collection of Igor Pro procedure (`.ipf`) scripts for ARPES data processing, visualization, fitting, FFT filtering, ROI workflows, and MDC workbench development.
+这是一个面向 **ARPES 数据处理与分析** 的 Igor Pro 脚本工具箱仓库。
 
-## Overview
+仓库里的内容不是单一程序，而是一组可以按需加载、相互配合使用的 `.ipf` 模块，整体偏研究工作流工具，主要围绕数据浏览、预处理、拟合、结果展示和版面整理展开。
 
-This repository is not a single compiled software project. Instead, it contains a set of reusable and partially independent Igor Pro modules built around ARPES analysis workflows.
+## 主要功能
 
-The codebase includes:
+- **数据浏览与展示**
+  - 多层切片查看（如 6 层预览）
+  - Slice Gallery 浏览
+  - 自定义色表与图像配色
+  - Layout 排版辅助
 
-- menu-driven entry points and panel-based tools
-- visualization and color-table utilities
-- FFT filtering and differentiation workflows
-- ROI-based trajectory integration tools
-- MDC fitting and workbench-style fitting modules
-- layout and slice-gallery utilities
-- angle-to-k related analysis tools
+- **数据处理**
+  - 3D FFT 滤波
+  - 3D 二阶导处理
+  - 多边形 ROI 积分与时序追踪
+  - 角度到 `k` 空间的转换
 
-## Main modules
+- **拟合与谱线分析**
+  - MDC 拟合与交互式 Workbench
+  - EDC 提取
+  - EDC Workbench 拟合
+  - EDC 边沿宽度分析
 
-- `ProcLJZ_POPmenu.ipf`  
-  Early main entry point with menu-based access to multiple tools such as MDC, FFT, and ROI workflows.
+- **辅助与历史脚本**
+  - 一些通用 wave 工具函数
+  - 部分实验性、测试性或历史兼容模块
 
-- `ProcLJZ_2025*.ipf`  
-  2025-generation modules, including CT panel tools, differentiation, FFT filtering, and ROIVARY-related functionality.
+## 仓库特点
 
-- `ProcLJZ_2026*.ipf`  
-  2026-generation modules, including angle-to-k workflows, interactive fitting tools, and more robust double-peak fitting development.
+- 以 **面板（Panel）+ 菜单（Menu）+ 回调函数** 的方式组织。
+- 新旧流程并存，部分模块已经拆分成更清晰的 Workbench 结构。
+- 更适合看作一个持续演化中的 **ARPES 研究工具箱**，而不是一个完整封装的软件产品。
 
-- `ProcLJZ_GallerySlice.ipf`  
-  Slice gallery and preview workflow utilities.
+## 主要模块一览
 
-- `ProcLJZ_LayoutTools.ipf`  
-  Layout and panel organization tools.
+- `ProcLJZ_MainMenu.ipf`：较早期的主菜单入口，包含 FFT、MDC 拟合、ROI、色表和多层显示入口。
+- `ProcLJZ_FFT3DFilter.ipf`：3D FFT 滤波。
+- `ProcLJZ_SecondDerivative3D.ipf`：3D 二阶导计算。
+- `ProcLJZ_ROIPolygonTrace.ipf`：多边形 ROI 积分、背景处理与 FFT 分析。
+- `ProcLJZ_AngleToKTransform.ipf`：角度到动量空间转换及相关绘图。
+- `ProcLJZ_EDCExtract.ipf`：从 3D 数据中提取 EDC。
+- `ProcLJZ_EDCWB*.ipf`：模块化 EDC Workbench。
+- `ProcLJZ_EDCEdgeWidth.ipf`：EDC 边沿宽度测量。
+- `ProcLJZ_MDCInteractiveFitWorkbench.ipf` / `ProcLJZ_MDCWB.ipf`：MDC 拟合工作台。
+- `ProcLJZ_ColorTablePanel.ipf`：色表编辑与应用。
+- `ProcLJZ_Show6LayerPanel.ipf` / `ProcLJZ_GallerySlice.ipf`：切片浏览与展示。
+- `ProcLJZ_LayoutTools.ipf`：Layout 排版与对象整理。
 
-- `ProcLJZ_MDCWB.ipf`  
-  MDC Workbench with a more structured engineering-style state-management approach.
+## 适合如何理解这个仓库
 
-- `ProcLJZ_EDCWB_Core.ipf` / `ProcLJZ_EDCWB_Model.ipf` / `ProcLJZ_EDCWB_PreprocessGuessFit.ipf` / `ProcLJZ_EDCWB_Panel.ipf`
-  Current modular EDC Workbench load set. `ProcLJZ_EDCWB.ipf` is retained only as a legacy placeholder so it can no longer collide with the modular `LJZ_EDCWB_*` implementation.
+如果你第一次接触这个仓库，建议优先从菜单入口和面板型模块开始看：
 
-- `ProcLJZ_EDCFit.ipf`
-  Separate legacy-compatible entry stub reserved for non-Workbench EDC fitting helpers so the old monolithic EDCWB namespace no longer needs to be loaded together with the modular workbench.
+1. 先看 `Menu "ARPES_LJZ"` 里有哪些入口。
+2. 再看对应的 `Proc` / `Function` 如何打开面板。
+3. 最后顺着按钮、列表框、弹窗回调进入具体算法。
 
-- `ProcLJZ_2025.ipf`  
-  A broader collection of earlier utility and display-related functions.
-
-## How to read this repository
-
-A practical way to understand the codebase is to follow this order:
-
-### 1. Entry layer
-Start from:
-
-- `Menu "ARPES_LJZ"`
-- corresponding `Proc ..._LJZ()` functions
-
-These act as the functional entry points of the toolbox.
-
-### 2. State layer
-Many modules use helper functions such as `*_ensure_folder()` to initialize runtime state under paths like:
-
-- `root:ARPES_LJZ:*`
-- `root:Packages:ARPES_LJZ:*`
-
-Typical workflow:
-
-1. create or ensure a state folder
-2. initialize defaults if needed
-3. rebuild or rescan runtime lists
-4. open or refresh a panel
-
-### 3. Core algorithm layer
-Typical analysis capabilities include:
-
-- 3D FFT filtering
-- second-derivative processing (optionally with Savitzky-Golay support)
-- ROI trajectory integration
-- MDC single-peak and double-peak fitting
-- angle-to-k conversion workflows
-
-### 4. UI layer
-A large portion of the logic is panel-driven, using Igor callbacks such as:
-
-- `ButtonControl`
-- `PopupMenuControl`
-- `ListBoxControl`
-- `SetVariableControl`
-
-For reading the code, it is often more effective to jump from a UI control definition to its callback function rather than reading the entire file from top to bottom.
-
-## Important conventions
-
-### DataFolder paths
-The repository heavily relies on `root:...:` style string paths.  
-Helper functions are often used to normalize paths and ensure trailing colons are handled consistently.
-
-### Waves as both data and state
-Waves are used not only for numerical data, but also for UI state and list management, often with:
-
-- `Wave/T` for display text
-- path waves for real references
-- selection waves for listbox state
-
-### Old and new workflows may coexist
-Some functionalities exist in both older and newer forms.  
-For example, legacy menu-based fitting and newer workbench-style fitting may both be present. When maintaining code, it is important to determine which path is currently the primary one.
-
-## Suggested onboarding path
-
-### Days 1–2
-Build a map of the repository:
-
-- locate `Menu "ARPES_LJZ"`
-- track each corresponding `Proc`
-- sketch a flow such as  
-  `Menu -> Proc -> Panel -> Callback -> Algorithm`
-
-### Days 3–5
-Start with a lightweight module, for example:
-
-- `ProcLJZ_2025CT.ipf`
-
-This module is relatively simple and is a good entry point for understanding the coding style.
-
-### Days 6–9
-Read a medium-complexity module, such as:
-
-- `ProcLJZ_2025Differentiate.ipf`
-- `ProcLJZ_2025FFTfilter.ipf`
-
-These help illustrate input scanning, parameter panels, and output wave generation.
-
-### Days 10–14
-Move on to more complex fitting-related modules:
-
-- `ProcLJZ_2026fit.ipf`
-- `ProcLJZ_MDCWB.ipf`
-- `ProcLJZ_2026doublefit.ipf`
-
-Focus separately on:
-
-- runtime state management
-- fitting engine logic
-- parameter constraints
-- fallback and robustness strategies
-
-## Common pitfalls
-
-- forgetting to restore the original DataFolder after module-local operations
-- missing trailing `:` in folder path strings
-- confusing display-name text waves with real-path reference waves
-- changing fitting defaults without regression testing
-
-## Recommended development workflow
-
-- test the panel workflow first before modifying the algorithm
-- add logging before changing core computation
-- make small commits so rollback stays easy
-- preserve compatibility when introducing a newer version of an existing workflow
-
-## Notes
-
-This repository reflects an evolving research workflow, so historical and newer implementations may coexist. The structure is therefore best understood as a practical toolbox rather than a strictly unified software package.
+这样会比从头到尾顺读单个大文件更容易理解。
