@@ -319,6 +319,11 @@ Function sg_init_defaults_if_needed()
         Variable/G labelType = 2      // 0 none, 1 fluence, 2 delay, 3 temp
     endif
 
+    NVAR/Z fluenceCoeff = root:ARPES_LJZ:SliceGallery:fluenceCoeff
+    if (!NVAR_Exists(fluenceCoeff))
+        Variable/G fluenceCoeff = 60
+    endif
+
     NVAR/Z tbFont = root:ARPES_LJZ:SliceGallery:tbFont
     if (!NVAR_Exists(tbFont))
         Variable/G tbFont = 12
@@ -1328,6 +1333,7 @@ Function sg_sync_panel_from_state()
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_ck_invert_ct
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_c0
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_c1
+    ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_flucoef
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tbf
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tbx
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tby
@@ -1749,7 +1755,9 @@ Function sg_show_help_notebook()
     Notebook $nbName text="  - 作用在最终 selLayers 上。\r\r"
 
     Notebook $nbName text="Layout / Color / Label\r"
-    Notebook $nbName text="  - 这一版只是存储 UI 状态，真正的绘图在 Render 模块里完成。\r\r"
+    Notebook $nbName text="  - Label Settings 里可设置 Fluence 的换算系数 k。\r"
+    Notebook $nbName text="  - 当 label type=Fluence 时，显示值 = k × dim2(mW)，单位为 μJ/cm\\S2\\M。\r"
+    Notebook $nbName text="  - 真正的绘图在 Render 模块里完成。\r\r"
 
     Notebook $nbName text="Build Layers\r"
     Notebook $nbName text="  - 根据当前 Selection Mode 构造 selLayers 和 selValuesDim2。\r\r"
@@ -1896,11 +1904,13 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	PopupMenu sg_pm_label,mode=3,popvalue="Dim2Value",value= #"\"None;Index;Dim2Value;Index+Value\""
 	PopupMenu sg_pm_labtype,pos={867.00,555.00},size={44.40,20.40},proc=sg_pm_labeltype_proc
 	PopupMenu sg_pm_labtype,mode=3,popvalue="Delay",value= #"\"None;Fluence;Delay;Temp\""
-	SetVariable sg_sv_tbf,pos={852.00,588.00},size={78.00,19.80},title="Font"
+	SetVariable sg_sv_flucoef,pos={852.00,578.00},size={146.40,19.80},title="k mW→uJ"
+	SetVariable sg_sv_flucoef,value= root:ARPES_LJZ:SliceGallery:fluenceCoeff
+	SetVariable sg_sv_tbf,pos={852.00,600.00},size={78.00,19.80},title="Font"
 	SetVariable sg_sv_tbf,limits={6,72,1},value= root:ARPES_LJZ:SliceGallery:tbFont
-	SetVariable sg_sv_tbx,pos={852.00,612.00},size={78.00,19.80},title="X%"
+	SetVariable sg_sv_tbx,pos={852.00,622.00},size={78.00,19.80},title="X%"
 	SetVariable sg_sv_tbx,value= root:ARPES_LJZ:SliceGallery:tbX
-	SetVariable sg_sv_tby,pos={852.00,636.60},size={78.00,19.80},title="Y%"
+	SetVariable sg_sv_tby,pos={852.00,644.00},size={78.00,19.80},title="Y%"
 	SetVariable sg_sv_tby,value= root:ARPES_LJZ:SliceGallery:tbY
 	GroupBox sg_gb_summary,pos={6.00,576.00},size={810.00,84.00},title="Summary Information"
 	TitleBox sg_layers_txt,pos={18.00,600.00},size={127.20,18.00},title="Layers: 0, 1, 4, 7, 11, 18"
@@ -1966,14 +1976,30 @@ Function/S sg_label_unit_string(labelTypeNum)
 End
 
 
+Function sg_label_value_for_display(val, labelTypeNum)
+    Variable val, labelTypeNum
+
+    sg_init_defaults_if_needed()
+
+    NVAR fluenceCoeff = root:ARPES_LJZ:SliceGallery:fluenceCoeff
+
+    if (round(labelTypeNum) == 1)
+        return val * fluenceCoeff
+    endif
+
+    return val
+End
+
+
 Function/S sg_format_value_with_unit(val, labelTypeNum)
     Variable val, labelTypeNum
 
+    Variable displayVal = sg_label_value_for_display(val, labelTypeNum)
     String unitStr = sg_label_unit_string(labelTypeNum)
-    Variable rval = round(val)
+    Variable rval = round(displayVal)
     String outStr
 
-    if (abs(val - rval) < 1e-6)
+    if (abs(displayVal - rval) < 1e-6)
         if (strlen(unitStr) > 0)
             sprintf outStr, "%d %s", rval, unitStr
         else
@@ -1981,9 +2007,9 @@ Function/S sg_format_value_with_unit(val, labelTypeNum)
         endif
     else
         if (strlen(unitStr) > 0)
-            sprintf outStr, "%.4g %s", val, unitStr
+            sprintf outStr, "%.4g %s", displayVal, unitStr
         else
-            sprintf outStr, "%.4g", val
+            sprintf outStr, "%.4g", displayVal
         endif
     endif
 
