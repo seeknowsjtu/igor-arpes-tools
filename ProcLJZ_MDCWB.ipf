@@ -340,11 +340,11 @@ End
 // [4]  fitOK
 // [5]  guessRMSE
 // [6]  fitRMSE
-// [7]  chiSq
+// [7]  rssROI (unweighted residual sum of squares inside ROI; not Igor V_chisq)
 // [8]  maxAbsRes
 // [9]  nROI
-// [10] reserved
-// [11] reserved
+// [10] fitQuitReason
+// [11] fitNumIters
 
 Function LJZ_MDCWB_InitInfoWave(infoW)
     Wave infoW
@@ -361,11 +361,12 @@ Function/S LJZ_MDCWB_FitInfoSchemaNote()
     txt += "fitinfo[4]=fitOK;"
     txt += "fitinfo[5]=guessRMSE;"
     txt += "fitinfo[6]=fitRMSE;"
-    txt += "fitinfo[7]=chiSq;"
+    // FIX: fitinfo[7] stores unweighted RSS in ROI, not Igor V_chisq.
+    txt += "fitinfo[7]=rssROI_unweighted_in_ROI_not_Igor_V_chisq;"
     txt += "fitinfo[8]=maxAbsRes;"
     txt += "fitinfo[9]=nROI;"
-    txt += "fitinfo[10]=reserved;"
-    txt += "fitinfo[11]=reserved"
+    txt += "fitinfo[10]=fitQuitReason;"
+    txt += "fitinfo[11]=fitNumIters"
     return txt
 End
 
@@ -377,18 +378,28 @@ End
 Function LJZ_MDCWB_SaveGuessWave(wData, guessW)
     Wave wData, guessW
 
+    // FIX: protect SetDataFolder restoration around write helpers.
     LJZ_MDCWB_EnsureDF()
 
     String dfW = GetWavesDataFolder(wData, 1)
     String nm  = NameOfWave(wData)
     String localDF = RemoveEnding(dfW, ":")
 
-    String df0 = GetDataFolder(1)
-    SetDataFolder $localDF
+    String oldDF = GetDataFolder(1)
+    Variable hadError = 0
 
-    Duplicate/O guessW, $(nm + "_guess")
+    try
+        SetDataFolder $localDF
+        Duplicate/O guessW, $(nm + "_guess")
+    catch
+        hadError = 1
+    endtry
 
-    SetDataFolder $df0
+    SetDataFolder $oldDF
+    if (hadError || GetRTError(1) != 0)
+        return -1
+    endif
+
     return 0
 End
 
@@ -420,42 +431,53 @@ Function LJZ_MDCWB_SaveFitRecord(wData, coefW, sigmaW, infoW, fitW, resW)
     Wave wData, coefW, infoW, fitW, resW
     Wave/Z sigmaW
 
+    // FIX: protect SetDataFolder restoration around write helpers.
     LJZ_MDCWB_EnsureDF()
 
     String dfW = GetWavesDataFolder(wData, 1)
     String nm  = NameOfWave(wData)
     String localDF = RemoveEnding(dfW, ":")
 
-    String df0 = GetDataFolder(1)
-    SetDataFolder $localDF
+    String oldDF = GetDataFolder(1)
+    Variable hadError = 0
 
-    // ---------- fitcoef ----------
-    Duplicate/O coefW, $(nm + "_fitcoef")
-    Wave wCoefOut = $(nm + "_fitcoef")
-    LJZ_MDCWB_EnsureNumWaveLen12(wCoefOut, NaN)
+    try
+        SetDataFolder $localDF
 
-    // ---------- fitsigma ----------
-    if (WaveExists(sigmaW))
-        Duplicate/O sigmaW, $(nm + "_fitsigma")
-    else
-        Make/O/N=12 $(nm + "_fitsigma") = NaN
+        // ---------- fitcoef ----------
+        Duplicate/O coefW, $(nm + "_fitcoef")
+        Wave wCoefOut = $(nm + "_fitcoef")
+        LJZ_MDCWB_EnsureNumWaveLen12(wCoefOut, NaN)
+
+        // ---------- fitsigma ----------
+        if (WaveExists(sigmaW))
+            Duplicate/O sigmaW, $(nm + "_fitsigma")
+        else
+            Make/O/N=12 $(nm + "_fitsigma") = NaN
+        endif
+        Wave wSigmaOut = $(nm + "_fitsigma")
+        LJZ_MDCWB_EnsureNumWaveLen12(wSigmaOut, NaN)
+
+        // ---------- fitinfo ----------
+        Duplicate/O infoW, $(nm + "_fitinfo")
+        Wave wInfoOut = $(nm + "_fitinfo")
+        LJZ_MDCWB_InitInfoWave(wInfoOut)
+
+        Note/K wInfoOut
+        Note wInfoOut, LJZ_MDCWB_FitInfoSchemaNote()
+
+        // ---------- fit / res ----------
+        Duplicate/O fitW, $(nm + "_fit")
+        Duplicate/O resW, $(nm + "_res")
+    catch
+        hadError = 1
+    endtry
+
+    SetDataFolder $oldDF
+    if (hadError || GetRTError(1) != 0)
+        return -1
     endif
-    Wave wSigmaOut = $(nm + "_fitsigma")
-    LJZ_MDCWB_EnsureNumWaveLen12(wSigmaOut, NaN)
 
-    // ---------- fitinfo ----------
-    Duplicate/O infoW, $(nm + "_fitinfo")
-    Wave wInfoOut = $(nm + "_fitinfo")
-    LJZ_MDCWB_InitInfoWave(wInfoOut)
-
-    Note/K wInfoOut
-    Note wInfoOut, LJZ_MDCWB_FitInfoSchemaNote()
-
-    // ---------- fit / res ----------
-    Duplicate/O fitW, $(nm + "_fit")
-    Duplicate/O resW, $(nm + "_res")
-
-    SetDataFolder $df0
     return 0
 End
 
@@ -595,6 +617,7 @@ Function LJZ_MDCWB_WriteAcceptState(wData, newState)
     Wave wData
     Variable newState
 
+    // FIX: protect SetDataFolder restoration around write helpers.
     LJZ_MDCWB_EnsureDF()
 
     if (newState > 0)
@@ -609,17 +632,27 @@ Function LJZ_MDCWB_WriteAcceptState(wData, newState)
     String nm  = NameOfWave(wData)
     String localDF = RemoveEnding(dfW, ":")
 
-    String df0 = GetDataFolder(1)
-    SetDataFolder $localDF
+    String oldDF = GetDataFolder(1)
+    Variable hadError = 0
 
-    Make/O/N=1 $(nm + "_accept")
-    Wave wAcc = $(nm + "_accept")
-    wAcc[0] = newState
+    try
+        SetDataFolder $localDF
 
-    Note/K wAcc
-    Note wAcc, "accept[0]: 1=accepted; 0=unchecked; -1=rejected"
+        Make/O/N=1 $(nm + "_accept")
+        Wave wAcc = $(nm + "_accept")
+        wAcc[0] = newState
 
-    SetDataFolder $df0
+        Note/K wAcc
+        Note wAcc, "accept[0]: 1=accepted; 0=unchecked; -1=rejected"
+    catch
+        hadError = 1
+    endtry
+
+    SetDataFolder $oldDF
+    if (hadError || GetRTError(1) != 0)
+        return -1
+    endif
+
     return 0
 End
 
@@ -1000,10 +1033,29 @@ Function LJZ_MDCWB_GetROIIndexRange(dataWave, roiXLoInput, roiXHiInput, roiIndex
     return 0
 End
 
-Function LJZ_MDCWB_ComputeFitMetrics(dataWave, guessWave, fitWave, resWave, roiXLoInput, roiXHiInput, guessRMSEOut, fitRMSEOut, chiSqOut, maxAbsResOut, nROIOut)
+// FIX: count only finite data points inside ROI when validating fit readiness.
+Function LJZ_MDCWB_CountFinitePointsInROI(dataWave, roiXLoInput, roiXHiInput)
+    Wave dataWave
+    Variable roiXLoInput, roiXHiInput
+
+    Variable roiIndexLo, roiIndexHi
+    LJZ_MDCWB_GetROIIndexRange(dataWave, roiXLoInput, roiXHiInput, roiIndexLo, roiIndexHi)
+
+    Variable finiteCount = 0
+    Variable pointIndex
+    for (pointIndex = roiIndexLo; pointIndex <= roiIndexHi; pointIndex += 1)
+        if (numtype(dataWave[pointIndex]) == 0)
+            finiteCount += 1
+        endif
+    endfor
+
+    return finiteCount
+End
+
+Function LJZ_MDCWB_ComputeFitMetrics(dataWave, guessWave, fitWave, resWave, roiXLoInput, roiXHiInput, guessRMSEOut, fitRMSEOut, rssROIOut, maxAbsResOut, nROIOut)
     Wave dataWave, guessWave, fitWave, resWave
     Variable roiXLoInput, roiXHiInput
-    Variable &guessRMSEOut, &fitRMSEOut, &chiSqOut, &maxAbsResOut, &nROIOut
+    Variable &guessRMSEOut, &fitRMSEOut, &rssROIOut, &maxAbsResOut, &nROIOut
 
     Variable roiIndexLo, roiIndexHi
     LJZ_MDCWB_GetROIIndexRange(dataWave, roiXLoInput, roiXHiInput, roiIndexLo, roiIndexHi)
@@ -1019,7 +1071,8 @@ Function LJZ_MDCWB_ComputeFitMetrics(dataWave, guessWave, fitWave, resWave, roiX
 
     WaveStats/Q resSqWave
     fitRMSEOut = sqrt(V_avg)
-    chiSqOut   = V_sum
+    // FIX: this is unweighted RSS inside ROI, not true chi-square.
+    rssROIOut  = V_sum
 
     WaveStats/Q absResWave
     maxAbsResOut = V_max
@@ -1029,10 +1082,10 @@ Function LJZ_MDCWB_ComputeFitMetrics(dataWave, guessWave, fitWave, resWave, roiX
     return 0
 End
 
-Function LJZ_MDCWB_BuildInfoWave(infoWave, modelIDInput, bgOrderInput, roiXLoInput, roiXHiInput, fitOKInput, guessRMSEInput, fitRMSEInput, chiSqInput, maxAbsResInput, nROIInput)
+Function LJZ_MDCWB_BuildInfoWave(infoWave, modelIDInput, bgOrderInput, roiXLoInput, roiXHiInput, fitOKInput, guessRMSEInput, fitRMSEInput, rssROIInput, maxAbsResInput, nROIInput)
     Wave infoWave
     Variable modelIDInput, bgOrderInput, roiXLoInput, roiXHiInput
-    Variable fitOKInput, guessRMSEInput, fitRMSEInput, chiSqInput, maxAbsResInput, nROIInput
+    Variable fitOKInput, guessRMSEInput, fitRMSEInput, rssROIInput, maxAbsResInput, nROIInput
 
     LJZ_MDCWB_InitInfoWave(infoWave)
 
@@ -1043,7 +1096,8 @@ Function LJZ_MDCWB_BuildInfoWave(infoWave, modelIDInput, bgOrderInput, roiXLoInp
     infoWave[4] = fitOKInput
     infoWave[5] = guessRMSEInput
     infoWave[6] = fitRMSEInput
-    infoWave[7] = chiSqInput
+    // FIX: fitinfo[7] remains the existing slot, but now documented as RSS in ROI.
+    infoWave[7] = rssROIInput
     infoWave[8] = maxAbsResInput
     infoWave[9] = nROIInput
     infoWave[10] = NaN
@@ -1442,13 +1496,17 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     LJZ_MDCWB_GetROIIndexRange(dataWave, editXLo, editXHi, roiIndexLo, roiIndexHi)
 
     Variable roiPointCount = roiIndexHi - roiIndexLo + 1
+    // FIX: validate finite ROI points, not only raw ROI length.
+    Variable finiteROIPointCount = LJZ_MDCWB_CountFinitePointsInROI(dataWave, editXLo, editXHi)
 
     if (modelIDLocal == 2 || modelIDLocal == 5)
-        if (roiPointCount < 25)
+        if (finiteROIPointCount <= (paramCountLocal + 4))
+            LJZ_MDCWB_MarkDirty(1)
             return -1
         endif
     else
-        if (roiPointCount < 12)
+        if (finiteROIPointCount < max(12, paramCountLocal + 2))
+            LJZ_MDCWB_MarkDirty(1)
             return -1
         endif
     endif
@@ -1480,26 +1538,50 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
         endif
     endfor
 
-    // ---------- fit ----------
+    // FIX: FuncFit must be exception-safe and never leave the caller in the local data folder.
+    Variable fitCaughtError = 0
+    Variable runtimeErrorCode = 0
+    Variable fitFailed = 0
+    Variable V_FitError = 0
+    Variable V_FitQuitReason = NaN
+    Variable V_FitNumIters = NaN
+    String oldDF = GetDataFolder(1)
+
     KillWaves/Z W_sigma
 
-    if (modelIDLocal == 2)
-        FuncFit/Q/H=holdMaskString two_pv_ljz, coefWorkingWave, roiDataWave
-    elseif (modelIDLocal == 5)
-        FuncFit/Q/H=holdMaskString asympv_plus_pv_ljz, coefWorkingWave, roiDataWave
-    else
-        FuncFit/Q/H=holdMaskString one_pv_ljz, coefWorkingWave, roiDataWave
-    endif
+    try
+        AbortOnRTE 1
+        if (modelIDLocal == 2)
+            FuncFit/Q/H=holdMaskString two_pv_ljz, coefWorkingWave, roiDataWave
+        elseif (modelIDLocal == 5)
+            FuncFit/Q/H=holdMaskString asympv_plus_pv_ljz, coefWorkingWave, roiDataWave
+        else
+            FuncFit/Q/H=holdMaskString one_pv_ljz, coefWorkingWave, roiDataWave
+        endif
+        AbortOnRTE 0
+    catch
+        fitCaughtError = 1
+        AbortOnRTE 0
+    endtry
 
-    Variable runtimeErrorCode = GetRTError(1)
-    if (runtimeErrorCode != 0)
-        LJZ_MDCWB_MarkDirty(1)
-        return -1
+    SetDataFolder $oldDF
+    runtimeErrorCode = GetRTError(1)
+    if (fitCaughtError || runtimeErrorCode != 0 || V_FitError != 0)
+        fitFailed = 1
     endif
 
     LJZ_MDCWB_SanitizeParamWave(coefWorkingWave, modelIDLocal)
 
     if (!LJZ_MDCWB_ValidateCoefWaveFinite(coefWorkingWave, paramCountLocal))
+        fitFailed = 1
+    endif
+
+    if (finiteROIPointCount <= 0)
+        fitFailed = 1
+    endif
+
+    if (fitFailed)
+        // FIX: on any fit failure, keep the previous official record untouched and stay dirty.
         LJZ_MDCWB_MarkDirty(1)
         return -1
     endif
@@ -1531,14 +1613,20 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     coefPaddedWave[0, paramCountLocal-1] = coefWorkingWave[p]
 
     // ---------- metrics ----------
-    Variable metricGuessRMSE, metricFitRMSE, metricChiSq, metricMaxAbsRes, metricNROI
-    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessFullWave, fitFullWave, resFullWave, editXLo, editXHi, metricGuessRMSE, metricFitRMSE, metricChiSq, metricMaxAbsRes, metricNROI)
+    Variable metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI
+    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessFullWave, fitFullWave, resFullWave, editXLo, editXHi, metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI)
 
     Make/FREE/N=12 infoWorkingWave = NaN
-    LJZ_MDCWB_BuildInfoWave(infoWorkingWave, modelIDLocal, bgOrderLocal, editXLo, editXHi, 1, metricGuessRMSE, metricFitRMSE, metricChiSq, metricMaxAbsRes, metricNROI)
+    LJZ_MDCWB_BuildInfoWave(infoWorkingWave, modelIDLocal, bgOrderLocal, editXLo, editXHi, 1, metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI)
+    // FIX: persist fit quit reason and iteration count on successful fits.
+    infoWorkingWave[10] = V_FitQuitReason
+    infoWorkingWave[11] = V_FitNumIters
 
     // ---------- save official record ----------
-    LJZ_MDCWB_SaveFitRecord(dataWave, coefPaddedWave, sigmaWorkingWave, infoWorkingWave, fitFullWave, resFullWave)
+    if (LJZ_MDCWB_SaveFitRecord(dataWave, coefPaddedWave, sigmaWorkingWave, infoWorkingWave, fitFullWave, resFullWave) != 0)
+        LJZ_MDCWB_MarkDirty(1)
+        return -1
+    endif
 
     // ---------- sync current edit state ----------
     LJZ_MDCWB_CopyFitResultToEditState(coefWorkingWave, holdWorkingWave, paramCountLocal)
@@ -2048,6 +2136,7 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     if (strlen(currentWavePath) == 0)
         LJZ_MDCWB_ClearGraphTracesByWin(mainGraphPath)
         LJZ_MDCWB_ClearGraphTracesByWin(residualGraphPath)
+        TextBox/W=$mainGraphPath/K/N=previewStatus
         SetAxis/Z/W=$mainGraphPath bottom, 0, 1
         SetAxis/Z/W=$mainGraphPath left, 0, 1
         SetAxis/Z/W=$residualGraphPath bottom, 0, 1
@@ -2059,6 +2148,7 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     if (!WaveExists(dataWave))
         LJZ_MDCWB_ClearGraphTracesByWin(mainGraphPath)
         LJZ_MDCWB_ClearGraphTracesByWin(residualGraphPath)
+        TextBox/W=$mainGraphPath/K/N=previewStatus
         SetAxis/Z/W=$mainGraphPath bottom, 0, 1
         SetAxis/Z/W=$mainGraphPath left, 0, 1
         SetAxis/Z/W=$residualGraphPath bottom, 0, 1
@@ -2110,9 +2200,9 @@ Wave/Z resWave = $(LJZ_MDCWB_ResultResPath(dataWave))
         yMainPad = 1
     endif
 
-LJZ_MDCWB_ClearGraphTracesByWin(mainGraphPath)
-AppendToGraph/W=$mainGraphPath dataWave
-AppendToGraph/W=$mainGraphPath guessWave
+    LJZ_MDCWB_ClearGraphTracesByWin(mainGraphPath)
+    AppendToGraph/W=$mainGraphPath dataWave
+    AppendToGraph/W=$mainGraphPath guessWave
 
 if ((!dirtyFlagLocal) && WaveExists(fitWave))
     AppendToGraph/W=$mainGraphPath fitWave
@@ -2137,6 +2227,13 @@ endif
         Legend/W=$mainGraphPath/C/N=text0/J
     else
         Legend/W=$mainGraphPath/K/N=text0
+    endif
+
+    // FIX: explicitly distinguish preview guess from the official fit status.
+    if (dirtyFlagLocal)
+        TextBox/W=$mainGraphPath/C/N=previewStatus/F=0/A=RT/X=-2/Y=2 "\\Z12Preview is dirty\\rOfficial fit may be stale"
+    else
+        TextBox/W=$mainGraphPath/C/N=previewStatus/F=0/A=RT/X=-2/Y=2 "\\Z12Official fit is current"
     endif
 
     LJZ_MDCWB_ClearGraphTracesByWin(residualGraphPath)
@@ -2279,17 +2376,17 @@ Wave/Z infoWave = $(LJZ_MDCWB_ResultInfoPath(dataWave))
 Duplicate/FREE dataWave, guessMetricWave
 LJZ_MDCWB_FillGuessWaveFromEditState(dataWave, guessMetricWave)
 
-Variable guessRMSELocal, fitRMSEDummy, chiSqDummy, maxAbsDummy, nROIDummy
+Variable guessRMSELocal, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy
 Wave/Z fitWaveForDummy = $(LJZ_MDCWB_ResultFitPath(dataWave))
 Wave/Z resWaveForDummy = $(LJZ_MDCWB_ResultResPath(dataWave))
 
 if (WaveExists(fitWaveForDummy) && WaveExists(resWaveForDummy))
-    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessMetricWave, fitWaveForDummy, resWaveForDummy, editXLo, editXHi, guessRMSELocal, fitRMSEDummy, chiSqDummy, maxAbsDummy, nROIDummy)
+    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessMetricWave, fitWaveForDummy, resWaveForDummy, editXLo, editXHi, guessRMSELocal, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy)
 else
     Make/FREE/N=(numpnts(dataWave)) dummyFitWave = dataWave
     Make/FREE/N=(numpnts(dataWave)) dummyResWave = 0
     SetScale/P x, DimOffset(dataWave,0), DimDelta(dataWave,0), dummyFitWave, dummyResWave
-    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessMetricWave, dummyFitWave, dummyResWave, editXLo, editXHi, guessRMSELocal, fitRMSEDummy, chiSqDummy, maxAbsDummy, nROIDummy)
+    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessMetricWave, dummyFitWave, dummyResWave, editXLo, editXHi, guessRMSELocal, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy)
 endif
 
 metricText += "GuessRMSE: " + Num2Str(guessRMSELocal) + "\r"
@@ -2297,12 +2394,15 @@ metricText += "GuessRMSE: " + Num2Str(guessRMSELocal) + "\r"
     Variable dirtyFlagLocal = LJZ_MDCWB_IsDirty()
 
     if (dirtyFlagLocal)
+        // FIX: clearly tell the user that the preview is not the official fit.
+        metricText += "Preview is dirty\r"
+        metricText += "Official fit may be stale\r"
         metricText += "FitRMSE: stale\r"
-        metricText += "ChiSq: stale\r"
+        metricText += "RSS(ROI): stale\r"
         metricText += "max|res|: stale\r"
         metricText += "N(ROI): stale\r"
 
-        resultTextLeft = "Current guess\r"
+        resultTextLeft = "Current preview guess\r"
         resultTextRight = ""
 
         Variable enabledParamCounterGuess = 0
@@ -2326,6 +2426,7 @@ metricText += "GuessRMSE: " + Num2Str(guessRMSELocal) + "\r"
         endfor
 
     else
+        metricText += "Official fit is current\r"
         if (WaveExists(infoWave) && numpnts(infoWave) >= 10)
             if (numtype(infoWave[6]) == 0)
                 metricText += "FitRMSE: " + Num2Str(infoWave[6]) + "\r"
@@ -2334,9 +2435,9 @@ metricText += "GuessRMSE: " + Num2Str(guessRMSELocal) + "\r"
             endif
 
             if (numtype(infoWave[7]) == 0)
-                metricText += "ChiSq: " + Num2Str(infoWave[7]) + "\r"
+                metricText += "RSS(ROI): " + Num2Str(infoWave[7]) + "\r"
             else
-                metricText += "ChiSq: --\r"
+                metricText += "RSS(ROI): --\r"
             endif
 
             if (numtype(infoWave[8]) == 0)
@@ -2352,7 +2453,7 @@ metricText += "GuessRMSE: " + Num2Str(guessRMSELocal) + "\r"
             endif
         else
             metricText += "FitRMSE: --\r"
-            metricText += "ChiSq: --\r"
+            metricText += "RSS(ROI): --\r"
             metricText += "max|res|: --\r"
             metricText += "N(ROI): --\r"
         endif
@@ -2714,16 +2815,18 @@ End
 Function LJZ_MDCWB_SetVarProc(setVarAction) : SetVariableControl
     STRUCT WMSetVariableAction &setVarAction
 
-// svTarget 不要 live update；其他数值框可以
+// FIX: svTarget stays commit-only; edit fields must not rebuild on live update.
 if (StringMatch(setVarAction.ctrlName, "svTarget"))
     if (setVarAction.eventCode != 1 && setVarAction.eventCode != 2)
         return 0
     endif
 else
+    if ((StringMatch(setVarAction.ctrlName, "svP*") || StringMatch(setVarAction.ctrlName, "svXLo") || StringMatch(setVarAction.ctrlName, "svXHi")) && setVarAction.eventCode == 3)
+        return 0
+    endif
     switch (setVarAction.eventCode)
         case 1:     // mouse up
         case 2:     // enter key
-        case 3:     // live update
             break
         default:
             return 0
@@ -2790,6 +2893,7 @@ if (StringMatch(setVarAction.ctrlName, "svP*"))
         Wave editParWave = $(LJZ_MDCWB_BaseDF() + ":EditPar")
         editParWave[paramIndex] = setVarAction.dval
 
+        // FIX: sanitize/build/refresh only on committed edits, never during live typing.
         LJZ_MDCWB_SanitizeCurrentEditPar()
         LJZ_MDCWB_MarkDirty(1)
         LJZ_MDCWB_BuildGuessForCurrentWave()
@@ -3085,6 +3189,7 @@ MDCIndex = NaN
     BG_c2 = NaN
 
     Variable listIndex
+    Variable skippedCount = 0
     for (listIndex = 0; listIndex < listCount; listIndex += 1)
         String fullWavePath = StringFromList(listIndex, mdcWaveList, ";")
         Wave/Z dataWave = $fullWavePath
@@ -3103,19 +3208,31 @@ MDCIndex[listIndex] = exportIndex
 
         Duplicate/O dataWave, $("layer_show_" + Num2Str(exportIndex))
 
-        if (!LJZ_MDCWB_HasFitRecord(dataWave))
-            continue
-        endif
-        if (!LJZ_MDCWB_ReadFitOK(dataWave))
-            continue
-        endif
-
         Wave/Z coefWave = $(LJZ_MDCWB_ResultCoefPath(dataWave))
         Wave/Z sigmaWave = $(LJZ_MDCWB_ResultSigmaPath(dataWave))
         Wave/Z infoWave = $(LJZ_MDCWB_ResultInfoPath(dataWave))
         Wave/Z fitWave = $(LJZ_MDCWB_ResultFitPath(dataWave))
+        Wave/Z resWave = $(LJZ_MDCWB_ResultResPath(dataWave))
 
-        if (!WaveExists(coefWave) || !WaveExists(infoWave))
+        // FIX: skip incomplete or stale records instead of exporting half-records.
+        if (!WaveExists(infoWave))
+            skippedCount += 1
+            continue
+        endif
+        if (numpnts(infoWave) < 12 || numtype(infoWave[4]) != 0 || infoWave[4] != 1)
+            skippedCount += 1
+            continue
+        endif
+        if (!WaveExists(coefWave) || numpnts(coefWave) != 12)
+            skippedCount += 1
+            continue
+        endif
+        if (!WaveExists(sigmaWave) || numpnts(sigmaWave) != 12)
+            skippedCount += 1
+            continue
+        endif
+        if (!WaveExists(fitWave) || !WaveExists(resWave))
+            skippedCount += 1
             continue
         endif
 
@@ -3236,7 +3353,7 @@ MDCIndex[listIndex] = exportIndex
     endfor
 
     SetDataFolder $originalDF
-    DoAlert 0, "FIT_HP exported under: " + exportDFPath + ":"
+    DoAlert 0, "FIT_HP exported under: " + exportDFPath + ":\rSkipped incomplete/stale records: " + Num2Str(skippedCount)
 
     return 0
 End
