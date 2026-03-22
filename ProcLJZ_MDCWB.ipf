@@ -132,6 +132,11 @@ Function LJZ_MDCWB_EnsureRuntimeState()
         Variable/G $(base + ":Dirty") = 1
     endif
 
+    SVAR/Z lastErrorMsg = $(base + ":LastErrorMsg")
+    if (!SVAR_Exists(lastErrorMsg))
+        String/G $(base + ":LastErrorMsg") = ""
+    endif
+
     Wave/Z wPar = $(base + ":EditPar")
     if (!WaveExists(wPar))
         Make/O/N=12 $(base + ":EditPar") = NaN
@@ -179,6 +184,36 @@ End
 Function LJZ_MDCWB_IsDirty()
     NVAR isDirty = $(LJZ_MDCWB_BaseDF() + ":Dirty")
     return isDirty
+End
+
+Function LJZ_MDCWB_ClearLastError()
+    SVAR lastErrorMsg = $(LJZ_MDCWB_BaseDF() + ":LastErrorMsg")
+    lastErrorMsg = ""
+    return 0
+End
+
+Function LJZ_MDCWB_SetLastError(msg)
+    String msg
+    SVAR lastErrorMsg = $(LJZ_MDCWB_BaseDF() + ":LastErrorMsg")
+    lastErrorMsg = msg
+    return 0
+End
+
+Function/S LJZ_MDCWB_GetLastError()
+    SVAR lastErrorMsg = $(LJZ_MDCWB_BaseDF() + ":LastErrorMsg")
+    return lastErrorMsg
+End
+
+Function LJZ_MDCWB_HandleGuessBuildFailure(contextStr)
+    String contextStr
+
+    // OP-FLOW HAZARD: never leave guess/preview save failures silent after an edit action.
+    LJZ_MDCWB_MarkDirty(1)
+    LJZ_MDCWB_SetLastError(contextStr + " Preview/guess update failed.")
+    LJZ_MDCWB_RefreshCurrentRowDisplayMark()
+    Beep
+    DoAlert 0, LJZ_MDCWB_GetLastError()
+    return 0
 End
 
 Function LJZ_MDCWB_ClearEditState()
@@ -1408,6 +1443,7 @@ Function LJZ_MDCWB_LoadCurrentWaveToEditState()
 
     Wave/Z dataWave = $currentWavePath
     if (!WaveExists(dataWave))
+        LJZ_MDCWB_SetLastError("No current wave selected.")
         return -1
     endif
 
@@ -1542,6 +1578,7 @@ Function LJZ_MDCWB_BuildGuessForCurrentWave()
 
     Wave/Z dataWave = $currentWavePath
     if (!WaveExists(dataWave))
+        LJZ_MDCWB_SetLastError("No current wave selected.")
         return -1
     endif
 
@@ -1651,14 +1688,17 @@ End
 
 Function LJZ_MDCWB_CommitFitForCurrentWave()
     LJZ_MDCWB_EnsureDF()
+    LJZ_MDCWB_ClearLastError()
 
     SVAR currentWavePath = $(LJZ_MDCWB_BaseDF() + ":CurWavePath")
     if (strlen(currentWavePath) == 0)
+        LJZ_MDCWB_SetLastError("No current wave selected.")
         return -1
     endif
 
     Wave/Z dataWave = $currentWavePath
     if (!WaveExists(dataWave))
+        LJZ_MDCWB_SetLastError("No current wave selected.")
         return -1
     endif
 
@@ -1676,6 +1716,7 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
 
     Variable dataPointCount = numpnts(dataWave)
     if (dataPointCount <= 3)
+        LJZ_MDCWB_SetLastError("ROI has too few finite points.")
         return -1
     endif
 
@@ -1698,6 +1739,7 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     LJZ_MDCWB_SanitizeParamWave(coefWorkingWave, modelIDLocal)
 
     if (!LJZ_MDCWB_ValidateCoefWaveFinite(coefWorkingWave, paramCountLocal))
+        LJZ_MDCWB_SetLastError("Fit coefficients became non-finite.")
         return -1
     endif
 
@@ -1712,11 +1754,13 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     if (modelIDLocal == 2 || modelIDLocal == 5)
         if (finiteROIPointCount <= (paramCountLocal + 4))
             LJZ_MDCWB_MarkDirty(1)
+            LJZ_MDCWB_SetLastError("ROI has too few finite points.")
             return -1
         endif
     else
         if (finiteROIPointCount < max(12, paramCountLocal + 2))
             LJZ_MDCWB_MarkDirty(1)
+            LJZ_MDCWB_SetLastError("ROI has too few finite points.")
             return -1
         endif
     endif
@@ -1737,6 +1781,7 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     // ROBUST: abort commit if guess persistence fails, so fit record cannot outrun its guess.
     if (LJZ_MDCWB_SaveGuessWave(dataWave, guessFullWave) != 0)
         LJZ_MDCWB_MarkDirty(1)
+        LJZ_MDCWB_SetLastError("Guess save failed.")
         return -1
     endif
 
@@ -1781,16 +1826,19 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     runtimeErrorCode = GetRTError(1)
     if (fitCaughtError || runtimeErrorCode != 0 || V_FitError != 0)
         fitFailed = 1
+        LJZ_MDCWB_SetLastError("FuncFit runtime failure.")
     endif
 
     LJZ_MDCWB_SanitizeParamWave(coefWorkingWave, modelIDLocal)
 
     if (!LJZ_MDCWB_ValidateCoefWaveFinite(coefWorkingWave, paramCountLocal))
         fitFailed = 1
+        LJZ_MDCWB_SetLastError("Fit coefficients became non-finite.")
     endif
 
     if (finiteROIPointCount <= 0)
         fitFailed = 1
+        LJZ_MDCWB_SetLastError("ROI has too few finite points.")
     endif
 
     if (fitFailed)
@@ -1830,6 +1878,7 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     if (LJZ_MDCWB_ComputeFitMetrics(dataWave, guessFullWave, fitFullWave, resFullWave, editXLo, editXHi, metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI) != 0)
         // ROBUST: reject fit records with no finite metric support inside ROI.
         LJZ_MDCWB_MarkDirty(1)
+        LJZ_MDCWB_SetLastError("Metric computation failed.")
         return -1
     endif
 
@@ -1842,6 +1891,7 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     // ---------- save official record ----------
     if (LJZ_MDCWB_SaveFitRecord(dataWave, coefPaddedWave, sigmaWorkingWave, infoWorkingWave, fitFullWave, resFullWave) != 0)
         LJZ_MDCWB_MarkDirty(1)
+        LJZ_MDCWB_SetLastError("Saving fit record failed.")
         return -1
     endif
 
@@ -1959,6 +2009,17 @@ Function/S LJZ_MDCWB_StateMark(stateValueInput)
     endif
 
     return "· "
+End
+
+Function/S LJZ_MDCWB_RowStateMark(stateValueInput, currentRowInput, dirtyFlagInput)
+    Variable stateValueInput, currentRowInput, dirtyFlagInput
+
+    String baseMark = LJZ_MDCWB_StateMark(stateValueInput)
+    if (currentRowInput && dirtyFlagInput)
+        return "~" + baseMark
+    endif
+
+    return baseMark
 End
 
 Function/S LJZ_MDCWB_TrimTrailingCR(textInput)
@@ -2087,6 +2148,36 @@ End
 //  Section 3. List / selection logic
 // ============================================================================
 
+Function LJZ_MDCWB_RefreshCurrentRowDisplayMark()
+    LJZ_MDCWB_EnsureViewState()
+
+    NVAR currentRow = $(LJZ_MDCWB_BaseDF() + ":CurRow")
+    SVAR currentWavePath = $(LJZ_MDCWB_BaseDF() + ":CurWavePath")
+    Wave/T/Z listDispWave = $(LJZ_MDCWB_BaseDF() + ":LB_Disp")
+    Wave/Z listStateWave = $(LJZ_MDCWB_BaseDF() + ":LB_State")
+
+    if (!WaveExists(listDispWave) || !WaveExists(listStateWave))
+        return -1
+    endif
+    if (currentRow < 0 || currentRow >= numpnts(listStateWave))
+        return -1
+    endif
+    if (strlen(currentWavePath) == 0)
+        return -1
+    endif
+
+    Wave/Z dataWave = $currentWavePath
+    if (!WaveExists(dataWave))
+        LJZ_MDCWB_SetLastError("No current wave selected.")
+        return -1
+    endif
+
+    // OP-FLOW HAZARD: make dirty current-row state visibly different from last clean accept/reject mark.
+    listDispWave[currentRow] = LJZ_MDCWB_RowStateMark(listStateWave[currentRow], 1, LJZ_MDCWB_IsDirty()) + NameOfWave(dataWave)
+    LJZ_MDCWB_RestoreCurrentSelectionUI()
+    return 0
+End
+
 Function LJZ_MDCWB_SetCurrentRowStateMark(newStateInput)
     Variable newStateInput
 
@@ -2094,7 +2185,6 @@ Function LJZ_MDCWB_SetCurrentRowStateMark(newStateInput)
 
     NVAR currentRow = $(LJZ_MDCWB_BaseDF() + ":CurRow")
     SVAR currentWavePath = $(LJZ_MDCWB_BaseDF() + ":CurWavePath")
-    Wave/T listDispWave = $(LJZ_MDCWB_BaseDF() + ":LB_Disp")
     Wave listStateWave = $(LJZ_MDCWB_BaseDF() + ":LB_State")
 
     if (currentRow < 0 || currentRow >= numpnts(listStateWave))
@@ -2112,9 +2202,8 @@ Function LJZ_MDCWB_SetCurrentRowStateMark(newStateInput)
     LJZ_MDCWB_WriteAcceptState(dataWave, newStateInput)
 
     listStateWave[currentRow] = LJZ_MDCWB_ReadAcceptState(dataWave)
-    listDispWave[currentRow] = LJZ_MDCWB_StateMark(listStateWave[currentRow]) + NameOfWave(dataWave)
+    LJZ_MDCWB_RefreshCurrentRowDisplayMark()
 
-    LJZ_MDCWB_RestoreCurrentSelectionUI()
     return 0
 End
 
@@ -2183,7 +2272,7 @@ Function LJZ_MDCWB_RebuildLB()
 
         listPathWave[listIndex] = fullWavePath
         listStateWave[listIndex] = LJZ_MDCWB_ReadAcceptState(oneWave)
-        listDispWave[listIndex] = LJZ_MDCWB_StateMark(listStateWave[listIndex]) + NameOfWave(oneWave)
+        listDispWave[listIndex] = LJZ_MDCWB_RowStateMark(listStateWave[listIndex], cmpstr(fullWavePath, oldWavePath) == 0, oldDirtyState) + NameOfWave(oneWave)
 
         if (cmpstr(fullWavePath, oldWavePath) == 0)
             foundOldRow = listIndex
@@ -2232,6 +2321,7 @@ Function LJZ_MDCWB_SelectCurrentRow(newRowInput)
     endif
 
     LJZ_MDCWB_LoadCurrentWaveToEditState()
+    LJZ_MDCWB_RefreshCurrentRowDisplayMark()
     return 0
 End
 
@@ -2373,9 +2463,13 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
         return -1
     endif
 
-LJZ_MDCWB_UpdatePreviewGuessWave(dataWave)
+Variable previewUpdateOK = (LJZ_MDCWB_UpdatePreviewGuessWave(dataWave) == 0)
+if (!previewUpdateOK)
+    // OP-FLOW HAZARD: never leave the previous preview curve on screen when the new preview build failed.
+    KillWaves/Z $(LJZ_MDCWB_PreviewGuessPath())
+endif
 
-Wave guessWave = $(LJZ_MDCWB_PreviewGuessPath())
+Wave/Z guessWave = $(LJZ_MDCWB_PreviewGuessPath())
 Wave/Z fitWave = $(LJZ_MDCWB_ResultFitPath(dataWave))
 Wave/Z resWave = $(LJZ_MDCWB_ResultResPath(dataWave))
 
@@ -2419,7 +2513,9 @@ Wave/Z resWave = $(LJZ_MDCWB_ResultResPath(dataWave))
 
     LJZ_MDCWB_ClearGraphTracesByWin(mainGraphPath)
     AppendToGraph/W=$mainGraphPath dataWave
-    AppendToGraph/W=$mainGraphPath guessWave
+    if (previewUpdateOK && WaveExists(guessWave))
+        AppendToGraph/W=$mainGraphPath guessWave
+    endif
 
 if ((!dirtyFlagLocal) && WaveExists(fitWave))
     AppendToGraph/W=$mainGraphPath fitWave
@@ -2429,8 +2525,10 @@ ModifyGraph/W=$mainGraphPath mode=0
 ModifyGraph/W=$mainGraphPath lsize=1.5
 ModifyGraph/W=$mainGraphPath rgb($NameOfWave(dataWave))=(0,0,0)
 
-ModifyGraph/W=$mainGraphPath rgb($NameOfWave(guessWave))=(0,0,65535)
-ModifyGraph/W=$mainGraphPath lstyle($NameOfWave(guessWave))=2
+if (previewUpdateOK && WaveExists(guessWave))
+    ModifyGraph/W=$mainGraphPath rgb($NameOfWave(guessWave))=(0,0,65535)
+    ModifyGraph/W=$mainGraphPath lstyle($NameOfWave(guessWave))=2
+endif
 
 if ((!dirtyFlagLocal) && WaveExists(fitWave))
     ModifyGraph/W=$mainGraphPath rgb($NameOfWave(fitWave))=(65535,0,0)
@@ -2445,9 +2543,10 @@ endif
     else
         Legend/W=$mainGraphPath/K/N=text0
     endif
-
-    // FIX: explicitly distinguish preview guess from the official fit status.
-    if (dirtyFlagLocal)
+    // OP-FLOW HAZARD: preview failures must be explicit so old blue curves cannot masquerade as current params.
+    if (!previewUpdateOK)
+        TextBox/W=$mainGraphPath/C/N=previewStatus/F=0/A=RT/X=-2/Y=2 "\\Z12Preview failed\\rCurrent preview unavailable"
+    elseif (dirtyFlagLocal)
         TextBox/W=$mainGraphPath/C/N=previewStatus/F=0/A=RT/X=-2/Y=2 "\\Z12Preview is dirty\\rOfficial fit may be stale"
     else
         TextBox/W=$mainGraphPath/C/N=previewStatus/F=0/A=RT/X=-2/Y=2 "\\Z12Official fit is current"
@@ -2585,28 +2684,42 @@ Function LJZ_MDCWB_RefreshMetricBox()
     metricText += "ROI: [" + Num2Str(editXLo) + ", " + Num2Str(editXHi) + "]\r"
     metricText += "State: " + stateTextLocal + "\r"
     metricText += "N(all): " + Num2Str(numpnts(dataWave)) + "\r"
+    Wave/Z coefWave = $(LJZ_MDCWB_ResultCoefPath(dataWave))
+    Wave/Z sigmaWave = $(LJZ_MDCWB_ResultSigmaPath(dataWave))
+    Wave/Z infoWave = $(LJZ_MDCWB_ResultInfoPath(dataWave))
 
-  Wave/Z coefWave = $(LJZ_MDCWB_ResultCoefPath(dataWave))
-Wave/Z sigmaWave = $(LJZ_MDCWB_ResultSigmaPath(dataWave))
-Wave/Z infoWave = $(LJZ_MDCWB_ResultInfoPath(dataWave))
+    Variable previewMetricOK = (LJZ_MDCWB_UpdatePreviewGuessWave(dataWave) == 0)
+    if (!previewMetricOK)
+        KillWaves/Z $(LJZ_MDCWB_PreviewGuessPath())
+    endif
 
-Duplicate/FREE dataWave, guessMetricWave
-LJZ_MDCWB_FillGuessWaveFromEditState(dataWave, guessMetricWave)
+    Variable guessRMSELocal = NaN, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy
+    Wave/Z guessMetricWave = $(LJZ_MDCWB_PreviewGuessPath())
+    Wave/Z fitWaveForDummy = $(LJZ_MDCWB_ResultFitPath(dataWave))
+    Wave/Z resWaveForDummy = $(LJZ_MDCWB_ResultResPath(dataWave))
 
-Variable guessRMSELocal, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy
-Wave/Z fitWaveForDummy = $(LJZ_MDCWB_ResultFitPath(dataWave))
-Wave/Z resWaveForDummy = $(LJZ_MDCWB_ResultResPath(dataWave))
+    if (previewMetricOK && WaveExists(guessMetricWave))
+        if (WaveExists(fitWaveForDummy) && WaveExists(resWaveForDummy))
+            if (LJZ_MDCWB_ComputeFitMetrics(dataWave, guessMetricWave, fitWaveForDummy, resWaveForDummy, editXLo, editXHi, guessRMSELocal, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy) != 0)
+                guessRMSELocal = NaN
+            endif
+        else
+            Make/FREE/N=(numpnts(dataWave)) dummyFitWave = dataWave
+            Make/FREE/N=(numpnts(dataWave)) dummyResWave = 0
+            SetScale/P x, DimOffset(dataWave,0), DimDelta(dataWave,0), dummyFitWave, dummyResWave
+            if (LJZ_MDCWB_ComputeFitMetrics(dataWave, guessMetricWave, dummyFitWave, dummyResWave, editXLo, editXHi, guessRMSELocal, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy) != 0)
+                guessRMSELocal = NaN
+            endif
+        endif
+    endif
 
-if (WaveExists(fitWaveForDummy) && WaveExists(resWaveForDummy))
-    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessMetricWave, fitWaveForDummy, resWaveForDummy, editXLo, editXHi, guessRMSELocal, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy)
-else
-    Make/FREE/N=(numpnts(dataWave)) dummyFitWave = dataWave
-    Make/FREE/N=(numpnts(dataWave)) dummyResWave = 0
-    SetScale/P x, DimOffset(dataWave,0), DimDelta(dataWave,0), dummyFitWave, dummyResWave
-    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessMetricWave, dummyFitWave, dummyResWave, editXLo, editXHi, guessRMSELocal, fitRMSEDummy, rssROIDummy, maxAbsDummy, nROIDummy)
-endif
-
-metricText += "GuessRMSE: " + Num2Str(guessRMSELocal) + "\r"
+    if (numtype(guessRMSELocal) == 0)
+        metricText += "GuessRMSE: " + Num2Str(guessRMSELocal) + "\r"
+    elseif (previewMetricOK)
+        metricText += "GuessRMSE: --\r"
+    else
+        metricText += "GuessRMSE: preview failed\r"
+    endif
 
     Variable dirtyFlagLocal = LJZ_MDCWB_IsDirty()
 
@@ -3008,7 +3121,25 @@ Function LJZ_MDCWB_ModelPopProc(controlName, popNum, popStr) : PopupMenuControl
     Variable popNum
     String popStr
 
-    LJZ_MDCWB_ChangeModel(popNum)
+    NVAR editModelID = $(LJZ_MDCWB_BaseDF() + ":EditModelID")
+    Variable oldModelID = editModelID
+
+    // OP-FLOW HAZARD: never overwrite dirty edits with a new model choice without the same confirmation used for row changes.
+    if (LJZ_MDCWB_IsDirty() && popNum != oldModelID)
+        if (!LJZ_MDCWB_ConfirmLeaveIfDirty())
+            LJZ_MDCWB_RefreshParamControls()
+            return 0
+        endif
+    endif
+
+    if (LJZ_MDCWB_ChangeModel(popNum) != 0)
+        Beep
+        DoAlert 0, "Changing model failed."
+        LJZ_MDCWB_RefreshParamControls()
+        return 0
+    endif
+
+    LJZ_MDCWB_RefreshCurrentRowDisplayMark()
     LJZ_MDCWB_RefreshParamControls()
     LJZ_MDCWB_RefreshPreviewGraph()
     LJZ_MDCWB_RefreshMetricBox()
@@ -3021,7 +3152,25 @@ Function LJZ_MDCWB_BGPopProc(controlName, popNum, popStr) : PopupMenuControl
     Variable popNum
     String popStr
 
-    LJZ_MDCWB_ChangeBG(popNum - 1)
+    NVAR editBGOrder = $(LJZ_MDCWB_BaseDF() + ":EditBGOrder")
+    Variable oldBGOrder = editBGOrder
+
+    // OP-FLOW HAZARD: background changes must not silently discard dirty preview edits.
+    if (LJZ_MDCWB_IsDirty() && (popNum - 1) != oldBGOrder)
+        if (!LJZ_MDCWB_ConfirmLeaveIfDirty())
+            LJZ_MDCWB_RefreshParamControls()
+            return 0
+        endif
+    endif
+
+    if (LJZ_MDCWB_ChangeBG(popNum - 1) != 0)
+        Beep
+        DoAlert 0, "Changing background failed."
+        LJZ_MDCWB_RefreshParamControls()
+        return 0
+    endif
+
+    LJZ_MDCWB_RefreshCurrentRowDisplayMark()
     LJZ_MDCWB_RefreshParamControls()
     LJZ_MDCWB_RefreshPreviewGraph()
     LJZ_MDCWB_RefreshMetricBox()
@@ -3078,7 +3227,10 @@ if (StringMatch(setVarAction.ctrlName, "svXLo"))
     NVAR editXLo = $(LJZ_MDCWB_BaseDF() + ":EditXLo")
     editXLo = setVarAction.dval
     LJZ_MDCWB_MarkDirty(1)
-    LJZ_MDCWB_BuildGuessForCurrentWave()
+    if (LJZ_MDCWB_BuildGuessForCurrentWave() != 0)
+        LJZ_MDCWB_HandleGuessBuildFailure("ROI update failed.")
+    endif
+    LJZ_MDCWB_RefreshCurrentRowDisplayMark()
     LJZ_MDCWB_RefreshParamControls()
     LJZ_MDCWB_RefreshPreviewGraph()
     LJZ_MDCWB_RefreshMetricBox()
@@ -3093,7 +3245,10 @@ if (StringMatch(setVarAction.ctrlName, "svXHi"))
     NVAR editXHi = $(LJZ_MDCWB_BaseDF() + ":EditXHi")
     editXHi = setVarAction.dval
     LJZ_MDCWB_MarkDirty(1)
-    LJZ_MDCWB_BuildGuessForCurrentWave()
+    if (LJZ_MDCWB_BuildGuessForCurrentWave() != 0)
+        LJZ_MDCWB_HandleGuessBuildFailure("ROI update failed.")
+    endif
+    LJZ_MDCWB_RefreshCurrentRowDisplayMark()
     LJZ_MDCWB_RefreshParamControls()
     LJZ_MDCWB_RefreshPreviewGraph()
     LJZ_MDCWB_RefreshMetricBox()
@@ -3113,7 +3268,10 @@ if (StringMatch(setVarAction.ctrlName, "svP*"))
         // FIX: sanitize/build/refresh only on committed edits, never during live typing.
         LJZ_MDCWB_SanitizeCurrentEditPar()
         LJZ_MDCWB_MarkDirty(1)
-        LJZ_MDCWB_BuildGuessForCurrentWave()
+        if (LJZ_MDCWB_BuildGuessForCurrentWave() != 0)
+            LJZ_MDCWB_HandleGuessBuildFailure("Parameter update failed.")
+        endif
+        LJZ_MDCWB_RefreshCurrentRowDisplayMark()
         LJZ_MDCWB_RefreshParamControls()
         LJZ_MDCWB_RefreshPreviewGraph()
         LJZ_MDCWB_RefreshMetricBox()
@@ -3148,7 +3306,10 @@ Function LJZ_MDCWB_CheckProc(checkBoxAction) : CheckBoxControl
             editHoldWave[paramIndex] = checkBoxAction.checked
 
             LJZ_MDCWB_MarkDirty(1)
-            LJZ_MDCWB_BuildGuessForCurrentWave()
+            if (LJZ_MDCWB_BuildGuessForCurrentWave() != 0)
+                LJZ_MDCWB_HandleGuessBuildFailure("Hold update failed.")
+            endif
+            LJZ_MDCWB_RefreshCurrentRowDisplayMark()
             LJZ_MDCWB_RefreshParamControls()
             LJZ_MDCWB_RefreshPreviewGraph()
             LJZ_MDCWB_RefreshMetricBox()
@@ -3181,7 +3342,10 @@ Function LJZ_MDCWB_ButtonProc(buttonAction) : ButtonControl
 
     if (StringMatch(buttonAction.ctrlName, "btnGuess"))
         LJZ_MDCWB_ApplyROIFromPreviewCursorsIfWanted()
-        LJZ_MDCWB_BuildGuessForCurrentWave()
+        if (LJZ_MDCWB_BuildGuessForCurrentWave() != 0)
+            LJZ_MDCWB_HandleGuessBuildFailure("Guess rebuild failed.")
+        endif
+        LJZ_MDCWB_RefreshCurrentRowDisplayMark()
         LJZ_MDCWB_RefreshParamControls()
         LJZ_MDCWB_RefreshPreviewGraph()
         LJZ_MDCWB_RefreshMetricBox()
@@ -3193,8 +3357,12 @@ Function LJZ_MDCWB_ButtonProc(buttonAction) : ButtonControl
 
         Variable fitReturnCode = LJZ_MDCWB_CommitFitForCurrentWave()
         if (fitReturnCode != 0)
+            String fitErrorMsg = LJZ_MDCWB_GetLastError()
+            if (strlen(fitErrorMsg) <= 0)
+                fitErrorMsg = "Fit failed."
+            endif
             Beep
-            DoAlert 0, "Fit failed or ROI is too small."
+            DoAlert 0, fitErrorMsg
         endif
 
         LJZ_MDCWB_RebuildLB()
@@ -3242,6 +3410,13 @@ Function LJZ_MDCWB_ButtonProc(buttonAction) : ButtonControl
     endif
 
     if (StringMatch(buttonAction.ctrlName, "btnExport"))
+        if (LJZ_MDCWB_IsDirty())
+            // OP-FLOW HAZARD: export uses last clean saved records, never the current dirty preview.
+            DoAlert 1, "Current preview is dirty. Export uses the last clean saved fit records, not the current dirty preview. Continue?"
+            if (V_flag != 1)
+                return 0
+            endif
+        endif
         LJZ_MDCWB_ExportSummary()
         return 0
     endif
