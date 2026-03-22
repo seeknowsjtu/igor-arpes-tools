@@ -440,43 +440,127 @@ Function LJZ_MDCWB_SaveFitRecord(wData, coefW, sigmaW, infoW, fitW, resW)
 
     String oldDF = GetDataFolder(1)
     Variable hadError = 0
+    Variable replaceStarted = 0
 
     try
         SetDataFolder $localDF
 
-        // ---------- fitcoef ----------
-        Duplicate/O coefW, $(nm + "_fitcoef")
-        Wave wCoefOut = $(nm + "_fitcoef")
+        // ROBUST: clear stale temp/backup waves before atomic record replace.
+        KillWaves/Z $(nm + "_fitcoef__tmp"), $(nm + "_fitsigma__tmp"), $(nm + "_fitinfo__tmp"), $(nm + "_fit__tmp"), $(nm + "_res__tmp")
+        KillWaves/Z $(nm + "_fitcoef__bak"), $(nm + "_fitsigma__bak"), $(nm + "_fitinfo__bak"), $(nm + "_fit__bak"), $(nm + "_res__bak")
+
+        // ---------- fitcoef temp ----------
+        Duplicate/O coefW, $(nm + "_fitcoef__tmp")
+        Wave wCoefOut = $(nm + "_fitcoef__tmp")
         LJZ_MDCWB_EnsureNumWaveLen12(wCoefOut, NaN)
 
-        // ---------- fitsigma ----------
+        // ---------- fitsigma temp ----------
         if (WaveExists(sigmaW))
-            Duplicate/O sigmaW, $(nm + "_fitsigma")
+            Duplicate/O sigmaW, $(nm + "_fitsigma__tmp")
         else
-            Make/O/N=12 $(nm + "_fitsigma") = NaN
+            Make/O/N=12 $(nm + "_fitsigma__tmp") = NaN
         endif
-        Wave wSigmaOut = $(nm + "_fitsigma")
+        Wave wSigmaOut = $(nm + "_fitsigma__tmp")
         LJZ_MDCWB_EnsureNumWaveLen12(wSigmaOut, NaN)
 
-        // ---------- fitinfo ----------
-        Duplicate/O infoW, $(nm + "_fitinfo")
-        Wave wInfoOut = $(nm + "_fitinfo")
+        // ---------- fitinfo temp ----------
+        Duplicate/O infoW, $(nm + "_fitinfo__tmp")
+        Wave wInfoOut = $(nm + "_fitinfo__tmp")
         LJZ_MDCWB_InitInfoWave(wInfoOut)
 
         Note/K wInfoOut
         Note wInfoOut, LJZ_MDCWB_FitInfoSchemaNote()
 
-        // ---------- fit / res ----------
-        Duplicate/O fitW, $(nm + "_fit")
-        Duplicate/O resW, $(nm + "_res")
+        // ---------- fit / res temp ----------
+        Duplicate/O fitW, $(nm + "_fit__tmp")
+        Duplicate/O resW, $(nm + "_res__tmp")
+
+        // ROBUST: snapshot old official record before multi-wave replace.
+        Wave/Z oldCoef = $(nm + "_fitcoef")
+        Wave/Z oldSigma = $(nm + "_fitsigma")
+        Wave/Z oldInfo = $(nm + "_fitinfo")
+        Wave/Z oldFit = $(nm + "_fit")
+        Wave/Z oldRes = $(nm + "_res")
+        Variable hadOldCoef = WaveExists(oldCoef)
+        Variable hadOldSigma = WaveExists(oldSigma)
+        Variable hadOldInfo = WaveExists(oldInfo)
+        Variable hadOldFit = WaveExists(oldFit)
+        Variable hadOldRes = WaveExists(oldRes)
+
+        if (hadOldCoef)
+            Duplicate/O oldCoef, $(nm + "_fitcoef__bak")
+        endif
+        if (hadOldSigma)
+            Duplicate/O oldSigma, $(nm + "_fitsigma__bak")
+        endif
+        if (hadOldInfo)
+            Duplicate/O oldInfo, $(nm + "_fitinfo__bak")
+        endif
+        if (hadOldFit)
+            Duplicate/O oldFit, $(nm + "_fit__bak")
+        endif
+        if (hadOldRes)
+            Duplicate/O oldRes, $(nm + "_res__bak")
+        endif
+
+        replaceStarted = 1
+
+        Duplicate/O wCoefOut, $(nm + "_fitcoef")
+        Duplicate/O wSigmaOut, $(nm + "_fitsigma")
+        Duplicate/O wInfoOut, $(nm + "_fitinfo")
+        Duplicate/O $(nm + "_fit__tmp"), $(nm + "_fit")
+        Duplicate/O $(nm + "_res__tmp"), $(nm + "_res")
     catch
         hadError = 1
     endtry
 
-    SetDataFolder $oldDF
     if (hadError || GetRTError(1) != 0)
+        SetDataFolder $localDF
+        if (replaceStarted)
+            // ROBUST: restore full old record when any stage of the atomic replace fails.
+            Wave/Z bakCoef = $(nm + "_fitcoef__bak")
+            Wave/Z bakSigma = $(nm + "_fitsigma__bak")
+            Wave/Z bakInfo = $(nm + "_fitinfo__bak")
+            Wave/Z bakFit = $(nm + "_fit__bak")
+            Wave/Z bakRes = $(nm + "_res__bak")
+
+            if (WaveExists(bakCoef))
+                Duplicate/O bakCoef, $(nm + "_fitcoef")
+            else
+                KillWaves/Z $(nm + "_fitcoef")
+            endif
+            if (WaveExists(bakSigma))
+                Duplicate/O bakSigma, $(nm + "_fitsigma")
+            else
+                KillWaves/Z $(nm + "_fitsigma")
+            endif
+            if (WaveExists(bakInfo))
+                Duplicate/O bakInfo, $(nm + "_fitinfo")
+            else
+                KillWaves/Z $(nm + "_fitinfo")
+            endif
+            if (WaveExists(bakFit))
+                Duplicate/O bakFit, $(nm + "_fit")
+            else
+                KillWaves/Z $(nm + "_fit")
+            endif
+            if (WaveExists(bakRes))
+                Duplicate/O bakRes, $(nm + "_res")
+            else
+                KillWaves/Z $(nm + "_res")
+            endif
+        endif
+
+        KillWaves/Z $(nm + "_fitcoef__tmp"), $(nm + "_fitsigma__tmp"), $(nm + "_fitinfo__tmp"), $(nm + "_fit__tmp"), $(nm + "_res__tmp")
+        KillWaves/Z $(nm + "_fitcoef__bak"), $(nm + "_fitsigma__bak"), $(nm + "_fitinfo__bak"), $(nm + "_fit__bak"), $(nm + "_res__bak")
+        SetDataFolder $oldDF
         return -1
     endif
+
+    SetDataFolder $localDF
+    KillWaves/Z $(nm + "_fitcoef__tmp"), $(nm + "_fitsigma__tmp"), $(nm + "_fitinfo__tmp"), $(nm + "_fit__tmp"), $(nm + "_res__tmp")
+    KillWaves/Z $(nm + "_fitcoef__bak"), $(nm + "_fitsigma__bak"), $(nm + "_fitinfo__bak"), $(nm + "_fit__bak"), $(nm + "_res__bak")
+    SetDataFolder $oldDF
 
     return 0
 End
@@ -490,11 +574,15 @@ Function LJZ_MDCWB_HasFitRecord(wData)
     Wave wData
 
     Wave/Z coef = $(LJZ_MDCWB_ResultCoefPath(wData))
+    Wave/Z sigma = $(LJZ_MDCWB_ResultSigmaPath(wData))
     Wave/Z info = $(LJZ_MDCWB_ResultInfoPath(wData))
     Wave/Z fit  = $(LJZ_MDCWB_ResultFitPath(wData))
     Wave/Z res  = $(LJZ_MDCWB_ResultResPath(wData))
 
     if (!WaveExists(coef))
+        return 0
+    endif
+    if (!WaveExists(sigma))
         return 0
     endif
     if (!WaveExists(info))
@@ -510,7 +598,23 @@ Function LJZ_MDCWB_HasFitRecord(wData)
     if (numpnts(coef) < 12)
         return 0
     endif
+    if (numpnts(sigma) < 12)
+        return 0
+    endif
     if (numpnts(info) < 12)
+        return 0
+    endif
+    if (numpnts(fit) != numpnts(wData))
+        return 0
+    endif
+    if (numpnts(res) != numpnts(wData))
+        return 0
+    endif
+    // ROBUST: reject partially written fitinfo metadata as invalid record.
+    if (numtype(info[0]) != 0 || numtype(info[1]) != 0 || numtype(info[2]) != 0 || numtype(info[3]) != 0 || numtype(info[4]) != 0 || numtype(info[9]) != 0)
+        return 0
+    endif
+    if (info[9] <= 0)
         return 0
     endif
 
@@ -1060,24 +1164,52 @@ Function LJZ_MDCWB_ComputeFitMetrics(dataWave, guessWave, fitWave, resWave, roiX
     Variable roiIndexLo, roiIndexHi
     LJZ_MDCWB_GetROIIndexRange(dataWave, roiXLoInput, roiXHiInput, roiIndexLo, roiIndexHi)
 
-    Make/FREE/N=(roiIndexHi-roiIndexLo+1) guessDiffWave = dataWave[roiIndexLo+p] - guessWave[roiIndexLo+p]
-    Make/FREE/N=(roiIndexHi-roiIndexLo+1) resSegWave    = resWave[roiIndexLo+p]
-    Make/FREE/N=(roiIndexHi-roiIndexLo+1) guessSqWave   = guessDiffWave[p]^2
-    Make/FREE/N=(roiIndexHi-roiIndexLo+1) resSqWave     = resSegWave[p]^2
-    Make/FREE/N=(roiIndexHi-roiIndexLo+1) absResWave    = abs(resSegWave[p])
+    Variable dataIndex
+    Variable guessCount = 0
+    Variable fitCount = 0
+    Variable guessSqSum = 0
+    Variable fitSqSum = 0
+    Variable maxAbsLocal = NaN
+    Variable dataValue, guessValue, fitValue, resValue, absResValue
 
-    WaveStats/Q guessSqWave
-    guessRMSEOut = sqrt(V_avg)
+    guessRMSEOut = NaN
+    fitRMSEOut = NaN
+    rssROIOut = NaN
+    maxAbsResOut = NaN
+    nROIOut = 0
 
-    WaveStats/Q resSqWave
-    fitRMSEOut = sqrt(V_avg)
+    for (dataIndex = roiIndexLo; dataIndex <= roiIndexHi; dataIndex += 1)
+        dataValue = dataWave[dataIndex]
+        guessValue = guessWave[dataIndex]
+        fitValue = fitWave[dataIndex]
+        resValue = resWave[dataIndex]
+
+        if (numtype(dataValue) == 0 && numtype(guessValue) == 0)
+            guessSqSum += (dataValue - guessValue)^2
+            guessCount += 1
+        endif
+
+        if (numtype(dataValue) == 0 && numtype(fitValue) == 0 && numtype(resValue) == 0)
+            absResValue = abs(resValue)
+            fitSqSum += resValue^2
+            fitCount += 1
+            if (numtype(maxAbsLocal) != 0 || absResValue > maxAbsLocal)
+                maxAbsLocal = absResValue
+            endif
+        endif
+    endfor
+
+    // ROBUST: metrics must only count finite valid samples inside ROI.
+    if (guessCount <= 0 || fitCount <= 0)
+        return -1
+    endif
+
+    guessRMSEOut = sqrt(guessSqSum / guessCount)
+    fitRMSEOut = sqrt(fitSqSum / fitCount)
     // FIX: this is unweighted RSS inside ROI, not true chi-square.
-    rssROIOut  = V_sum
-
-    WaveStats/Q absResWave
-    maxAbsResOut = V_max
-
-    nROIOut = numpnts(resSegWave)
+    rssROIOut  = fitSqSum
+    maxAbsResOut = maxAbsLocal
+    nROIOut = fitCount
 
     return 0
 End
@@ -1144,78 +1276,111 @@ Function LJZ_MDCWB_AutoInitFromData(dataWave)
 
     Variable fullXMin = axisX0
     Variable fullXMax = axisX0 + axisDX * (pointCount - 1)
+    Variable editXLoLocal = editXLo
+    Variable editXHiLocal = editXHi
 
-    if (numtype(editXLo) != 0)
-        editXLo = fullXMin
+    if (numtype(editXLoLocal) != 0)
+        editXLoLocal = fullXMin
     endif
-    if (numtype(editXHi) != 0)
-        editXHi = fullXMax
+    if (numtype(editXHiLocal) != 0)
+        editXHiLocal = fullXMax
     endif
 
     Variable roiIndexLo, roiIndexHi
-    LJZ_MDCWB_GetROIIndexRange(dataWave, editXLo, editXHi, roiIndexLo, roiIndexHi)
+    LJZ_MDCWB_GetROIIndexRange(dataWave, editXLoLocal, editXHiLocal, roiIndexLo, roiIndexHi)
 
     if ((roiIndexHi - roiIndexLo) < 6)
         roiIndexLo = max(0, roiIndexLo - 3)
         roiIndexHi = min(pointCount - 1, roiIndexHi + 3)
     endif
 
+    Variable finiteROIPointCount = 0
+    Variable edgeLoValue = NaN
+    Variable edgeHiValue = NaN
+    Variable roiScanIndex
+    Variable roiScanValue
+    for (roiScanIndex = roiIndexLo; roiScanIndex <= roiIndexHi; roiScanIndex += 1)
+        roiScanValue = dataWave[roiScanIndex]
+        if (numtype(roiScanValue) == 0)
+            finiteROIPointCount += 1
+            if (numtype(edgeLoValue) != 0)
+                edgeLoValue = roiScanValue
+            endif
+            edgeHiValue = roiScanValue
+        endif
+    endfor
+    // ROBUST: abort auto init when ROI finite support is too sparse for stable seed stats.
+    if (finiteROIPointCount < 3)
+        return -1
+    endif
+
     Make/FREE/N=(roiIndexHi-roiIndexLo+1) roiDataWave = dataWave[roiIndexLo+p]
     SetScale/P x, axisX0 + roiIndexLo*axisDX, axisDX, roiDataWave
 
-    WaveStats/Q roiDataWave
+    WaveStats/Q/M=1 roiDataWave
 
     Variable segMinY = V_min
     Variable segMaxY = V_max
     Variable segPeakX = V_maxLoc
 
-    editParWave = NaN
+    // ROBUST: refuse to seed edit parameters from non-finite stats or edge background samples.
+    if (numtype(segMinY) != 0 || numtype(segMaxY) != 0 || numtype(segPeakX) != 0)
+        return -1
+    endif
+    if (numtype(edgeLoValue) != 0 || numtype(edgeHiValue) != 0)
+        return -1
+    endif
+
+    Make/FREE/N=12 editParWorkingWave = NaN
 
     // background
-    editParWave[0] = (segMinY + dataWave[roiIndexLo] + dataWave[roiIndexHi]) / 3
-    editParWave[1] = 0
-    editParWave[2] = 0
+    editParWorkingWave[0] = (segMinY + edgeLoValue + edgeHiValue) / 3
+    editParWorkingWave[1] = 0
+    editParWorkingWave[2] = 0
 
     if (modelIDLocal == 2)
         Variable initX1 = axisX0 + (roiIndexLo + round((roiIndexHi-roiIndexLo)*0.33))*axisDX
         Variable initX2 = axisX0 + (roiIndexLo + round((roiIndexHi-roiIndexLo)*0.67))*axisDX
 
-        editParWave[3]  = max(1e-6, segMaxY - segMinY)
-        editParWave[4]  = initX1
-        editParWave[5]  = max(1e-6, 3*abs(axisDX))
-        editParWave[6]  = 0.8
+        editParWorkingWave[3]  = max(1e-6, segMaxY - segMinY)
+        editParWorkingWave[4]  = initX1
+        editParWorkingWave[5]  = max(1e-6, 3*abs(axisDX))
+        editParWorkingWave[6]  = 0.8
 
-        editParWave[7]  = max(1e-6, segMaxY - segMinY)
-        editParWave[8]  = initX2
-        editParWave[9]  = max(1e-6, 3*abs(axisDX))
-        editParWave[10] = 0.8
+        editParWorkingWave[7]  = max(1e-6, segMaxY - segMinY)
+        editParWorkingWave[8]  = initX2
+        editParWorkingWave[9]  = max(1e-6, 3*abs(axisDX))
+        editParWorkingWave[10] = 0.8
 
-        editParWave[11] = max(defaultResH, 1e-6)
+        editParWorkingWave[11] = max(defaultResH, 1e-6)
 
     elseif (modelIDLocal == 5)
         Variable initXAsym = axisX0 + (roiIndexLo + round((roiIndexHi-roiIndexLo)*0.40))*axisDX
         Variable initXSym  = axisX0 + (roiIndexLo + round((roiIndexHi-roiIndexLo)*0.72))*axisDX
 
-        editParWave[3]  = max(1e-6, 0.8*(segMaxY - segMinY))
-        editParWave[4]  = initXAsym
-        editParWave[5]  = max(1e-6, 2*abs(axisDX))
-        editParWave[6]  = max(1e-6, 4*abs(axisDX))
+        editParWorkingWave[3]  = max(1e-6, 0.8*(segMaxY - segMinY))
+        editParWorkingWave[4]  = initXAsym
+        editParWorkingWave[5]  = max(1e-6, 2*abs(axisDX))
+        editParWorkingWave[6]  = max(1e-6, 4*abs(axisDX))
 
-        editParWave[7]  = max(1e-6, 0.5*(segMaxY - segMinY))
-        editParWave[8]  = initXSym
-        editParWave[9]  = max(1e-6, 3*abs(axisDX))
-        editParWave[10] = 0.8
+        editParWorkingWave[7]  = max(1e-6, 0.5*(segMaxY - segMinY))
+        editParWorkingWave[8]  = initXSym
+        editParWorkingWave[9]  = max(1e-6, 3*abs(axisDX))
+        editParWorkingWave[10] = 0.8
 
-        editParWave[11] = max(defaultResH, 1e-6)
+        editParWorkingWave[11] = max(defaultResH, 1e-6)
 
     else
-        editParWave[3] = max(1e-6, segMaxY - segMinY)
-        editParWave[4] = segPeakX
-        editParWave[5] = max(1e-6, 3*abs(axisDX))
-        editParWave[6] = 0.8
-        editParWave[7] = max(defaultResH, 1e-6)
+        editParWorkingWave[3] = max(1e-6, segMaxY - segMinY)
+        editParWorkingWave[4] = segPeakX
+        editParWorkingWave[5] = max(1e-6, 3*abs(axisDX))
+        editParWorkingWave[6] = 0.8
+        editParWorkingWave[7] = max(defaultResH, 1e-6)
     endif
 
+    editXLo = editXLoLocal
+    editXHi = editXHiLocal
+    editParWave = editParWorkingWave[p]
     LJZ_MDCWB_ApplyDefaultHoldPolicy(1)
     LJZ_MDCWB_SanitizeCurrentEditPar()
     LJZ_MDCWB_SetParamLayout()
@@ -1261,9 +1426,13 @@ Function LJZ_MDCWB_LoadCurrentWaveToEditState()
         return 0
     endif
 
-    LJZ_MDCWB_AutoInitFromData(dataWave)
-    LJZ_MDCWB_MarkDirty(1)
+    if (LJZ_MDCWB_AutoInitFromData(dataWave) != 0)
+        // ROBUST: clear edit state when auto init fails so callers do not see partial state.
+        LJZ_MDCWB_ClearEditState()
+        return -1
+    endif
 
+    LJZ_MDCWB_MarkDirty(1)
     return 0
 End
 
@@ -1281,6 +1450,19 @@ Function LJZ_MDCWB_ChangeModel(newModelIDInput)
         return 0
     endif
 
+    Variable oldModelID = editModelID
+    NVAR editBGOrder = $(LJZ_MDCWB_BaseDF() + ":EditBGOrder")
+    NVAR editXLo = $(LJZ_MDCWB_BaseDF() + ":EditXLo")
+    NVAR editXHi = $(LJZ_MDCWB_BaseDF() + ":EditXHi")
+    Wave editParWave = $(LJZ_MDCWB_BaseDF() + ":EditPar")
+    Wave editHoldWave = $(LJZ_MDCWB_BaseDF() + ":EditHold")
+    Variable oldBGOrder = editBGOrder
+    Variable oldXLo = editXLo
+    Variable oldXHi = editXHi
+    Variable oldDirtyState = LJZ_MDCWB_IsDirty()
+    Make/FREE/N=12 oldEditParWave = editParWave[p]
+    Make/FREE/N=12 oldEditHoldWave = editHoldWave[p]
+
     editModelID = newModelIDLocal
     LJZ_MDCWB_SetParamLayout()
 
@@ -1288,7 +1470,18 @@ Function LJZ_MDCWB_ChangeModel(newModelIDInput)
     if (strlen(currentWavePath) > 0)
         Wave/Z dataWave = $currentWavePath
         if (WaveExists(dataWave))
-            LJZ_MDCWB_AutoInitFromData(dataWave)
+            if (LJZ_MDCWB_AutoInitFromData(dataWave) != 0)
+                // ROBUST: restore previous edit state when model-switch auto init fails.
+                editModelID = oldModelID
+                editBGOrder = oldBGOrder
+                editXLo = oldXLo
+                editXHi = oldXHi
+                editParWave = oldEditParWave[p]
+                editHoldWave = oldEditHoldWave[p]
+                LJZ_MDCWB_SetParamLayout()
+                LJZ_MDCWB_MarkDirty(oldDirtyState)
+                return -1
+            endif
             return 0
         endif
     endif
@@ -1327,9 +1520,13 @@ Function LJZ_MDCWB_BuildGuessWaveFromCurrentState(dataWave)
     LJZ_MDCWB_EnsureDF()
 
     Duplicate/FREE dataWave, guessFullWave
-    LJZ_MDCWB_FillGuessWaveFromEditState(dataWave, guessFullWave)
+    if (LJZ_MDCWB_FillGuessWaveFromEditState(dataWave, guessFullWave) != 0)
+        return -1
+    endif
 
-    LJZ_MDCWB_SaveGuessWave(dataWave, guessFullWave)
+    if (LJZ_MDCWB_SaveGuessWave(dataWave, guessFullWave) != 0)
+        return -1
+    endif
     LJZ_MDCWB_MarkDirty(1)
 
     return 0
@@ -1373,8 +1570,14 @@ Function LJZ_MDCWB_FillGuessWaveFromEditState(dataWave, outGuessWave)
     LJZ_MDCWB_SanitizeParamWave(coefWorkingWave, modelIDLocal)
 
     // 保持与 dataWave 同长度同 x 标度
+    Variable axisX0 = DimOffset(dataWave, 0)
+    Variable axisDX = DimDelta(dataWave, 0)
+    // ROBUST: guard preview/guess generation against invalid x-step at runtime.
+    if (numtype(axisDX) != 0 || axisDX == 0)
+        axisDX = 1
+    endif
     Redimension/N=(numpnts(dataWave)) outGuessWave
-    SetScale/P x, DimOffset(dataWave,0), DimDelta(dataWave,0), outGuessWave
+    SetScale/P x, axisX0, axisDX, outGuessWave
 
     if (modelIDLocal == 2)
         outGuessWave = two_pv_ljz(coefWorkingWave, x)
@@ -1392,11 +1595,18 @@ Function LJZ_MDCWB_UpdatePreviewGuessWave(dataWave)
 
     LJZ_MDCWB_EnsureDF()
 
+    Variable axisX0 = DimOffset(dataWave, 0)
+    Variable axisDX = DimDelta(dataWave, 0)
+    // ROBUST: keep preview wave scale finite even when source axis metadata is broken.
+    if (numtype(axisDX) != 0 || axisDX == 0)
+        axisDX = 1
+    endif
+
     Duplicate/O dataWave, $(LJZ_MDCWB_PreviewGuessPath())
     Wave previewGuessWave = $(LJZ_MDCWB_PreviewGuessPath())
+    SetScale/P x, axisX0, axisDX, previewGuessWave
 
-    LJZ_MDCWB_FillGuessWaveFromEditState(dataWave, previewGuessWave)
-    return 0
+    return LJZ_MDCWB_FillGuessWaveFromEditState(dataWave, previewGuessWave)
 End
 // ============================================================================
 //  Section 8. Fit helpers
@@ -1524,8 +1734,11 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
         guessFullWave = one_pv_ljz(coefWorkingWave, x)
     endif
 
-    // 保留当前 guess，不论 fit 成败
-    LJZ_MDCWB_SaveGuessWave(dataWave, guessFullWave)
+    // ROBUST: abort commit if guess persistence fails, so fit record cannot outrun its guess.
+    if (LJZ_MDCWB_SaveGuessWave(dataWave, guessFullWave) != 0)
+        LJZ_MDCWB_MarkDirty(1)
+        return -1
+    endif
 
     // ---------- hold mask ----------
     String holdMaskString = ""
@@ -1614,7 +1827,11 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
 
     // ---------- metrics ----------
     Variable metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI
-    LJZ_MDCWB_ComputeFitMetrics(dataWave, guessFullWave, fitFullWave, resFullWave, editXLo, editXHi, metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI)
+    if (LJZ_MDCWB_ComputeFitMetrics(dataWave, guessFullWave, fitFullWave, resFullWave, editXLo, editXHi, metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI) != 0)
+        // ROBUST: reject fit records with no finite metric support inside ROI.
+        LJZ_MDCWB_MarkDirty(1)
+        return -1
+    endif
 
     Make/FREE/N=12 infoWorkingWave = NaN
     LJZ_MDCWB_BuildInfoWave(infoWorkingWave, modelIDLocal, bgOrderLocal, editXLo, editXHi, 1, metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI)
