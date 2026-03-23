@@ -82,6 +82,30 @@ Function LJZ_MDCWB_EnsureDF()
     return 0
 End
 
+Function LJZ_MDCWB_DefaultResH()
+    return 1e-4
+End
+
+Function LJZ_MDCWB_SeedResHParam(paramWave, modelIDInput)
+    Wave paramWave
+    Variable modelIDInput
+
+    Variable modelIDLocal = LJZ_MDCWB_ClampModelID(modelIDInput)
+    Variable defaultResH = LJZ_MDCWB_DefaultResH()
+
+    if (modelIDLocal == 2 || modelIDLocal == 5)
+        if (numtype(paramWave[11]) != 0 || paramWave[11] <= 0)
+            paramWave[11] = defaultResH
+        endif
+    else
+        if (numtype(paramWave[7]) != 0 || paramWave[7] <= 0)
+            paramWave[7] = defaultResH
+        endif
+    endif
+
+    return 0
+End
+
 Function LJZ_MDCWB_EnsureRuntimeState()
     String base = LJZ_MDCWB_BaseDF()
 
@@ -140,8 +164,11 @@ Function LJZ_MDCWB_EnsureRuntimeState()
     Wave/Z wPar = $(base + ":EditPar")
     if (!WaveExists(wPar))
         Make/O/N=12 $(base + ":EditPar") = NaN
+        Wave/Z wParRef = $(base + ":EditPar")
+        LJZ_MDCWB_SeedResHParam(wParRef, eModel)
     else
         LJZ_MDCWB_EnsureNumWaveLen12(wPar, NaN)
+        LJZ_MDCWB_SeedResHParam(wPar, eModel)
     endif
 
     Wave/Z wHold = $(base + ":EditHold")
@@ -235,6 +262,7 @@ Function LJZ_MDCWB_ClearEditState()
     eXHi   = NaN
 
     ePar   = NaN
+    LJZ_MDCWB_SeedResHParam(ePar, eModel)
     eHold  = 0
     pName  = ""
     pEn    = 0
@@ -724,6 +752,7 @@ Function LJZ_MDCWB_LoadFitRecordToEditState(wData)
 
     ePar = coef[p]
     LJZ_MDCWB_EnsureNumWaveLen12(ePar, NaN)
+    LJZ_MDCWB_SeedResHParam(ePar, eModel)
 
     return 1
 End
@@ -1078,6 +1107,8 @@ Function LJZ_MDCWB_SanitizeParamWave(paramWave, modelIDInput)
 
     Variable modelIDLocal = LJZ_MDCWB_ClampModelID(modelIDInput)
 
+    LJZ_MDCWB_SeedResHParam(paramWave, modelIDLocal)
+
     Variable minWidthValue = 1e-4
     Variable minResValue   = 1e-4
     Variable minSepValue   = 1e-4
@@ -1130,6 +1161,7 @@ Function LJZ_MDCWB_SanitizeCurrentEditPar()
     Wave editParWave  = $(LJZ_MDCWB_BaseDF() + ":EditPar")
     Wave editHoldWave = $(LJZ_MDCWB_BaseDF() + ":EditHold")
 
+    LJZ_MDCWB_SeedResHParam(editParWave, editModelID)
     LJZ_MDCWB_SanitizeParamWave(editParWave, editModelID)
     LJZ_MDCWB_ApplyModelSpecialsToWave(editParWave, editHoldWave, editModelID)
 
@@ -1298,10 +1330,10 @@ Function LJZ_MDCWB_AutoInitFromData(dataWave)
 
     Variable modelIDLocal = LJZ_MDCWB_ClampModelID(editModelID)
 
-    Variable defaultResH = 0
+    Variable defaultResH = LJZ_MDCWB_DefaultResH()
     NVAR/Z globalResH = root:ARPES_LJZ:MDCFit:Res
-    if (NVAR_Exists(globalResH) && numtype(globalResH) == 0)
-        defaultResH = globalResH
+    if (NVAR_Exists(globalResH) && numtype(globalResH) == 0 && globalResH > 0)
+        defaultResH = max(globalResH, LJZ_MDCWB_DefaultResH())
     endif
 
     Variable pointCount = numpnts(dataWave)
