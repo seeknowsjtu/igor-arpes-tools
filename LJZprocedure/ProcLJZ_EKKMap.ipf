@@ -357,10 +357,24 @@ Function LJZ_EKKMap_EnsureDF()
         Variable/G $(LJZ_EKKMap_BaseDF() + ":Pixel") = 0
     endif
 
-    NVAR/Z Energy = $(LJZ_EKKMap_BaseDF() + ":Energy")
-    if (!NVAR_Exists(Energy))
-        Variable/G $(LJZ_EKKMap_BaseDF() + ":Energy") = 0
+    Variable energyRelInit = 0
+    NVAR/Z EnergyRel = $(LJZ_EKKMap_BaseDF() + ":EnergyRel")
+    if (!NVAR_Exists(EnergyRel))
+        NVAR/Z LegacyEnergy = $(LJZ_EKKMap_BaseDF() + ":Energy")
+        if (NVAR_Exists(LegacyEnergy))
+            energyRelInit = LegacyEnergy
+        endif
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":EnergyRel") = energyRelInit
     endif
+    NVAR EnergyRelRef = $(LJZ_EKKMap_BaseDF() + ":EnergyRel")
+
+    // Keep a legacy variable for older experiments/macros that may still read :Energy.
+    NVAR/Z EnergyCompat = $(LJZ_EKKMap_BaseDF() + ":Energy")
+    if (!NVAR_Exists(EnergyCompat))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":Energy") = EnergyRelRef
+    endif
+    NVAR EnergyCompatRef = $(LJZ_EKKMap_BaseDF() + ":Energy")
+    EnergyCompatRef = EnergyRelRef
 
     NVAR/Z Azimuth = $(LJZ_EKKMap_BaseDF() + ":Azimuth")
     if (!NVAR_Exists(Azimuth))
@@ -493,12 +507,9 @@ Function LJZ_EKKMap_RebuildWaveList()
 
     if (n > 0)
         keepRow = LJZ_EKKMap_Clamp(keepRow, 0, n-1)
-        wSel[keepRow] = 1
-        sWave = wPath[keepRow]
-        SelRow = keepRow
+        LJZ_EKKMap_SetSingleSelection(keepRow)
     else
-        sWave = ""
-        SelRow = -1
+        LJZ_EKKMap_SetSingleSelection(-1)
     endif
 
     LJZ_EKKMap_RestoreCurrentSelectionUI()
@@ -836,27 +847,145 @@ Function LJZ_EKKMap_MinMaxFrom4(v1, v2, v3, v4, isMax)
     return out
 End
 
+Function LJZ_EKKMap_SetLegacyEnergyCompat()
+    NVAR/Z EnergyRel = $(LJZ_EKKMap_BaseDF() + ":EnergyRel")
+    NVAR/Z EnergyCompat = $(LJZ_EKKMap_BaseDF() + ":Energy")
+
+    if (NVAR_Exists(EnergyRel) && NVAR_Exists(EnergyCompat))
+        EnergyCompat = EnergyRel
+    endif
+    return 0
+End
+
+Function LJZ_EKKMap_SetSingleSelection(row)
+    Variable row
+
+    Wave/T/Z wPath = $(LJZ_EKKMap_BaseDF() + ":LB_Path")
+    Wave/Z wSel = $(LJZ_EKKMap_BaseDF() + ":LB_Sel")
+    NVAR/Z SelRow = $(LJZ_EKKMap_BaseDF() + ":SelRow")
+    SVAR/Z sWave = $(LJZ_EKKMap_BaseDF() + ":WaveSel")
+
+    if (!WaveExists(wPath) || !WaveExists(wSel) || !NVAR_Exists(SelRow) || !SVAR_Exists(sWave))
+        return -1
+    endif
+
+    wSel = 0
+    if (row < 0 || row >= numpnts(wPath))
+        SelRow = -1
+        sWave = ""
+        return -1
+    endif
+
+    wSel[row] = 1
+    SelRow = row
+    sWave = wPath[row]
+    return 0
+End
+
 Function/S LJZ_EKKMap_GetSelectedWaveList()
     Wave/T/Z wPath = $(LJZ_EKKMap_BaseDF() + ":LB_Path")
     Wave/Z wSel = $(LJZ_EKKMap_BaseDF() + ":LB_Sel")
     NVAR/Z SelRow = $(LJZ_EKKMap_BaseDF() + ":SelRow")
 
-    String out = ""
-    Variable i
-    if (WaveExists(wPath) && WaveExists(wSel))
-        for (i=0; i<numpnts(wPath); i+=1)
-            if (wSel[i] != 0)
-                out += wPath[i] + ";"
-            endif
-        endfor
-    endif
-
-    if (strlen(out) == 0 && NVAR_Exists(SelRow) && WaveExists(wPath))
+    if (WaveExists(wPath) && WaveExists(wSel) && NVAR_Exists(SelRow))
         if (SelRow >= 0 && SelRow < numpnts(wPath))
-            out = wPath[SelRow] + ";"
+            if (wSel[SelRow] == 0)
+                LJZ_EKKMap_SetSingleSelection(SelRow)
+            endif
+            return wPath[SelRow] + ";"
         endif
     endif
-    return out
+    return ""
+End
+
+Function/S LJZ_EKKMap_InputShapeMessage(mode, is3D)
+    Variable mode, is3D
+
+    if (mode == LJZ_EKKMap_Mode_EK)
+        return is3D ? "EK 3D expects angle × energy × stack." : "EK 2D expects angle × energy."
+    endif
+    if (mode == LJZ_EKKMap_Mode_KxKy)
+        return is3D ? "KxKy 3D expects energy × angle × scan-angle." : "KxKy 2D expects mode-angle × scan-angle."
+    endif
+    return is3D ? "KxKz 3D expects energy × angle × hv." : "KxKz 2D expects mode-angle × hv."
+End
+
+Function LJZ_EKKMap_AlertInvalidInput(w, msg)
+    Wave/Z w
+    String msg
+
+    String prefix = ""
+    if (WaveExists(w))
+        prefix = NameOfWave(w) + ": "
+    endif
+    DoAlert 0, prefix + msg
+    return 0
+End
+
+Function LJZ_EKKMap_ValidateInputForEK(w, is3D)
+    Wave/Z w
+    Variable is3D
+
+    if (!WaveExists(w))
+        LJZ_EKKMap_AlertInvalidInput(w, "Selected wave does not exist.")
+        return 0
+    endif
+    if (is3D)
+        if (!LJZ_EKKMap_Is3DWave(w))
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_EK, 1))
+            return 0
+        endif
+    else
+        if (!LJZ_EKKMap_Is2DWave(w))
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_EK, 0))
+            return 0
+        endif
+    endif
+    return 1
+End
+
+Function LJZ_EKKMap_ValidateInputForKxKy(w, is3D)
+    Wave/Z w
+    Variable is3D
+
+    if (!WaveExists(w))
+        LJZ_EKKMap_AlertInvalidInput(w, "Selected wave does not exist.")
+        return 0
+    endif
+    if (is3D)
+        if (!LJZ_EKKMap_Is3DWave(w))
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_KxKy, 1))
+            return 0
+        endif
+    else
+        if (!LJZ_EKKMap_Is2DWave(w))
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_KxKy, 0))
+            return 0
+        endif
+    endif
+    return 1
+End
+
+Function LJZ_EKKMap_ValidateInputForKxKz(w, is3D)
+    Wave/Z w
+    Variable is3D
+
+    if (!WaveExists(w))
+        LJZ_EKKMap_AlertInvalidInput(w, "Selected wave does not exist.")
+        return 0
+    endif
+    if (is3D)
+        if (!LJZ_EKKMap_Is3DWave(w))
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_KxKz, 1))
+            return 0
+        endif
+    else
+        if (!LJZ_EKKMap_Is2DWave(w))
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_KxKz, 0))
+            return 0
+        endif
+    endif
+    return 1
 End
 
 Function/S LJZ_EKKMap_TempDisplaySlicePath(graphName)
@@ -1151,7 +1280,7 @@ Function LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outPath, hv, workFunc, FL, thetaAngle,
 
     Variable nz = DimSize(w,0)
     if (DimSize(w,1) <= 0 || DimSize(w,2) <= 0 || nz <= 0)
-        DoAlert 0, "Invalid 3D wave for kx-ky. Expected energy × angle × scan(hv)."
+        DoAlert 0, "Invalid 3D wave for kx-ky. Expected energy × angle × scan-angle."
         return -1
     endif
 
@@ -1170,7 +1299,9 @@ Function LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outPath, hv, workFunc, FL, thetaAngle,
     Wave wNY = $(tmpDF + "ny")
 
     Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D") = NaN
+    Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice") = NaN
     Wave tmpSlice = $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D")
+    Wave commonSlice = $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice")
 
     Variable iz
     Variable globalXMin = NaN
@@ -1181,41 +1312,40 @@ Function LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outPath, hv, workFunc, FL, thetaAngle,
     Variable commonNY = 2
     Variable validCount = 0
 
-    // Two-pass remap is required for 3D k-space output:
-    // each energy slice generally has a different physically reachable k-range,
-    // so we cannot steal the first slice grid and force all other slices into it.
+    // Low-memory two-pass remap: pass 1 only records each slice's reachable k-window
+    // and suggested grid size, then releases the temporary 2D map immediately.
     for (iz=0; iz<nz; iz+=1)
         Variable energyRel = DimOffset(w,0) + iz * DimDelta(w,0) - FL
         LJZ_EKKMap_MakeSliceFrom3D(w, iz, 0, tmpSlice)
-        Duplicate/O LJZ_EKKMap_CalcKxKy2D(tmpSlice, energyRel, hv, workFunc, thetaAngle, azimuth, scanOffset, pixel, latticeA, geometry), $(tmpDF + "slice_" + num2str(iz))
-        Wave map2D = $(tmpDF + "slice_" + num2str(iz))
+        Duplicate/O LJZ_EKKMap_CalcKxKy2D(tmpSlice, energyRel, hv, workFunc, thetaAngle, azimuth, scanOffset, pixel, latticeA, geometry), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+        Wave map2D = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
 
-        if (DimSize(map2D,0) < 2 || DimSize(map2D,1) < 2)
-            continue
+        if (DimSize(map2D,0) >= 2 && DimSize(map2D,1) >= 2)
+            wXMin[iz] = LJZ_EKKMap_DimMin(map2D,0)
+            wXMax[iz] = LJZ_EKKMap_DimMax(map2D,0)
+            wYMin[iz] = LJZ_EKKMap_DimMin(map2D,1)
+            wYMax[iz] = LJZ_EKKMap_DimMax(map2D,1)
+            wNX[iz] = DimSize(map2D,0)
+            wNY[iz] = DimSize(map2D,1)
+
+            if (LJZ_EKKMap_IsFinite(wXMin[iz]) && LJZ_EKKMap_IsFinite(wXMax[iz]) && LJZ_EKKMap_IsFinite(wYMin[iz]) && LJZ_EKKMap_IsFinite(wYMax[iz]))
+                globalXMin = LJZ_EKKMap_Min2(globalXMin, wXMin[iz])
+                globalXMax = LJZ_EKKMap_Max2(globalXMax, wXMax[iz])
+                globalYMin = LJZ_EKKMap_Min2(globalYMin, wYMin[iz])
+                globalYMax = LJZ_EKKMap_Max2(globalYMax, wYMax[iz])
+                commonNX = max(commonNX, round(wNX[iz]))
+                commonNY = max(commonNY, round(wNY[iz]))
+                validCount += 1
+            endif
         endif
-
-        wXMin[iz] = LJZ_EKKMap_DimMin(map2D,0)
-        wXMax[iz] = LJZ_EKKMap_DimMax(map2D,0)
-        wYMin[iz] = LJZ_EKKMap_DimMin(map2D,1)
-        wYMax[iz] = LJZ_EKKMap_DimMax(map2D,1)
-        wNX[iz] = DimSize(map2D,0)
-        wNY[iz] = DimSize(map2D,1)
-
-        if (LJZ_EKKMap_IsFinite(wXMin[iz]) && LJZ_EKKMap_IsFinite(wXMax[iz]) && LJZ_EKKMap_IsFinite(wYMin[iz]) && LJZ_EKKMap_IsFinite(wYMax[iz]))
-            globalXMin = LJZ_EKKMap_Min2(globalXMin, wXMin[iz])
-            globalXMax = LJZ_EKKMap_Max2(globalXMax, wXMax[iz])
-            globalYMin = LJZ_EKKMap_Min2(globalYMin, wYMin[iz])
-            globalYMax = LJZ_EKKMap_Max2(globalYMax, wYMax[iz])
-            commonNX = max(commonNX, round(wNX[iz]))
-            commonNY = max(commonNY, round(wNY[iz]))
-            validCount += 1
-        endif
+        KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
     endfor
 
     if (validCount <= 0 || !LJZ_EKKMap_IsFinite(globalXMin) || !LJZ_EKKMap_IsFinite(globalXMax) || !LJZ_EKKMap_IsFinite(globalYMin) || !LJZ_EKKMap_IsFinite(globalYMax) || globalXMin == globalXMax || globalYMin == globalYMax)
         Make/O/N=(2,2,nz) $outPath = NaN
         Wave outFail = $outPath
         SetScale/P z, DimOffset(w,0), DimDelta(w,0), WaveUnits(w,0), outFail
+        KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D"), $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice"), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
         KillDataFolder/Z $(LJZ_EKKMap_BaseDF() + ":TmpKxKySlices")
         return 0
     endif
@@ -1226,21 +1356,24 @@ Function LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outPath, hv, workFunc, FL, thetaAngle,
     SetScale/I y, globalYMin, globalYMax, LJZ_EKKMap_KUnitA(latticeA), out3D
     SetScale/P z, DimOffset(w,0), DimDelta(w,0), WaveUnits(w,0), out3D
 
-    Make/O/N=(commonNX,commonNY) $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice") = NaN
-    Wave commonSlice = $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice")
-
+    // Pass 2 recomputes each slice, resamples it to the common global grid, and
+    // writes directly into the output volume so we never cache all slice_i maps.
     for (iz=0; iz<nz; iz+=1)
-        Wave/Z map2D2 = $(tmpDF + "slice_" + num2str(iz))
-        if (!WaveExists(map2D2))
+        Variable energyRel2 = DimOffset(w,0) + iz * DimDelta(w,0) - FL
+        if (!LJZ_EKKMap_IsFinite(wXMin[iz]) || !LJZ_EKKMap_IsFinite(wXMax[iz]) || !LJZ_EKKMap_IsFinite(wYMin[iz]) || !LJZ_EKKMap_IsFinite(wYMax[iz]))
             out3D[][][iz] = NaN
             continue
         endif
+
+        LJZ_EKKMap_MakeSliceFrom3D(w, iz, 0, tmpSlice)
+        Duplicate/O LJZ_EKKMap_CalcKxKy2D(tmpSlice, energyRel2, hv, workFunc, thetaAngle, azimuth, scanOffset, pixel, latticeA, geometry), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+        Wave map2D2 = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
         LJZ_EKKMap_Resample2DToCommonGrid(map2D2, globalXMin, globalXMax, globalYMin, globalYMax, commonNX, commonNY, commonSlice)
         out3D[][][iz] = commonSlice[p][q]
+        KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
     endfor
 
-    KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D")
-    KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice")
+    KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D"), $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice"), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
     KillDataFolder/Z $(LJZ_EKKMap_BaseDF() + ":TmpKxKySlices")
     return 0
 End
@@ -1271,7 +1404,9 @@ Function LJZ_EKKMap_RunKxKz_3D_TwoPass(w, outPath, workFunc, FL, thetaAngle, V0,
     Wave wNY = $(tmpDF + "ny")
 
     Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D") = NaN
+    Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice") = NaN
     Wave tmpSlice = $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D")
+    Wave commonSlice = $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice")
 
     Variable iz
     Variable globalXMin = NaN
@@ -1282,40 +1417,40 @@ Function LJZ_EKKMap_RunKxKz_3D_TwoPass(w, outPath, workFunc, FL, thetaAngle, V0,
     Variable commonNY = 2
     Variable validCount = 0
 
-    // Same reason as kx-ky: each energy slice reaches a different kx-kz window,
-    // therefore the 3D volume must be built on a common global grid after per-slice remap.
+    // Low-memory two-pass remap: pass 1 only records slice bounds and preferred
+    // grid sizes so large 3D runs do not keep every intermediate map in memory.
     for (iz=0; iz<nz; iz+=1)
         Variable energyRel = DimOffset(w,0) + iz * DimDelta(w,0) - FL
         LJZ_EKKMap_MakeSliceFrom3D(w, iz, 0, tmpSlice)
-        Duplicate/O LJZ_EKKMap_CalcKxKz2D(tmpSlice, energyRel, workFunc, thetaAngle, V0, pixel, latticeA, latticeC), $(tmpDF + "slice_" + num2str(iz))
-        Wave map2D = $(tmpDF + "slice_" + num2str(iz))
+        Duplicate/O LJZ_EKKMap_CalcKxKz2D(tmpSlice, energyRel, workFunc, thetaAngle, V0, pixel, latticeA, latticeC), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+        Wave map2D = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
 
-        if (DimSize(map2D,0) < 2 || DimSize(map2D,1) < 2)
-            continue
+        if (DimSize(map2D,0) >= 2 && DimSize(map2D,1) >= 2)
+            wXMin[iz] = LJZ_EKKMap_DimMin(map2D,0)
+            wXMax[iz] = LJZ_EKKMap_DimMax(map2D,0)
+            wYMin[iz] = LJZ_EKKMap_DimMin(map2D,1)
+            wYMax[iz] = LJZ_EKKMap_DimMax(map2D,1)
+            wNX[iz] = DimSize(map2D,0)
+            wNY[iz] = DimSize(map2D,1)
+
+            if (LJZ_EKKMap_IsFinite(wXMin[iz]) && LJZ_EKKMap_IsFinite(wXMax[iz]) && LJZ_EKKMap_IsFinite(wYMin[iz]) && LJZ_EKKMap_IsFinite(wYMax[iz]))
+                globalXMin = LJZ_EKKMap_Min2(globalXMin, wXMin[iz])
+                globalXMax = LJZ_EKKMap_Max2(globalXMax, wXMax[iz])
+                globalYMin = LJZ_EKKMap_Min2(globalYMin, wYMin[iz])
+                globalYMax = LJZ_EKKMap_Max2(globalYMax, wYMax[iz])
+                commonNX = max(commonNX, round(wNX[iz]))
+                commonNY = max(commonNY, round(wNY[iz]))
+                validCount += 1
+            endif
         endif
-
-        wXMin[iz] = LJZ_EKKMap_DimMin(map2D,0)
-        wXMax[iz] = LJZ_EKKMap_DimMax(map2D,0)
-        wYMin[iz] = LJZ_EKKMap_DimMin(map2D,1)
-        wYMax[iz] = LJZ_EKKMap_DimMax(map2D,1)
-        wNX[iz] = DimSize(map2D,0)
-        wNY[iz] = DimSize(map2D,1)
-
-        if (LJZ_EKKMap_IsFinite(wXMin[iz]) && LJZ_EKKMap_IsFinite(wXMax[iz]) && LJZ_EKKMap_IsFinite(wYMin[iz]) && LJZ_EKKMap_IsFinite(wYMax[iz]))
-            globalXMin = LJZ_EKKMap_Min2(globalXMin, wXMin[iz])
-            globalXMax = LJZ_EKKMap_Max2(globalXMax, wXMax[iz])
-            globalYMin = LJZ_EKKMap_Min2(globalYMin, wYMin[iz])
-            globalYMax = LJZ_EKKMap_Max2(globalYMax, wYMax[iz])
-            commonNX = max(commonNX, round(wNX[iz]))
-            commonNY = max(commonNY, round(wNY[iz]))
-            validCount += 1
-        endif
+        KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
     endfor
 
     if (validCount <= 0 || !LJZ_EKKMap_IsFinite(globalXMin) || !LJZ_EKKMap_IsFinite(globalXMax) || !LJZ_EKKMap_IsFinite(globalYMin) || !LJZ_EKKMap_IsFinite(globalYMax) || globalXMin == globalXMax || globalYMin == globalYMax)
         Make/O/N=(2,2,nz) $outPath = NaN
         Wave outFail = $outPath
         SetScale/P z, DimOffset(w,0), DimDelta(w,0), WaveUnits(w,0), outFail
+        KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D"), $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice"), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
         KillDataFolder/Z $(LJZ_EKKMap_BaseDF() + ":TmpKxKzSlices")
         return 0
     endif
@@ -1326,21 +1461,23 @@ Function LJZ_EKKMap_RunKxKz_3D_TwoPass(w, outPath, workFunc, FL, thetaAngle, V0,
     SetScale/I y, globalYMin, globalYMax, LJZ_EKKMap_KUnitC(latticeC), out3D
     SetScale/P z, DimOffset(w,0), DimDelta(w,0), WaveUnits(w,0), out3D
 
-    Make/O/N=(commonNX,commonNY) $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice") = NaN
-    Wave commonSlice = $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice")
-
+    // Pass 2 recomputes, resamples, and immediately stores each slice into out3D.
     for (iz=0; iz<nz; iz+=1)
-        Wave/Z map2D2 = $(tmpDF + "slice_" + num2str(iz))
-        if (!WaveExists(map2D2))
+        Variable energyRel2 = DimOffset(w,0) + iz * DimDelta(w,0) - FL
+        if (!LJZ_EKKMap_IsFinite(wXMin[iz]) || !LJZ_EKKMap_IsFinite(wXMax[iz]) || !LJZ_EKKMap_IsFinite(wYMin[iz]) || !LJZ_EKKMap_IsFinite(wYMax[iz]))
             out3D[][][iz] = NaN
             continue
         endif
+
+        LJZ_EKKMap_MakeSliceFrom3D(w, iz, 0, tmpSlice)
+        Duplicate/O LJZ_EKKMap_CalcKxKz2D(tmpSlice, energyRel2, workFunc, thetaAngle, V0, pixel, latticeA, latticeC), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+        Wave map2D2 = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
         LJZ_EKKMap_Resample2DToCommonGrid(map2D2, globalXMin, globalXMax, globalYMin, globalYMax, commonNX, commonNY, commonSlice)
         out3D[][][iz] = commonSlice[p][q]
+        KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
     endfor
 
-    KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D")
-    KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice")
+    KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D"), $(LJZ_EKKMap_BaseDF() + ":tmpCommonSlice"), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
     KillDataFolder/Z $(LJZ_EKKMap_BaseDF() + ":TmpKxKzSlices")
     return 0
 End
@@ -1363,6 +1500,7 @@ Function LJZ_EKKMap_RunEK()
     NVAR Pixel = $(LJZ_EKKMap_BaseDF() + ":Pixel")
     NVAR LatticeA = $(LJZ_EKKMap_BaseDF() + ":LatticeA")
     NVAR MDCKf = $(LJZ_EKKMap_BaseDF() + ":MDCKf")
+    Variable is3D
 
     String outDF = LJZ_EKKMap_EnsureOutputDF("EK")
     Variable i
@@ -1375,6 +1513,10 @@ Function LJZ_EKKMap_RunEK()
 
         String nm = NameOfWave(w)
         String outName = "ek_" + nm
+        is3D = LJZ_EKKMap_Is3DWave(w)
+        if (!LJZ_EKKMap_ValidateInputForEK(w, is3D))
+            continue
+        endif
 
         if (LJZ_EKKMap_Is2DWave(w))
             Duplicate/O LJZ_EKKMap_CalcEK2D(w, ThetaAngle, hv, WorkFunc, FL, Pixel, LatticeA, MDCKf), $(outDF + outName)
@@ -1428,10 +1570,15 @@ Function LJZ_EKKMap_RunKxKy()
     NVAR FL = $(LJZ_EKKMap_BaseDF() + ":FL")
     NVAR Pixel = $(LJZ_EKKMap_BaseDF() + ":Pixel")
     NVAR LatticeA = $(LJZ_EKKMap_BaseDF() + ":LatticeA")
-    NVAR Energy = $(LJZ_EKKMap_BaseDF() + ":Energy")
+    NVAR EnergyRel = $(LJZ_EKKMap_BaseDF() + ":EnergyRel")
     NVAR Azimuth = $(LJZ_EKKMap_BaseDF() + ":Azimuth")
     NVAR ScanOffset = $(LJZ_EKKMap_BaseDF() + ":ScanOffset")
     NVAR Geometry = $(LJZ_EKKMap_BaseDF() + ":Geometry")
+    Variable is3D
+
+    // 2D kx-ky uses panel EnergyRel as user-entered binding energy relative to FL.
+    // 3D kx-ky ignores that panel field for per-slice mapping; each slice uses dim0 - FL.
+    LJZ_EKKMap_SetLegacyEnergyCompat()
 
     String outDF = LJZ_EKKMap_EnsureOutputDF("KxKy")
     Variable i
@@ -1444,9 +1591,13 @@ Function LJZ_EKKMap_RunKxKy()
 
         String nm = NameOfWave(w)
         String outName = "kxky_" + nm
+        is3D = LJZ_EKKMap_Is3DWave(w)
+        if (!LJZ_EKKMap_ValidateInputForKxKy(w, is3D))
+            continue
+        endif
 
         if (LJZ_EKKMap_Is2DWave(w))
-            Duplicate/O LJZ_EKKMap_CalcKxKy2D(w, Energy, hv, WorkFunc, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry), $(outDF + outName)
+            Duplicate/O LJZ_EKKMap_CalcKxKy2D(w, EnergyRel, hv, WorkFunc, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry), $(outDF + outName)
             Wave out2D = $(outDF + outName)
             LJZ_EKKMap_ShowResultWave(out2D, "Im_" + outName)
         elseif (LJZ_EKKMap_Is3DWave(w))
@@ -1475,8 +1626,13 @@ Function LJZ_EKKMap_RunKxKz()
     NVAR Pixel = $(LJZ_EKKMap_BaseDF() + ":Pixel")
     NVAR LatticeA = $(LJZ_EKKMap_BaseDF() + ":LatticeA")
     NVAR LatticeC = $(LJZ_EKKMap_BaseDF() + ":LatticeC")
-    NVAR Energy = $(LJZ_EKKMap_BaseDF() + ":Energy")
+    NVAR EnergyRel = $(LJZ_EKKMap_BaseDF() + ":EnergyRel")
     NVAR V0 = $(LJZ_EKKMap_BaseDF() + ":V0")
+    Variable is3D
+
+    // 2D kx-kz uses panel EnergyRel as user-entered binding energy relative to FL.
+    // 3D kx-kz ignores that panel field for per-slice mapping; each slice uses dim0 - FL.
+    LJZ_EKKMap_SetLegacyEnergyCompat()
 
     String outDF = LJZ_EKKMap_EnsureOutputDF("KxKz")
     Variable i
@@ -1489,9 +1645,13 @@ Function LJZ_EKKMap_RunKxKz()
 
         String nm = NameOfWave(w)
         String outName = "kxkz_" + nm
+        is3D = LJZ_EKKMap_Is3DWave(w)
+        if (!LJZ_EKKMap_ValidateInputForKxKz(w, is3D))
+            continue
+        endif
 
         if (LJZ_EKKMap_Is2DWave(w))
-            Duplicate/O LJZ_EKKMap_CalcKxKz2D(w, Energy, WorkFunc, ThetaAngle, V0, Pixel, LatticeA, LatticeC), $(outDF + outName)
+            Duplicate/O LJZ_EKKMap_CalcKxKz2D(w, EnergyRel, WorkFunc, ThetaAngle, V0, Pixel, LatticeA, LatticeC), $(outDF + outName)
             Wave out2D = $(outDF + outName)
             LJZ_EKKMap_ShowResultWave(out2D, "Im_" + outName)
         elseif (LJZ_EKKMap_Is3DWave(w))
@@ -1511,23 +1671,14 @@ End
 Function LJZ_EKKMap_SelectRow(row)
     Variable row
 
-    Wave/T/Z wPath = $(LJZ_EKKMap_BaseDF() + ":LB_Path")
-    NVAR/Z SelRow = $(LJZ_EKKMap_BaseDF() + ":SelRow")
-    SVAR/Z sWave = $(LJZ_EKKMap_BaseDF() + ":WaveSel")
-    if (!WaveExists(wPath) || !NVAR_Exists(SelRow) || !SVAR_Exists(sWave))
-        return -1
-    endif
-
-    if (row < 0 || row >= numpnts(wPath))
-        SelRow = -1
-        sWave = ""
+    if (LJZ_EKKMap_SetSingleSelection(row) != 0)
+        LJZ_EKKMap_RestoreCurrentSelectionUI()
         LJZ_EKKMap_ShowCurrentWave()
         return -1
     endif
 
-    SelRow = row
-    sWave = wPath[row]
     LJZ_EKKMap_ClampPreviewZToCurrentWave()
+    LJZ_EKKMap_RestoreCurrentSelectionUI()
     LJZ_EKKMap_RefreshWindowControls()
     LJZ_EKKMap_ShowCurrentWave()
     return 0
@@ -1621,6 +1772,7 @@ Proc LJZ_EKKMap_SetVarProc(ctrlName, varNum, varStr, varName) : SetVariableContr
             LJZ_EKKMap_ShowCurrentWave()
             break
         default:
+            LJZ_EKKMap_SetLegacyEnergyCompat()
             LJZ_EKKMap_ShowCurrentWave()
             break
     endswitch
@@ -1697,8 +1849,8 @@ Function LJZ_EKKMap_OpenPanel()
     SetVariable svOffset,pos={265,450},size={135,20},title="Scan offset"
     SetVariable svOffset,variable=$(LJZ_EKKMap_BaseDF() + ":ScanOffset"),proc=LJZ_EKKMap_SetVarProc
 
-    SetVariable svEnergy,pos={415,450},size={135,20},title="E"
-    SetVariable svEnergy,variable=$(LJZ_EKKMap_BaseDF() + ":Energy"),proc=LJZ_EKKMap_SetVarProc
+    SetVariable svEnergy,pos={415,450},size={135,20},title="E_rel"
+    SetVariable svEnergy,variable=$(LJZ_EKKMap_BaseDF() + ":EnergyRel"),proc=LJZ_EKKMap_SetVarProc
 
     CheckBox cbGeometry,pos={265,478},size={120,18},title="WTZ geometry"
     CheckBox cbGeometry,variable=$(LJZ_EKKMap_BaseDF() + ":Geometry"),proc=LJZ_EKKMap_CheckProc
@@ -1740,7 +1892,7 @@ Function LJZ_EKKMap_OpenPanel()
     Button btKxKy,pos={590,552},size={120,32},title="Calc kx-ky",proc=LJZ_EKKMap_ButtonProc
     Button btKxKz,pos={735,552},size={120,32},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc
 
-    TitleBox tbNote,pos={265,592},size={650,18},frame=0,title="3D: EK=angle×energy×stack；KxKy/KxKz=energy×angle×scan(hv)。Transpose 只用于 preview。"
+    TitleBox tbNote,pos={265,592},size={650,18},frame=0,title="Single-select run target = current preview. 2D K-map uses E_rel; 3D K-map slice energy comes from dim0-FL."
 
     LJZ_EKKMap_CreateGraphSubwindow()
     LJZ_EKKMap_RefreshWindowControls()
