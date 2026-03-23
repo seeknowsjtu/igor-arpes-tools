@@ -730,6 +730,10 @@ Function LJZ_MDCPeakSep_LoadStoredResultForSelection()
     XLeft = wLeft[idx]
     XRight = wRight[idx]
     Sep = wSep[idx]
+    if (numtype(XLeft) != 0 || numtype(XRight) != 0 || numtype(Sep) != 0)
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        return -1
+    endif
 
     return 0
 End
