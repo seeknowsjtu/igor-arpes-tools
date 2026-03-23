@@ -4,24 +4,16 @@
 
 // ============================================================================
 //  LJZ_MDCPeakSep : panel-inline MDC left/right peak separation tool
-//
 //  只负责：
-//    1) 从当前 RunDF / 手动指定 DF 扫描 mdc_show_*
+//    1) 从当前 RunDF / 手动指定 DF 扫描严格命名的 mdc_show_i
 //    2) 在 panel 内联 graph 中显示当前选中的 mdc_show_i
 //    3) 在两个 x-window 内分别寻找 left / right peak center
 //    4) 把 XLeft / XRight / Sep 写回 SourceDF 下的结果 wave
 //
-//  特点（偏工程稳健版）：
-//    - 忽略 NaN/Inf
-//    - 峰中心采用“最大值点 + 3 点抛物线插值”
-//    - 批量测量前清空结果 wave，按真实 mdc_show_i 写回
-//    - dirty-confirm 防止用户误丢窗口修改
-//    - graph 上明确画出 window 边界与最终峰位
-//
 //  不负责：
 //    - 3D 提取
-//    - 全局拟合
-//    - smoothing / deconvolution
+//    - smoothing
+//    - fit
 // ============================================================================
 
 Menu "ARPES_LJZ"
@@ -80,22 +72,33 @@ Function LJZ_MDCPeakSep_Is1DWave(w)
     if (!WaveExists(w))
         return 0
     endif
-    if (DimSize(w,0) <= 0)
+    if (DimSize(w, 0) <= 0)
         return 0
     endif
-    if (DimSize(w,1) > 0 || DimSize(w,2) > 0 || DimSize(w,3) > 0)
+    if (DimSize(w, 1) > 0 || DimSize(w, 2) > 0 || DimSize(w, 3) > 0)
         return 0
     endif
+
     return 1
+End
+
+Function/S LJZ_MDCPeakSep_WaveNameFromPath(wPath)
+    String wPath
+
+    Variable n = ItemsInList(wPath, ":")
+    if (n <= 0)
+        return wPath
+    endif
+
+    return StringFromList(n - 1, wPath, ":")
 End
 
 Function/S LJZ_MDCPeakSep_WaveShortLabel(wPath)
     String wPath
 
-    Wave/Z w = $wPath
-    String nm = ""
-    if (WaveExists(w))
-        nm = NameOfWave(w)
+    String nm = NameOfWave($wPath)
+    if (strlen(nm) == 0)
+        nm = LJZ_MDCPeakSep_WaveNameFromPath(wPath)
     endif
     if (strlen(nm) == 0)
         nm = wPath
@@ -106,6 +109,7 @@ End
 
 Function LJZ_MDCPeakSep_Clamp(v, lo, hi)
     Variable v, lo, hi
+
     if (v < lo)
         return lo
     endif
@@ -115,9 +119,9 @@ Function LJZ_MDCPeakSep_Clamp(v, lo, hi)
     return v
 End
 
-
 Function LJZ_MDCPeakSep_HasChildSubwindow(hostWin, childName)
     String hostWin, childName
+
     String childList = ChildWindowList(hostWin)
     return (WhichListItem(childName, childList, ";", 0, 0) >= 0)
 End
@@ -193,39 +197,29 @@ Function LJZ_MDCPeakSep_EnsureDF()
 
     Make/O/N=2 $(LJZ_MDCPeakSep_BaseDF() + ":GraphStub") = NaN
     SetScale/P x, 0, 1, "", $(LJZ_MDCPeakSep_BaseDF() + ":GraphStub")
+
     return 0
 End
 
 Function LJZ_MDCPeakSep_MarkDirty(flag)
     Variable flag
-    String base = LJZ_MDCPeakSep_BaseDF()
-    NVAR/Z Dirty = $(base + ":Dirty")
-    if (!NVAR_Exists(Dirty))
-        return -1
-    endif
+
+    NVAR Dirty = $(LJZ_MDCPeakSep_BaseDF() + ":Dirty")
     Dirty = (flag != 0)
     return 0
 End
 
 Function LJZ_MDCPeakSep_IsDirty()
-    String base = LJZ_MDCPeakSep_BaseDF()
-    NVAR/Z Dirty = $(base + ":Dirty")
-    if (!NVAR_Exists(Dirty))
-        return 0
-    endif
+    NVAR Dirty = $(LJZ_MDCPeakSep_BaseDF() + ":Dirty")
     return Dirty
 End
 
-
 Function LJZ_MDCPeakSep_ClearWindowGlobals()
-    String base = LJZ_MDCPeakSep_BaseDF()
-    NVAR/Z LeftX1 = $(base + ":LeftX1")
-    NVAR/Z LeftX2 = $(base + ":LeftX2")
-    NVAR/Z RightX1 = $(base + ":RightX1")
-    NVAR/Z RightX2 = $(base + ":RightX2")
-    if (!NVAR_Exists(LeftX1) || !NVAR_Exists(LeftX2) || !NVAR_Exists(RightX1) || !NVAR_Exists(RightX2))
-        return -1
-    endif
+    NVAR LeftX1 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX1")
+    NVAR LeftX2 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX2")
+    NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
+    NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
+
     LeftX1 = NaN
     LeftX2 = NaN
     RightX1 = NaN
@@ -233,15 +227,13 @@ Function LJZ_MDCPeakSep_ClearWindowGlobals()
     return 0
 End
 
-
 Function LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
     LJZ_MDCPeakSep_EnsureDF()
 
     String panelName = LJZ_MDCPeakSep_PanelName()
-    String base = LJZ_MDCPeakSep_BaseDF()
-    NVAR/Z SelRow = $(base + ":SelRow")
-    Wave/Z wSel = $(base + ":LB_Sel")
-    if (!NVAR_Exists(SelRow) || !WaveExists(wSel))
+    NVAR SelRow = $(LJZ_MDCPeakSep_BaseDF() + ":SelRow")
+    Wave/Z wSel = $(LJZ_MDCPeakSep_BaseDF() + ":LB_Sel")
+    if (!WaveExists(wSel))
         return 0
     endif
 
@@ -258,11 +250,11 @@ Function LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
 End
 
 Function LJZ_MDCPeakSep_ConfirmLeaveIfDirty()
-    String base = LJZ_MDCPeakSep_BaseDF()
-    SVAR/Z sWave = $(base + ":WaveSel")
-    if (!SVAR_Exists(sWave) || strlen(sWave) == 0)
+    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
         return 1
     endif
+
     if (!LJZ_MDCPeakSep_IsDirty())
         return 1
     endif
@@ -272,6 +264,7 @@ Function LJZ_MDCPeakSep_ConfirmLeaveIfDirty()
         LJZ_MDCPeakSep_MarkDirty(0)
         return 1
     endif
+
     return 0
 End
 
@@ -299,85 +292,141 @@ Function/S LJZ_MDCPeakSep_GetCurrentRunDF()
         endif
     endif
 
-    return out
+    return ""
 End
 
+Function LJZ_MDCPeakSep_UseCurrentRunDF()
+    LJZ_MDCPeakSep_EnsureDF()
 
+    SVAR sSourceDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
+    String runDF = LJZ_MDCPeakSep_GetCurrentRunDF()
 
-// ============================================================================
-//  Section 2. scan waves / result waves
-// ============================================================================
-
-Function LJZ_MDCPeakSep_IsTargetMDCWave(w)
-    Wave/Z w
-    if (!LJZ_MDCPeakSep_Is1DWave(w))
-        return 0
+    if (strlen(runDF) == 0)
+        DoAlert 0, "没有找到当前 MDCExtract 的有效 RunDF。"
+        return -1
     endif
 
-    String nm = NameOfWave(w)
-    if (StringMatch(nm, "mdc_show_*"))
-        return 1
-    endif
+    sSourceDF = runDF
+    LJZ_MDCPeakSep_RebuildWaveList()
+    LJZ_MDCPeakSep_RefreshCurrentSelection()
+    LJZ_MDCPeakSep_RefreshTitleBoxes()
     return 0
 End
 
-Function LJZ_MDCPeakSep_ParseWaveIndex(wName)
-    String wName
+
+// ============================================================================
+//  Section 2. scan mdc_show_* / result waves
+// ============================================================================
+
+Function LJZ_MDCPeakSep_IsTargetMDCWave(w, nm)
+    Wave/Z w
+    String nm
+
+    if (!LJZ_MDCPeakSep_Is1DWave(w))
+        return 0
+    endif
+    if (numtype(LJZ_MDCPeakSep_ParseWaveIndex(nm)) != 0)
+        return 0
+    endif
+
+    return 1
+End
+
+Function LJZ_MDCPeakSep_ParseWaveIndex(nm)
+    String nm
+
     Variable idx = NaN
-    sscanf wName, "mdc_show_%d", idx
+    String exact = ""
+
+    sscanf nm, "mdc_show_%d", idx
+    if (V_flag != 1)
+        return NaN
+    endif
+    if (numtype(idx) != 0 || idx < 0)
+        return NaN
+    endif
+
+    sprintf exact, "mdc_show_%d", idx
+    if (CmpStr(nm, exact) != 0)
+        return NaN
+    endif
+
     return idx
 End
 
-Function/S LJZ_MDCPeakSep_ListMDCShowWaves_OneDF(df)
-    String df
+Function/S LJZ_MDCPeakSep_InsertWavePathSorted(pathIn, listIn)
+    String pathIn, listIn
 
-    String dfc = LJZ_MDCPeakSep_df_with_colon(df)
-    String oldDF = GetDataFolder(1)
-    SetDataFolder $dfc
-    String wl = WaveList("mdc_show_*", ";", "DIMS:1")
-    SetDataFolder $oldDF
-    String out = ""
-    Variable i, n = ItemsInList(wl, ";")
-    Variable bestIdx, j
+    String out = listIn
+    String nmIn = LJZ_MDCPeakSep_WaveNameFromPath(pathIn)
+    Variable idxIn = LJZ_MDCPeakSep_ParseWaveIndex(nmIn)
+    Variable n = ItemsInList(out, ";")
+    Variable i
 
     if (n <= 0)
+        return AddListItem(pathIn, "", ";", 0)
+    endif
+
+    for (i = 0; i < n; i += 1)
+        String pathCur = StringFromList(i, out, ";")
+        String nmCur = LJZ_MDCPeakSep_WaveNameFromPath(pathCur)
+        Variable idxCur = LJZ_MDCPeakSep_ParseWaveIndex(nmCur)
+        if (numtype(idxCur) != 0 || idxIn < idxCur)
+            return AddListItem(pathIn, out, ";", i)
+        endif
+    endfor
+
+    return AddListItem(pathIn, out, ";", Inf)
+End
+
+Function/S LJZ_MDCPeakSep_ListMDCShowWaves_OneDF(dfStr)
+    String dfStr
+
+    String dfc = LJZ_MDCPeakSep_df_with_colon(dfStr)
+    String out = ""
+    Variable iObj, nObj
+
+    if (!DataFolderExists(dfc))
         return ""
     endif
 
-    Make/FREE/N=(n) idxW = NaN
-    Make/FREE/T/N=(n) nmW = ""
-    for (i=0; i<n; i+=1)
-        nmW[i] = StringFromList(i, wl, ";")
-        idxW[i] = LJZ_MDCPeakSep_ParseWaveIndex(nmW[i])
-    endfor
-
-    // simple selection sort by parsed index; NaN at end
-    for (i=0; i<n; i+=1)
-        bestIdx = i
-        for (j=i+1; j<n; j+=1)
-            if (numtype(idxW[bestIdx]) != 0)
-                bestIdx = j
-            elseif (numtype(idxW[j]) == 0 && idxW[j] < idxW[bestIdx])
-                bestIdx = j
-            endif
-        endfor
-        if (bestIdx != i)
-            Variable tmpV = idxW[i]
-            String tmpS = nmW[i]
-            idxW[i] = idxW[bestIdx]
-            nmW[i] = nmW[bestIdx]
-            idxW[bestIdx] = tmpV
-            nmW[bestIdx] = tmpS
+    nObj = CountObjects(dfc, 1)
+    for (iObj = 0; iObj < nObj; iObj += 1)
+        String nm = GetIndexedObjName(dfc, 1, iObj)
+        Wave/Z w = $(dfc + nm)
+        if (!WaveExists(w))
+            continue
         endif
-    endfor
-
-    for (i=0; i<n; i+=1)
-        if (strlen(nmW[i]) > 0)
-            out += dfc + nmW[i] + ";"
+        if (!LJZ_MDCPeakSep_IsTargetMDCWave(w, nm))
+            continue
         endif
+        out = LJZ_MDCPeakSep_InsertWavePathSorted(dfc + nm, out)
     endfor
 
     return out
+End
+
+Function/S LJZ_MDCPeakSep_CurrentWaveList()
+    SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
+    return LJZ_MDCPeakSep_ListMDCShowWaves_OneDF(LJZ_MDCPeakSep_df_with_colon(sDF))
+End
+
+Function LJZ_MDCPeakSep_MaxWaveIndexInList(listStr)
+    String listStr
+
+    Variable maxIdx = -1
+    Variable n = ItemsInList(listStr, ";")
+    Variable i
+
+    for (i = 0; i < n; i += 1)
+        String wPath = StringFromList(i, listStr, ";")
+        Variable idx = LJZ_MDCPeakSep_ParseWaveIndex(LJZ_MDCPeakSep_WaveNameFromPath(wPath))
+        if (numtype(idx) == 0)
+            maxIdx = max(maxIdx, idx)
+        endif
+    endfor
+
+    return maxIdx
 End
 
 Function LJZ_MDCPeakSep_ResultWaveShouldUseRunScale(dfStr)
@@ -416,34 +465,6 @@ Function LJZ_MDCPeakSep_ApplyResultWaveScale(w, dfStr)
     return 0
 End
 
-Function/S LJZ_MDCPeakSep_CurrentWaveList()
-    SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
-    return LJZ_MDCPeakSep_ListMDCShowWaves_OneDF(LJZ_MDCPeakSep_df_with_colon(sDF))
-End
-
-Function LJZ_MDCPeakSep_MaxWaveIndexInList(listStr)
-    String listStr
-
-    Variable maxIdx = -1
-    Variable n = ItemsInList(listStr, ";")
-    Variable i
-
-    for (i = 0; i < n; i += 1)
-        String wPath = StringFromList(i, listStr, ";")
-        Wave/Z w = $wPath
-        if (!WaveExists(w))
-            continue
-        endif
-
-        Variable idx = LJZ_MDCPeakSep_ParseWaveIndex(NameOfWave(w))
-        if (numtype(idx) == 0)
-            maxIdx = max(maxIdx, idx)
-        endif
-    endfor
-
-    return maxIdx
-End
-
 Function LJZ_MDCPeakSep_EnsureResultWaves()
     LJZ_MDCPeakSep_EnsureDF()
 
@@ -469,7 +490,7 @@ Function LJZ_MDCPeakSep_EnsureResultWaves()
         if (oldLeftN != nResult)
             Redimension/N=(nResult) wLeft
             if (nResult > oldLeftN)
-                wLeft[oldLeftN, nResult-1] = NaN
+                wLeft[oldLeftN, nResult - 1] = NaN
             endif
         endif
     endif
@@ -482,7 +503,7 @@ Function LJZ_MDCPeakSep_EnsureResultWaves()
         if (oldRightN != nResult)
             Redimension/N=(nResult) wRight
             if (nResult > oldRightN)
-                wRight[oldRightN, nResult-1] = NaN
+                wRight[oldRightN, nResult - 1] = NaN
             endif
         endif
     endif
@@ -495,7 +516,7 @@ Function LJZ_MDCPeakSep_EnsureResultWaves()
         if (oldSepN != nResult)
             Redimension/N=(nResult) wSep
             if (nResult > oldSepN)
-                wSep[oldSepN, nResult-1] = NaN
+                wSep[oldSepN, nResult - 1] = NaN
             endif
         endif
     endif
@@ -539,12 +560,13 @@ Function LJZ_MDCPeakSep_WriteResultForWave(wPath, xLeftVal, xRightVal, sepVal)
 
     SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
     String dfStr = LJZ_MDCPeakSep_df_with_colon(sDF)
-    Wave/Z w = $wPath
-    if (!WaveExists(w))
-        return -1
-    endif
+    String nm = NameOfWave($wPath)
+    Variable idx
 
-    Variable idx = LJZ_MDCPeakSep_ParseWaveIndex(NameOfWave(w))
+    if (strlen(nm) == 0)
+        nm = LJZ_MDCPeakSep_WaveNameFromPath(wPath)
+    endif
+    idx = LJZ_MDCPeakSep_ParseWaveIndex(nm)
     if (numtype(idx) != 0)
         return -1
     endif
@@ -564,7 +586,6 @@ Function LJZ_MDCPeakSep_WriteResultForWave(wPath, xLeftVal, xRightVal, sepVal)
     wLeft[idx] = xLeftVal
     wRight[idx] = xRightVal
     wSep[idx] = sepVal
-
     return 0
 End
 
@@ -609,7 +630,7 @@ Function LJZ_MDCPeakSep_RebuildWaveList()
     endif
 
     if (n > 0)
-        keepRow = LJZ_MDCPeakSep_Clamp(keepRow, 0, n-1)
+        keepRow = LJZ_MDCPeakSep_Clamp(keepRow, 0, n - 1)
         wSel[keepRow] = 1
         sWave = StringFromList(keepRow, listStr, ";")
         SelRow = keepRow
@@ -625,35 +646,107 @@ Function LJZ_MDCPeakSep_RebuildWaveList()
     return 0
 End
 
+Function LJZ_MDCPeakSep_SelectWaveRow(row)
+    Variable row
+
+    LJZ_MDCPeakSep_EnsureDF()
+
+    String listStr = LJZ_MDCPeakSep_CurrentWaveList()
+    Variable n = ItemsInList(listStr, ";")
+    if (n <= 0)
+        return -1
+    endif
+
+    row = max(0, min(n - 1, row))
+
+    Wave wSel = $(LJZ_MDCPeakSep_BaseDF() + ":LB_Sel")
+    if (numpnts(wSel) != n)
+        Redimension/N=(n) wSel
+    endif
+    wSel = 0
+    wSel[row] = 1
+
+    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+    NVAR SelRow = $(LJZ_MDCPeakSep_BaseDF() + ":SelRow")
+    sWave = StringFromList(row, listStr, ";")
+    SelRow = row
+    return 0
+End
+
+Function LJZ_MDCPeakSep_CurrentWaveResultIndex()
+    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
+        return NaN
+    endif
+
+    return LJZ_MDCPeakSep_ParseWaveIndex(LJZ_MDCPeakSep_WaveNameFromPath(sWave))
+End
+
+Function LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+    NVAR XLeft = $(LJZ_MDCPeakSep_BaseDF() + ":XLeft")
+    NVAR XRight = $(LJZ_MDCPeakSep_BaseDF() + ":XRight")
+    NVAR Sep = $(LJZ_MDCPeakSep_BaseDF() + ":Sep")
+
+    XLeft = NaN
+    XRight = NaN
+    Sep = NaN
+
+    String panelName = LJZ_MDCPeakSep_PanelName()
+    String graphName = LJZ_MDCPeakSep_GraphName()
+    String graphPath = LJZ_MDCPeakSep_GraphPath()
+    if (LJZ_MDCPeakSep_HasChildSubwindow(panelName, graphName))
+        TextBox/W=$graphPath/K/N=tbPeak
+        SetDrawLayer/W=$graphPath UserFront
+        DrawAction/W=$graphPath getgroup=PeakMarks, delete
+    endif
+
+    return 0
+End
+
+Function LJZ_MDCPeakSep_LoadStoredResultForSelection()
+    LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+
+    SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
+    Variable idx = LJZ_MDCPeakSep_CurrentWaveResultIndex()
+    if (numtype(idx) != 0)
+        return -1
+    endif
+
+    String dfStr = LJZ_MDCPeakSep_df_with_colon(sDF)
+    Wave/Z wLeft = $(dfStr + "mdc_xleft")
+    Wave/Z wRight = $(dfStr + "mdc_xright")
+    Wave/Z wSep = $(dfStr + "mdc_sep")
+    if (!WaveExists(wLeft) || !WaveExists(wRight) || !WaveExists(wSep))
+        return -1
+    endif
+    if (idx < 0 || idx >= numpnts(wLeft) || idx >= numpnts(wRight) || idx >= numpnts(wSep))
+        return -1
+    endif
+
+    NVAR XLeft = $(LJZ_MDCPeakSep_BaseDF() + ":XLeft")
+    NVAR XRight = $(LJZ_MDCPeakSep_BaseDF() + ":XRight")
+    NVAR Sep = $(LJZ_MDCPeakSep_BaseDF() + ":Sep")
+
+    XLeft = wLeft[idx]
+    XRight = wRight[idx]
+    Sep = wSep[idx]
+
+    return 0
+End
+
 
 // ============================================================================
-//  Section 3. robust measurement kernel
+//  Section 3. peak kernel
 // ============================================================================
 
 Function LJZ_MDCPeakSep_WaveXMin(w)
     Wave w
-    return DimOffset(w,0)
+    return DimOffset(w, 0)
 End
 
 Function LJZ_MDCPeakSep_WaveXMax(w)
     Wave w
-    return DimOffset(w,0) + DimDelta(w,0) * (numpnts(w)-1)
-End
-
-Function LJZ_MDCPeakSep_CountFiniteInWindow(w, x1, x2)
-    Wave w
-    Variable x1, x2
-
-    Variable xa = min(x1, x2)
-    Variable xb = max(x1, x2)
-    Variable i, n = numpnts(w), c=0, xv
-    for (i=0; i<n; i+=1)
-        xv = pnt2x(w, i)
-        if (xv >= xa && xv <= xb && numtype(w[i]) == 0)
-            c += 1
-        endif
-    endfor
-    return c
+    return DimOffset(w, 0) + DimDelta(w, 0) * (numpnts(w) - 1)
 End
 
 Function LJZ_MDCPeakSep_PeakCenter(w, x1, x2)
@@ -662,10 +755,10 @@ Function LJZ_MDCPeakSep_PeakCenter(w, x1, x2)
 
     Variable xa = min(x1, x2)
     Variable xb = max(x1, x2)
-    Variable i, n = numpnts(w)
+    Variable n = numpnts(w)
+    Variable i
     Variable bestP = -1
     Variable bestY = NaN
-    Variable xv, yv
 
     if (!LJZ_MDCPeakSep_Is1DWave(w))
         return NaN
@@ -677,12 +770,12 @@ Function LJZ_MDCPeakSep_PeakCenter(w, x1, x2)
         return NaN
     endif
 
-    for (i=0; i<n; i+=1)
-        xv = pnt2x(w, i)
+    for (i = 0; i < n; i += 1)
+        Variable xv = pnt2x(w, i)
+        Variable yv = w[i]
         if (xv < xa || xv > xb)
             continue
         endif
-        yv = w[i]
         if (numtype(yv) != 0)
             continue
         endif
@@ -696,20 +789,19 @@ Function LJZ_MDCPeakSep_PeakCenter(w, x1, x2)
         return NaN
     endif
 
-    // Prefer 3-point parabolic refinement if neighbors exist and are finite.
-    if (bestP > 0 && bestP < n-1)
-        Variable y1 = w[bestP-1]
+    // 峰中心 = 最大值点 + 3 点抛物线插值。
+    if (bestP > 0 && bestP < n - 1)
+        Variable y1 = w[bestP - 1]
         Variable y2 = w[bestP]
-        Variable y3 = w[bestP+1]
+        Variable y3 = w[bestP + 1]
         if (numtype(y1) == 0 && numtype(y2) == 0 && numtype(y3) == 0)
-            Variable dx = DimDelta(w,0)
+            Variable dx = DimDelta(w, 0)
             if (numtype(dx) == 0 && dx != 0)
-                Variable den = (y1 - 2*y2 + y3)
+                Variable den = (y1 - 2 * y2 + y3)
                 if (abs(den) > 1e-20)
                     Variable delta = 0.5 * (y1 - y3) / den
                     if (abs(delta) <= 1)
-                        Variable x0 = pnt2x(w, bestP)
-                        return x0 + delta * dx
+                        return pnt2x(w, bestP) + delta * dx
                     endif
                 endif
             endif
@@ -719,210 +811,10 @@ Function LJZ_MDCPeakSep_PeakCenter(w, x1, x2)
     return pnt2x(w, bestP)
 End
 
-Function LJZ_MDCPeakSep_MeasureWaveByPath(wPath, showAlert)
-    String wPath
-    Variable showAlert
-
-    Wave/Z w = $wPath
-    if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
-        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
-        LJZ_MDCPeakSep_WriteResultForWave(wPath, NaN, NaN, NaN)
-        return -1
-    endif
-
-    NVAR LeftX1 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX1")
-    NVAR LeftX2 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX2")
-    NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
-    NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
-    NVAR XLeft = $(LJZ_MDCPeakSep_BaseDF() + ":XLeft")
-    NVAR XRight = $(LJZ_MDCPeakSep_BaseDF() + ":XRight")
-    NVAR Sep = $(LJZ_MDCPeakSep_BaseDF() + ":Sep")
-
-    Variable xLeftVal = LJZ_MDCPeakSep_PeakCenter(w, LeftX1, LeftX2)
-    Variable xRightVal = LJZ_MDCPeakSep_PeakCenter(w, RightX1, RightX2)
-    Variable sepVal = NaN
-
-    if (numtype(xLeftVal) == 0 && numtype(xRightVal) == 0)
-        sepVal = xRightVal - xLeftVal
-        XLeft = xLeftVal
-        XRight = xRightVal
-        Sep = sepVal
-        LJZ_MDCPeakSep_WriteResultForWave(wPath, xLeftVal, xRightVal, sepVal)
-        LJZ_MDCPeakSep_MarkDirty(0)
-        return 0
-    endif
-
-    XLeft = NaN
-    XRight = NaN
-    Sep = NaN
-    LJZ_MDCPeakSep_WriteResultForWave(wPath, NaN, NaN, NaN)
-
-    if (showAlert)
-        DoAlert 0, "在指定窗口内没有找到合法的 left / right peak center，请调整两个搜索范围。"
-    endif
-
-    return -1
-End
-
-Function LJZ_MDCPeakSep_MeasureCurrentWave(showAlert)
-    Variable showAlert
-    String base = LJZ_MDCPeakSep_BaseDF()
-    SVAR/Z sWaveSel = $(base + ":WaveSel")
-    if (!SVAR_Exists(sWaveSel) || strlen(sWaveSel) == 0)
-        if (showAlert)
-            DoAlert 0, "No MDC wave selected."
-        endif
-        return -1
-    endif
-    return LJZ_MDCPeakSep_MeasureWaveByPath(sWaveSel, showAlert)
-End
-
-Function LJZ_MDCPeakSep_MeasureAll()
-    LJZ_MDCPeakSep_EnsureDF()
-
-    String listStr = LJZ_MDCPeakSep_CurrentWaveList()
-    Variable n = ItemsInList(listStr, ";")
-    if (n <= 0)
-        DoAlert 0, "当前 SourceDF 下没有 mdc_show_* 波形可测量。"
-        return -1
-    endif
-
-    LJZ_MDCPeakSep_EnsureResultWaves()
-    LJZ_MDCPeakSep_ClearResultWaves()
-
-    Variable i
-    for (i = 0; i < n; i += 1)
-        String wPath = StringFromList(i, listStr, ";")
-        LJZ_MDCPeakSep_MeasureWaveByPath(wPath, 0)
-    endfor
-
-    LJZ_MDCPeakSep_LoadSavedResultForCurrentWave()
-    LJZ_MDCPeakSep_MarkDirty(0)
-    LJZ_MDCPeakSep_ShowCurrentWave()
-    LJZ_MDCPeakSep_RefreshTitleBoxes()
-    return 0
-End
-
-Function LJZ_MDCPeakSep_MeasureAndAdvance()
-    LJZ_MDCPeakSep_EnsureDF()
-
-    Variable ret = LJZ_MDCPeakSep_FindPeakSep()
-
-    String listStr = LJZ_MDCPeakSep_CurrentWaveList()
-    Variable n = ItemsInList(listStr, ";")
-    NVAR SelRow = $(LJZ_MDCPeakSep_BaseDF() + ":SelRow")
-
-    if (ret == 0 && n > 0)
-        if (SelRow < n - 1)
-            LJZ_MDCPeakSep_MarkDirty(0)
-            LJZ_MDCPeakSep_SelectWaveRow(SelRow + 1)
-            LJZ_MDCPeakSep_RefreshCurrentSelection()
-            LJZ_MDCPeakSep_RefreshTitleBoxes()
-        endif
-    endif
-
-    return 0
-End
-
 
 // ============================================================================
-//  Section 4. auto windows / graph / refresh
+//  Section 4. graph / measurement
 // ============================================================================
-
-Function LJZ_MDCPeakSep_AutoFillLeftWindow()
-    String base = LJZ_MDCPeakSep_BaseDF()
-    SVAR/Z sWaveSel = $(base + ":WaveSel")
-    if (!SVAR_Exists(sWaveSel))
-        return -1
-    endif
-    Wave/Z w = $sWaveSel
-    if (!LJZ_MDCPeakSep_Is1DWave(w))
-        return -1
-    endif
-
-    NVAR/Z LeftX1 = $(base + ":LeftX1")
-    NVAR/Z LeftX2 = $(base + ":LeftX2")
-    if (!NVAR_Exists(LeftX1) || !NVAR_Exists(LeftX2))
-        return -1
-    endif
-
-    Variable xMin = LJZ_MDCPeakSep_WaveXMin(w)
-    Variable xMax = LJZ_MDCPeakSep_WaveXMax(w)
-    Variable span = xMax - xMin
-
-    LeftX1 = xMin + 0.15 * span
-    LeftX2 = xMin + 0.40 * span
-    return 0
-End
-
-Function LJZ_MDCPeakSep_AutoFillRightWindow()
-    String base = LJZ_MDCPeakSep_BaseDF()
-    SVAR/Z sWaveSel = $(base + ":WaveSel")
-    if (!SVAR_Exists(sWaveSel))
-        return -1
-    endif
-    Wave/Z w = $sWaveSel
-    if (!LJZ_MDCPeakSep_Is1DWave(w))
-        return -1
-    endif
-
-    NVAR/Z RightX1 = $(base + ":RightX1")
-    NVAR/Z RightX2 = $(base + ":RightX2")
-    if (!NVAR_Exists(RightX1) || !NVAR_Exists(RightX2))
-        return -1
-    endif
-
-    Variable xMin = LJZ_MDCPeakSep_WaveXMin(w)
-    Variable xMax = LJZ_MDCPeakSep_WaveXMax(w)
-    Variable span = xMax - xMin
-
-    RightX1 = xMin + 0.60 * span
-    RightX2 = xMin + 0.85 * span
-    return 0
-End
-
-Function LJZ_MDCPeakSep_AutoFillWindows()
-    LJZ_MDCPeakSep_EnsureDF()
-
-    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
-    if (strlen(sWave) == 0)
-        DoAlert 0, "请先选择一个 mdc_show_* 波形。"
-        return -1
-    endif
-
-    Wave/Z w = $sWave
-    if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
-        DoAlert 0, "当前选择不是有效的 1D wave。"
-        return -1
-    endif
-
-    Variable n = numpnts(w)
-    if (n < 2)
-        return -1
-    endif
-
-    Variable xA = pnt2x(w, 0)
-    Variable xB = pnt2x(w, n-1)
-    Variable xMin = min(xA, xB)
-    Variable xMax = max(xA, xB)
-    Variable span = xMax - xMin
-
-    if (span <= 0)
-        return -1
-    endif
-
-    NVAR LeftX1 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX1")
-    NVAR LeftX2 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX2")
-    NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
-    NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
-
-    LeftX1 = xMin + 0.15 * span
-    LeftX2 = xMin + 0.40 * span
-    RightX1 = xMin + 0.60 * span
-    RightX2 = xMin + 0.85 * span
-
-    return 0
-End
 
 Function LJZ_MDCPeakSep_CreateGraphSubwindow()
     LJZ_MDCPeakSep_EnsureDF()
@@ -942,37 +834,17 @@ Function LJZ_MDCPeakSep_CreateGraphSubwindow()
     Wave/Z w = $sWave
     if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
         Wave stub = $(LJZ_MDCPeakSep_BaseDF() + ":GraphStub")
-        Display/HOST=$panelName/N=$graphName/W=(250,40,960,360) stub
+        Display/HOST=$panelName/N=$graphName/W=(250,40,1060,360) stub
         ModifyGraph/W=$graphPath margin(left)=48,margin(bottom)=32,margin(right)=16,margin(top)=12,mirror=2
         Label/W=$graphPath left "Intensity (a.u.)"
         Label/W=$graphPath bottom "k"
         return 0
     endif
 
-    Display/HOST=$panelName/N=$graphName/W=(250,40,960,360) w
+    Display/HOST=$panelName/N=$graphName/W=(250,40,1060,360) w
     ModifyGraph/W=$graphPath margin(left)=48,margin(bottom)=32,margin(right)=16,margin(top)=12,mirror=2
     Label/W=$graphPath left "Intensity (a.u.)"
     Label/W=$graphPath bottom "k"
-
-    return 0
-End
-
-Function LJZ_MDCPeakSep_ClearGraphDecorations()
-    String panelName = LJZ_MDCPeakSep_PanelName()
-    String graphName = LJZ_MDCPeakSep_GraphName()
-    String graphPath = LJZ_MDCPeakSep_GraphPath()
-
-    if (!LJZ_MDCPeakSep_HasChildSubwindow(panelName, graphName))
-        return 0
-    endif
-
-    TextBox/W=$graphPath/K/N=tbPeak
-    Cursor/K/W=$graphPath A
-    Cursor/K/W=$graphPath B
-    Cursor/K/W=$graphPath C
-    Cursor/K/W=$graphPath D
-    SetDrawLayer/W=$graphPath UserFront
-    DrawAction/W=$graphPath getgroup=PeakMarks, delete
     return 0
 End
 
@@ -996,18 +868,16 @@ Function LJZ_MDCPeakSep_UpdateGraphMarks()
 
     String tb = ""
     if (numtype(XLeft) == 0)
-        tb += "Left = " + num2str(XLeft) + "
-"
+        tb += "Left = " + num2str(XLeft) + "\r"
     endif
     if (numtype(XRight) == 0)
-        tb += "Right = " + num2str(XRight) + "
-"
+        tb += "Right = " + num2str(XRight) + "\r"
     endif
     if (numtype(Sep) == 0)
         tb += "Sep = " + num2str(Sep)
     endif
 
-    LJZ_MDCPeakSep_ClearGraphDecorations()
+    TextBox/W=$graphPath/K/N=tbPeak
     if (strlen(tb) > 0)
         TextBox/W=$graphPath/C/N=tbPeak/F=0/A=RT tb
     endif
@@ -1016,6 +886,7 @@ Function LJZ_MDCPeakSep_UpdateGraphMarks()
     DrawAction/W=$graphPath getgroup=PeakMarks, delete
     SetDrawEnv/W=$graphPath gstart, gname=PeakMarks
 
+    // 搜索窗口边界：浅色细虚线。
     if (numtype(LeftX1) == 0)
         SetDrawEnv/W=$graphPath xcoord=bottom,ycoord=prel,linefgc=(45000,45000,65535),linethick=1,dash=1
         DrawLine/W=$graphPath LeftX1, 0, LeftX1, 1
@@ -1033,6 +904,7 @@ Function LJZ_MDCPeakSep_UpdateGraphMarks()
         DrawLine/W=$graphPath RightX2, 0, RightX2, 1
     endif
 
+    // 最终峰位：深色粗线。
     if (numtype(XLeft) == 0)
         SetDrawEnv/W=$graphPath xcoord=bottom,ycoord=prel,linefgc=(0,0,65535),linethick=2,dash=2
         DrawLine/W=$graphPath XLeft, 0, XLeft, 1
@@ -1059,8 +931,9 @@ Function LJZ_MDCPeakSep_ShowCurrentWave()
 
     Wave/Z w = $sWave
     if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
-        LJZ_MDCPeakSep_CreateGraphSubwindow()
+        LJZ_MDCPeakSep_WriteResultForWave(sWave, NaN, NaN, NaN)
         LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        LJZ_MDCPeakSep_CreateGraphSubwindow()
         LJZ_MDCPeakSep_RefreshTitleBoxes()
         return -1
     endif
@@ -1071,8 +944,295 @@ Function LJZ_MDCPeakSep_ShowCurrentWave()
     return 0
 End
 
-Function LJZ_MDCPeakSep_RefreshGraph()
-    return LJZ_MDCPeakSep_ShowCurrentWave()
+Function LJZ_MDCPeakSep_AutoFillWindows()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
+        DoAlert 0, "请先选择一个 mdc_show_* 波形。"
+        return -1
+    endif
+
+    Wave/Z w = $sWave
+    if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
+        DoAlert 0, "当前选择不是有效的 1D wave。"
+        return -1
+    endif
+
+    Variable xA = pnt2x(w, 0)
+    Variable xB = pnt2x(w, numpnts(w) - 1)
+    Variable xMin = min(xA, xB)
+    Variable xMax = max(xA, xB)
+    Variable span = xMax - xMin
+
+    if (span <= 0)
+        return -1
+    endif
+
+    NVAR LeftX1 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX1")
+    NVAR LeftX2 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX2")
+    NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
+    NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
+
+    LeftX1 = xMin + 0.15 * span
+    LeftX2 = xMin + 0.40 * span
+    RightX1 = xMin + 0.60 * span
+    RightX2 = xMin + 0.85 * span
+    return 0
+End
+
+Function LJZ_MDCPeakSep_AutoFillLeftWindow()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
+        return -1
+    endif
+
+    Wave/Z w = $sWave
+    if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
+        return -1
+    endif
+
+    Variable xA = pnt2x(w, 0)
+    Variable xB = pnt2x(w, numpnts(w) - 1)
+    Variable xMin = min(xA, xB)
+    Variable xMax = max(xA, xB)
+    Variable span = xMax - xMin
+
+    if (span <= 0)
+        return -1
+    endif
+
+    NVAR LeftX1 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX1")
+    NVAR LeftX2 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX2")
+
+    LeftX1 = xMin + 0.15 * span
+    LeftX2 = xMin + 0.40 * span
+    return 0
+End
+
+Function LJZ_MDCPeakSep_AutoFillRightWindow()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
+        return -1
+    endif
+
+    Wave/Z w = $sWave
+    if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
+        return -1
+    endif
+
+    Variable xA = pnt2x(w, 0)
+    Variable xB = pnt2x(w, numpnts(w) - 1)
+    Variable xMin = min(xA, xB)
+    Variable xMax = max(xA, xB)
+    Variable span = xMax - xMin
+
+    if (span <= 0)
+        return -1
+    endif
+
+    NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
+    NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
+
+    RightX1 = xMin + 0.60 * span
+    RightX2 = xMin + 0.85 * span
+    return 0
+End
+
+Function LJZ_MDCPeakSep_MeasureWaveByPath(wPath, doAlertOnFail)
+    String wPath
+    Variable doAlertOnFail
+
+    Wave/Z w = $wPath
+    if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        LJZ_MDCPeakSep_WriteResultForWave(wPath, NaN, NaN, NaN)
+        return -1
+    endif
+
+    NVAR LeftX1 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX1")
+    NVAR LeftX2 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX2")
+    NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
+    NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
+    NVAR XLeft = $(LJZ_MDCPeakSep_BaseDF() + ":XLeft")
+    NVAR XRight = $(LJZ_MDCPeakSep_BaseDF() + ":XRight")
+    NVAR Sep = $(LJZ_MDCPeakSep_BaseDF() + ":Sep")
+
+    Variable xLeftVal = LJZ_MDCPeakSep_PeakCenter(w, LeftX1, LeftX2)
+    Variable xRightVal = LJZ_MDCPeakSep_PeakCenter(w, RightX1, RightX2)
+    Variable sepVal = NaN
+
+    if (numtype(xLeftVal) == 0 && numtype(xRightVal) == 0)
+        sepVal = xRightVal - xLeftVal
+        XLeft = xLeftVal
+        XRight = xRightVal
+        Sep = sepVal
+        LJZ_MDCPeakSep_WriteResultForWave(wPath, xLeftVal, xRightVal, sepVal)
+        return 0
+    endif
+
+    XLeft = NaN
+    XRight = NaN
+    Sep = NaN
+    LJZ_MDCPeakSep_WriteResultForWave(wPath, NaN, NaN, NaN)
+
+    if (doAlertOnFail)
+        DoAlert 0, "在指定窗口内没有找到合法的 left / right peak center，请调整两个搜索范围。"
+    endif
+
+    return -1
+End
+
+Function LJZ_MDCPeakSep_FindPeakSep()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
+        DoAlert 0, "请先选择一个 mdc_show_* 波形。"
+        return -1
+    endif
+
+    Variable ret = LJZ_MDCPeakSep_MeasureWaveByPath(sWave, 1)
+    if (ret == 0)
+        LJZ_MDCPeakSep_MarkDirty(0)
+    endif
+    LJZ_MDCPeakSep_ShowCurrentWave()
+    LJZ_MDCPeakSep_RefreshTitleBoxes()
+    return ret
+End
+
+Function LJZ_MDCPeakSep_MeasureAll()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    String listStr = LJZ_MDCPeakSep_CurrentWaveList()
+    Variable n = ItemsInList(listStr, ";")
+    if (n <= 0)
+        DoAlert 0, "当前 SourceDF 下没有严格命名的 mdc_show_i 波形可测量。"
+        return -1
+    endif
+
+    LJZ_MDCPeakSep_EnsureResultWaves()
+    LJZ_MDCPeakSep_ClearResultWaves()
+
+    Variable i
+    for (i = 0; i < n; i += 1)
+        String wPath = StringFromList(i, listStr, ";")
+        LJZ_MDCPeakSep_MeasureWaveByPath(wPath, 0)
+    endfor
+
+    LJZ_MDCPeakSep_LoadStoredResultForSelection()
+    LJZ_MDCPeakSep_MarkDirty(0)
+    LJZ_MDCPeakSep_ShowCurrentWave()
+    LJZ_MDCPeakSep_RefreshTitleBoxes()
+    return 0
+End
+
+Function LJZ_MDCPeakSep_RefreshCurrentSelection()
+    LJZ_MDCPeakSep_LoadStoredResultForSelection()
+    LJZ_MDCPeakSep_ShowCurrentWave()
+    return 0
+End
+
+Function LJZ_MDCPeakSep_SelectRow(row, forceNoConfirm)
+    Variable row, forceNoConfirm
+
+    if (!forceNoConfirm)
+        if (!LJZ_MDCPeakSep_ConfirmLeaveIfDirty())
+            LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
+            return -1
+        endif
+    endif
+
+    String listStr = LJZ_MDCPeakSep_CurrentWaveList()
+    Variable n = ItemsInList(listStr, ";")
+    if (n <= 0)
+        SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+        NVAR SelRow = $(LJZ_MDCPeakSep_BaseDF() + ":SelRow")
+        sWave = ""
+        SelRow = -1
+        LJZ_MDCPeakSep_ClearWindowGlobals()
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        LJZ_MDCPeakSep_RefreshWindowControls()
+        LJZ_MDCPeakSep_RefreshResultControls()
+        LJZ_MDCPeakSep_ShowCurrentWave()
+        LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
+        return -1
+    endif
+
+    if (row < 0 || row >= n)
+        LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
+        return -1
+    endif
+
+    LJZ_MDCPeakSep_SelectWaveRow(row)
+    if (LJZ_MDCPeakSep_LoadStoredResultForSelection() != 0)
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        LJZ_MDCPeakSep_AutoFillWindows()
+    endif
+    LJZ_MDCPeakSep_MarkDirty(0)
+
+    LJZ_MDCPeakSep_RefreshWindowControls()
+    LJZ_MDCPeakSep_RefreshResultControls()
+    LJZ_MDCPeakSep_ShowCurrentWave()
+    LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
+    return 0
+End
+
+Function LJZ_MDCPeakSep_MeasureAndNext()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    Variable ret = LJZ_MDCPeakSep_FindPeakSep()
+    String listStr = LJZ_MDCPeakSep_CurrentWaveList()
+    Variable n = ItemsInList(listStr, ";")
+    NVAR SelRow = $(LJZ_MDCPeakSep_BaseDF() + ":SelRow")
+
+    if (ret == 0 && n > 0)
+        if (SelRow < n - 1)
+            LJZ_MDCPeakSep_MarkDirty(0)
+            LJZ_MDCPeakSep_SelectWaveRow(SelRow + 1)
+            LJZ_MDCPeakSep_RefreshCurrentSelection()
+            LJZ_MDCPeakSep_RefreshTitleBoxes()
+        endif
+    endif
+
+    return 0
+End
+
+Function LJZ_MDCPeakSep_PlotResult()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
+    String dfStr = LJZ_MDCPeakSep_df_with_colon(sDF)
+
+    Wave/Z wLeft = $(dfStr + "mdc_xleft")
+    Wave/Z wRight = $(dfStr + "mdc_xright")
+    Wave/Z wSep = $(dfStr + "mdc_sep")
+
+    if (!WaveExists(wLeft) || !WaveExists(wRight) || !WaveExists(wSep))
+        DoAlert 0, "结果 wave 不存在，请先 Measure 或 Measure All。"
+        return -1
+    endif
+
+    String g = "MDCPeakSep_ResultGraph"
+    DoWindow/K $g
+
+    Display/N=$g wSep
+    AppendToGraph/R wLeft
+    AppendToGraph/R wRight
+
+    ModifyGraph mode=3,marker=19
+    ModifyGraph rgb(mdc_sep)=(0,0,0)
+    ModifyGraph rgb(mdc_xleft)=(0,0,65535)
+    ModifyGraph rgb(mdc_xright)=(65535,0,0)
+
+    Label left "Sep"
+    Label right "XLeft / XRight"
+    Label bottom "Index or t"
+    return 0
 End
 
 Function LJZ_MDCPeakSep_RefreshResultControls()
@@ -1109,330 +1269,10 @@ Function LJZ_MDCPeakSep_RefreshWindowControls()
     return 0
 End
 
-Function LJZ_MDCPeakSep_CurrentWaveResultIndex()
-    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
-    if (strlen(sWave) == 0)
-        return NaN
-    endif
-
-    Wave/Z w = $sWave
-    if (!WaveExists(w))
-        return NaN
-    endif
-
-    return LJZ_MDCPeakSep_ParseWaveIndex(NameOfWave(w))
-End
-
-Function LJZ_MDCPeakSep_ClearCurrentResultDisplay()
-    NVAR XLeft = $(LJZ_MDCPeakSep_BaseDF() + ":XLeft")
-    NVAR XRight = $(LJZ_MDCPeakSep_BaseDF() + ":XRight")
-    NVAR Sep = $(LJZ_MDCPeakSep_BaseDF() + ":Sep")
-
-    XLeft = NaN
-    XRight = NaN
-    Sep = NaN
-
-    String panelName = LJZ_MDCPeakSep_PanelName()
-    String graphName = LJZ_MDCPeakSep_GraphName()
-    if (LJZ_MDCPeakSep_HasChildSubwindow(panelName, graphName))
-        LJZ_MDCPeakSep_ClearGraphDecorations()
-    endif
-
-    return 0
-End
-
-Function LJZ_MDCPeakSep_LoadSavedResultForCurrentWave()
-    LJZ_MDCPeakSep_ClearCurrentResultDisplay()
-
-    SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
-    Variable idx = LJZ_MDCPeakSep_CurrentWaveResultIndex()
-    if (numtype(idx) != 0)
-        return -1
-    endif
-
-    String dfStr = LJZ_MDCPeakSep_df_with_colon(sDF)
-    Wave/Z wLeft = $(dfStr + "mdc_xleft")
-    Wave/Z wRight = $(dfStr + "mdc_xright")
-    Wave/Z wSep = $(dfStr + "mdc_sep")
-    if (!WaveExists(wLeft) || !WaveExists(wRight) || !WaveExists(wSep))
-        return -1
-    endif
-    if (idx < 0 || idx >= numpnts(wLeft) || idx >= numpnts(wRight) || idx >= numpnts(wSep))
-        return -1
-    endif
-
-    NVAR XLeft = $(LJZ_MDCPeakSep_BaseDF() + ":XLeft")
-    NVAR XRight = $(LJZ_MDCPeakSep_BaseDF() + ":XRight")
-    NVAR Sep = $(LJZ_MDCPeakSep_BaseDF() + ":Sep")
-
-    XLeft = wLeft[idx]
-    XRight = wRight[idx]
-    Sep = wSep[idx]
-    if (numtype(XLeft) != 0 || numtype(XRight) != 0 || numtype(Sep) != 0)
-        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
-        return -1
-    endif
-
-    return 0
-End
-
-Function LJZ_MDCPeakSep_SelectWaveRow(row)
-    Variable row
-
-    LJZ_MDCPeakSep_EnsureDF()
-
-    String listStr = LJZ_MDCPeakSep_CurrentWaveList()
-    Variable n = ItemsInList(listStr, ";")
-    if (n <= 0)
-        return -1
-    endif
-
-    row = max(0, min(n - 1, row))
-
-    Wave wSel = $(LJZ_MDCPeakSep_BaseDF() + ":LB_Sel")
-    if (numpnts(wSel) != n)
-        Redimension/N=(n) wSel
-    endif
-    wSel = 0
-    wSel[row] = 1
-
-    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
-    NVAR SelRow = $(LJZ_MDCPeakSep_BaseDF() + ":SelRow")
-    sWave = StringFromList(row, listStr, ";")
-    SelRow = row
-
-    return 0
-End
-
-Function LJZ_MDCPeakSep_SelectRow(row, forceNoConfirm)
-    Variable row, forceNoConfirm
-
-    if (!forceNoConfirm)
-        if (!LJZ_MDCPeakSep_ConfirmLeaveIfDirty())
-            LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
-            return -1
-        endif
-    endif
-
-    String listStr = LJZ_MDCPeakSep_CurrentWaveList()
-    Variable n = ItemsInList(listStr, ";")
-    if (n <= 0)
-        SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
-        NVAR SelRow = $(LJZ_MDCPeakSep_BaseDF() + ":SelRow")
-        sWave = ""
-        SelRow = -1
-        LJZ_MDCPeakSep_ClearWindowGlobals()
-        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
-        LJZ_MDCPeakSep_RefreshWindowControls()
-        LJZ_MDCPeakSep_RefreshResultControls()
-        LJZ_MDCPeakSep_ShowCurrentWave()
-        LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
-        return -1
-    endif
-
-    if (row < 0 || row >= n)
-        LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
-        return -1
-    endif
-
-    LJZ_MDCPeakSep_SelectWaveRow(row)
-    if (LJZ_MDCPeakSep_LoadSavedResultForCurrentWave() != 0)
-        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
-        LJZ_MDCPeakSep_AutoFillWindows()
-    endif
-    LJZ_MDCPeakSep_MarkDirty(0)
-
-    LJZ_MDCPeakSep_RefreshWindowControls()
-    LJZ_MDCPeakSep_RefreshResultControls()
-    LJZ_MDCPeakSep_ShowCurrentWave()
-    LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
-    return 0
-End
-
-Function LJZ_MDCPeakSep_PlotResult()
-    LJZ_MDCPeakSep_EnsureDF()
-
-    SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
-    String dfStr = LJZ_MDCPeakSep_df_with_colon(sDF)
-
-    Wave/Z wLeft = $(dfStr + "mdc_xleft")
-    Wave/Z wRight = $(dfStr + "mdc_xright")
-    Wave/Z wSep = $(dfStr + "mdc_sep")
-
-    if (!WaveExists(wLeft) || !WaveExists(wRight) || !WaveExists(wSep))
-        DoAlert 0, "结果 wave 不存在，请先 Measure 或 Measure All。"
-        return -1
-    endif
-
-    String g = "MDCPeakSep_ResultGraph"
-    DoWindow/K $g
-
-    Display/N=$g wSep
-    AppendToGraph/R wLeft
-    AppendToGraph/R wRight
-
-    ModifyGraph mode(mdc_sep)=3,marker(mdc_sep)=19
-    ModifyGraph mode(mdc_xleft)=3,marker(mdc_xleft)=19
-    ModifyGraph mode(mdc_xright)=3,marker(mdc_xright)=19
-    ModifyGraph rgb(mdc_sep)=(0,0,0)
-    ModifyGraph rgb(mdc_xleft)=(0,0,65535)
-    ModifyGraph rgb(mdc_xright)=(65535,0,0)
-
-    Label left "Sep"
-    Label right "XLeft / XRight"
-    Label bottom "Index or t"
-
-    return 0
-End
-
-Function LJZ_MDCPeakSep_SelectCurrentRowIfValid(forceNoConfirm)
-    Variable forceNoConfirm
-
-    Variable sel = NumVarOrDefault(LJZ_MDCPeakSep_BaseDF() + ":SelRow", -1)
-    if (sel < 0)
-        LJZ_MDCPeakSep_ClearWindowGlobals()
-        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
-        LJZ_MDCPeakSep_RefreshWindowControls()
-        LJZ_MDCPeakSep_RefreshResultControls()
-        LJZ_MDCPeakSep_ShowCurrentWave()
-        LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
-        return -1
-    endif
-
-    return LJZ_MDCPeakSep_SelectRow(sel, forceNoConfirm)
-End
-
 
 // ============================================================================
 //  Section 5. panel
 // ============================================================================
-
-Function LJZ_MDCPeakSep_OpenPanel()
-    LJZ_MDCPeakSep_EnsureDF()
-
-    String p = LJZ_MDCPeakSep_PanelName()
-    DoWindow/F $p
-    if (V_flag == 0)
-        NewPanel/N=$p /W=(90,90,1040,620)
-    else
-        DoWindow/F $p
-        LJZ_MDCPeakSep_CreateGraphSubwindow()
-        return 0
-    endif
-
-    SetVariable svSourceDF,pos={10,10},size={455,20},title="Source DF"
-    SetVariable svSourceDF,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":SourceDF",proc=LJZ_MDCPeakSep_SetVarProc
-
-    Button btUseCurrent,pos={480,8},size={80,24},title="Current",proc=LJZ_MDCPeakSep_ButtonProc
-    Button btScan,pos={575,8},size={70,24},title="Scan",proc=LJZ_MDCPeakSep_ButtonProc
-
-    ListBox lbWave,pos={10,42},size={225,318},listWave=$(LJZ_MDCPeakSep_BaseDF() + ":LB_Disp"),selWave=$(LJZ_MDCPeakSep_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_MDCPeakSep_ListBoxProc
-
-    Button btRefresh,pos={250,372},size={95,28},title="Refresh",proc=LJZ_MDCPeakSep_ButtonProc
-    Button btAuto,pos={360,372},size={90,28},title="AutoFill",proc=LJZ_MDCPeakSep_ButtonProc
-    Button btMeasure,pos={465,372},size={90,28},title="Measure",proc=LJZ_MDCPeakSep_ButtonProc
-    Button btMeasureAll,pos={570,372},size={100,28},title="Measure All",proc=LJZ_MDCPeakSep_ButtonProc
-    Button btMeasureNext,pos={685,372},size={120,28},title="Measure+Next",proc=LJZ_MDCPeakSep_ButtonProc
-    Button btPlotResult,pos={820,372},size={110,28},title="Plot Result",proc=LJZ_MDCPeakSep_ButtonProc
-
-    TitleBox tbL1,pos={250,414},size={160,18},frame=0,title="Left peak window"
-    SetVariable svLeftX1,pos={250,438},size={145,20},title="Left x1"
-    SetVariable svLeftX1,variable=$(LJZ_MDCPeakSep_BaseDF() + ":LeftX1"),proc=LJZ_MDCPeakSep_SetVarProc
-
-    SetVariable svLeftX2,pos={410,438},size={145,20},title="Left x2"
-    SetVariable svLeftX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":LeftX2"),proc=LJZ_MDCPeakSep_SetVarProc
-
-    Button btAutoLeft,pos={570,436},size={90,24},title="Auto Left",proc=LJZ_MDCPeakSep_ButtonProc
-
-    TitleBox tbR1,pos={690,414},size={170,18},frame=0,title="Right peak window"
-    SetVariable svRightX1,pos={690,438},size={145,20},title="Right x1"
-    SetVariable svRightX1,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX1"),proc=LJZ_MDCPeakSep_SetVarProc
-
-    SetVariable svRightX2,pos={850,438},size={145,20},title="Right x2"
-    SetVariable svRightX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX2"),proc=LJZ_MDCPeakSep_SetVarProc
-
-    Button btAutoRight,pos={850,468},size={90,24},title="Auto Right",proc=LJZ_MDCPeakSep_ButtonProc
-
-    TitleBox tbRes1,pos={10,480},size={200,18},frame=0,title="Measurement Result"
-
-    SetVariable svXLeft,pos={10,506},size={180,20},title="XLeft"
-    SetVariable svXLeft,variable=$(LJZ_MDCPeakSep_BaseDF() + ":XLeft"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
-
-    SetVariable svXRight,pos={205,506},size={180,20},title="XRight"
-    SetVariable svXRight,variable=$(LJZ_MDCPeakSep_BaseDF() + ":XRight"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
-
-    SetVariable svSep,pos={400,506},size={180,20},title="Sep"
-    SetVariable svSep,variable=$(LJZ_MDCPeakSep_BaseDF() + ":Sep"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
-
-    SetVariable svSelWave,pos={10,542},size={985,20},title="Selected Wave:"
-    SetVariable svSelWave,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":WaveSel",noedit=1
-
-    SetVariable svSrcDF,pos={10,566},size={985,20},title="Source DF:"
-    SetVariable svSrcDF,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":SourceDF",noedit=1
-
-    TitleBox tbMsg,pos={10,592},size={985,18},frame=0,title="Definition: center = local peak maximum inside each window; refinement = 3-point parabola around the max"
-    LJZ_MDCPeakSep_CreateGraphSubwindow()
-    LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
-    return 0
-End
-
-Function LJZ_MDCPeakSep_RefreshTitleBoxes()
-    String p = LJZ_MDCPeakSep_PanelName()
-    if (WinType(p) == 0)
-        return 0
-    endif
-
-    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
-    SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
-
-    SetVariable svSourceDF win=$p, value=_STR:sDF
-    SetVariable svSelWave win=$p, value=_STR:sWave
-    SetVariable svSrcDF win=$p, value=_STR:sDF
-
-    return 0
-End
-
-Function LJZ_MDCPeakSep_UseCurrentRunDF()
-    LJZ_MDCPeakSep_EnsureDF()
-
-    SVAR sSourceDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
-    String runDF = LJZ_MDCPeakSep_GetCurrentRunDF()
-
-    if (strlen(runDF) == 0)
-        DoAlert 0, "没有找到当前 MDCExtract 的有效 RunDF。"
-        return -1
-    endif
-
-    sSourceDF = runDF
-    LJZ_MDCPeakSep_RebuildWaveList()
-    LJZ_MDCPeakSep_RefreshCurrentSelection()
-    LJZ_MDCPeakSep_RefreshTitleBoxes()
-    return 0
-End
-
-Function LJZ_MDCPeakSep_FindPeakSep()
-    LJZ_MDCPeakSep_EnsureDF()
-
-    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
-    if (strlen(sWave) == 0)
-        DoAlert 0, "请先选择一个 mdc_show_* 波形。"
-        return -1
-    endif
-
-    Variable ret = LJZ_MDCPeakSep_MeasureWaveByPath(sWave, 1)
-    if (ret == 0)
-        LJZ_MDCPeakSep_MarkDirty(0)
-    endif
-    LJZ_MDCPeakSep_ShowCurrentWave()
-    LJZ_MDCPeakSep_RefreshTitleBoxes()
-    return ret
-End
-
-Function LJZ_MDCPeakSep_RefreshCurrentSelection()
-    LJZ_MDCPeakSep_LoadSavedResultForCurrentWave()
-    LJZ_MDCPeakSep_ShowCurrentWave()
-    return 0
-End
 
 Function LJZ_MDCPeakSep()
     LJZ_MDCPeakSep_EnsureDF()
@@ -1449,6 +1289,102 @@ Function LJZ_MDCPeakSep()
     LJZ_MDCPeakSep_OpenPanel()
     LJZ_MDCPeakSep_RefreshCurrentSelection()
     LJZ_MDCPeakSep_RefreshTitleBoxes()
+    return 0
+End
+
+Function LJZ_MDCPeakSep_OpenPanel()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    String p = LJZ_MDCPeakSep_PanelName()
+    DoWindow/F $p
+    if (V_flag == 0)
+        NewPanel/N=$p /W=(90,90,1140,620)
+    else
+        DoWindow/F $p
+        LJZ_MDCPeakSep_CreateGraphSubwindow()
+        return 0
+    endif
+
+    SetVariable svSourceDF,pos={10,10},size={455,20},title="Source DF"
+    SetVariable svSourceDF,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":SourceDF",proc=LJZ_MDCPeakSep_SetVarProc
+
+    Button btUseCurrent,pos={480,8},size={80,24},title="Current",proc=LJZ_MDCPeakSep_ButtonProc
+    Button btScan,pos={575,8},size={70,24},title="Scan",proc=LJZ_MDCPeakSep_ButtonProc
+
+    ListBox lbWave,pos={10,42},size={225,318},listWave=$(LJZ_MDCPeakSep_BaseDF() + ":LB_Disp"),selWave=$(LJZ_MDCPeakSep_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_MDCPeakSep_ListBoxProc
+
+    // ------------------------------------------------------------
+    // Row 1 : action buttons
+    // ------------------------------------------------------------
+    Button btRefresh,pos={250,372},size={95,28},title="Refresh",proc=LJZ_MDCPeakSep_ButtonProc
+    Button btAuto,pos={360,372},size={90,28},title="AutoFill",proc=LJZ_MDCPeakSep_ButtonProc
+    Button btMeasure,pos={465,372},size={90,28},title="Measure",proc=LJZ_MDCPeakSep_ButtonProc
+    Button btMeasureAll,pos={570,372},size={100,28},title="Measure All",proc=LJZ_MDCPeakSep_ButtonProc
+    Button btMeasureNext,pos={685,372},size={120,28},title="Measure+Next",proc=LJZ_MDCPeakSep_ButtonProc
+    Button btPlotResult,pos={820,372},size={110,28},title="Plot Result",proc=LJZ_MDCPeakSep_ButtonProc
+
+    // ------------------------------------------------------------
+    // Row 2 : left/right peak windows
+    // ------------------------------------------------------------
+    TitleBox tbLeft,pos={250,414},size={170,18},frame=0,title="Left peak window"
+    SetVariable svLeftX1,pos={250,438},size={125,20},title="Left x1"
+    SetVariable svLeftX1,variable=$(LJZ_MDCPeakSep_BaseDF() + ":LeftX1"),proc=LJZ_MDCPeakSep_SetVarProc
+
+    SetVariable svLeftX2,pos={390,438},size={125,20},title="Left x2"
+    SetVariable svLeftX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":LeftX2"),proc=LJZ_MDCPeakSep_SetVarProc
+
+    Button btAutoLeft,pos={530,436},size={95,24},title="Auto Left",proc=LJZ_MDCPeakSep_ButtonProc
+
+    TitleBox tbRight,pos={670,414},size={180,18},frame=0,title="Right peak window"
+    SetVariable svRightX1,pos={670,438},size={125,20},title="Right x1"
+    SetVariable svRightX1,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX1"),proc=LJZ_MDCPeakSep_SetVarProc
+
+    SetVariable svRightX2,pos={810,438},size={125,20},title="Right x2"
+    SetVariable svRightX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX2"),proc=LJZ_MDCPeakSep_SetVarProc
+
+    Button btAutoRight,pos={950,436},size={95,24},title="Auto Right",proc=LJZ_MDCPeakSep_ButtonProc
+
+    // ------------------------------------------------------------
+    // Row 3 : measurement result
+    // ------------------------------------------------------------
+    TitleBox tbRes1,pos={10,480},size={200,18},frame=0,title="Measurement Result"
+
+    SetVariable svXLeft,pos={250,506},size={160,20},title="XLeft"
+    SetVariable svXLeft,variable=$(LJZ_MDCPeakSep_BaseDF() + ":XLeft"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
+
+    SetVariable svXRight,pos={430,506},size={160,20},title="XRight"
+    SetVariable svXRight,variable=$(LJZ_MDCPeakSep_BaseDF() + ":XRight"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
+
+    SetVariable svSep,pos={610,506},size={160,20},title="Sep"
+    SetVariable svSep,variable=$(LJZ_MDCPeakSep_BaseDF() + ":Sep"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
+
+    // ------------------------------------------------------------
+    // Bottom info
+    // ------------------------------------------------------------
+    SetVariable svSelWave,pos={10,542},size={1035,20},title="Selected Wave:"
+    SetVariable svSelWave,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":WaveSel",noedit=1
+
+    SetVariable svSrcDF,pos={10,566},size={1035,20},title="Source DF:"
+    SetVariable svSrcDF,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":SourceDF",noedit=1
+
+    TitleBox tbMsg,pos={10,592},size={1035,18},frame=0,title="Definition: center = local peak maximum inside each window; refinement = 3-point parabola around the max"
+    LJZ_MDCPeakSep_CreateGraphSubwindow()
+    LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
+    return 0
+End
+
+Function LJZ_MDCPeakSep_RefreshTitleBoxes()
+    String p = LJZ_MDCPeakSep_PanelName()
+    if (WinType(p) == 0)
+        return 0
+    endif
+
+    SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+    SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
+
+    SetVariable svSourceDF, win=$p, value=_STR:sDF
+    SetVariable svSelWave, win=$p, value=_STR:sWave
+    SetVariable svSrcDF, win=$p, value=_STR:sDF
     return 0
 End
 
@@ -1523,7 +1459,7 @@ Function LJZ_MDCPeakSep_ButtonProc(ba) : ButtonControl
     endif
 
     if (CmpStr(ctrlName, "btMeasureNext") == 0)
-        LJZ_MDCPeakSep_MeasureAndAdvance()
+        LJZ_MDCPeakSep_MeasureAndNext()
         return 0
     endif
 
@@ -1548,6 +1484,7 @@ Function LJZ_MDCPeakSep_SetVarProc(sva) : SetVariableControl
         SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
         if (CmpStr(sDF, LJZ_MDCPeakSep_df_with_colon(sva.sval)) != 0)
             if (!LJZ_MDCPeakSep_ConfirmLeaveIfDirty())
+                LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
                 LJZ_MDCPeakSep_RefreshTitleBoxes()
                 return 0
             endif
@@ -1577,7 +1514,23 @@ Function LJZ_MDCPeakSep_ListBoxProc(lba) : ListBoxControl
 
     if (CmpStr(lba.ctrlName, "lbWave") == 0)
         if (lba.row >= 0)
-            LJZ_MDCPeakSep_SelectRow(lba.row, 0)
+            NVAR SelRow = $(LJZ_MDCPeakSep_BaseDF() + ":SelRow")
+            if (lba.row != SelRow)
+                if (!LJZ_MDCPeakSep_ConfirmLeaveIfDirty())
+                    LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
+                    return 0
+                endif
+            endif
+            LJZ_MDCPeakSep_SelectWaveRow(lba.row)
+            LJZ_MDCPeakSep_RefreshCurrentSelection()
+            if (LJZ_MDCPeakSep_LoadStoredResultForSelection() != 0)
+                LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+                LJZ_MDCPeakSep_AutoFillWindows()
+                LJZ_MDCPeakSep_ShowCurrentWave()
+            endif
+            LJZ_MDCPeakSep_RefreshWindowControls()
+            LJZ_MDCPeakSep_RefreshResultControls()
+            LJZ_MDCPeakSep_RefreshTitleBoxes()
         endif
     endif
 
