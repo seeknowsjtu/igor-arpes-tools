@@ -1,4 +1,4 @@
-﻿#pragma TextEncoding = "UTF-8"
+#pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3
 
 // ============================================================================
@@ -1054,7 +1054,13 @@ Function LJZ_MDCWB_ApplyDefaultHoldPolicy(doFullReset)
     else
         editHoldWave[7] = 1
     endif
-
+// eta default hold for multi-peak models
+if (modelIDLocal == 2)
+    editHoldWave[6]  = 1      // eta1
+    editHoldWave[10] = 1      // eta2
+elseif (modelIDLocal == 5)
+    editHoldWave[10] = 1      // eta_shared
+endif
     // fixed eta for Lor/Gau
     LJZ_MDCWB_ApplyModelSpecialsToWave(editParWave, editHoldWave, modelIDLocal)
 
@@ -1748,7 +1754,6 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     LJZ_MDCWB_GetROIIndexRange(dataWave, editXLo, editXHi, roiIndexLo, roiIndexHi)
 
     Variable roiPointCount = roiIndexHi - roiIndexLo + 1
-    // FIX: validate finite ROI points, not only raw ROI length.
     Variable finiteROIPointCount = LJZ_MDCWB_CountFinitePointsInROI(dataWave, editXLo, editXHi)
 
     if (modelIDLocal == 2 || modelIDLocal == 5)
@@ -1765,8 +1770,8 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
         endif
     endif
 
-    Make/FREE/N=(roiPointCount) roiDataWave = dataWave[roiIndexLo+p]
-    SetScale/P x, axisX0 + roiIndexLo*axisDX, axisDX, roiDataWave
+    Make/FREE/N=(roiPointCount) roiDataWave = dataWave[roiIndexLo + p]
+    SetScale/P x, axisX0 + roiIndexLo * axisDX, axisDX, roiDataWave
 
     // ---------- full guess from current edit state ----------
     Duplicate/FREE dataWave, guessFullWave
@@ -1796,37 +1801,57 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
         endif
     endfor
 
-    // FIX: FuncFit must be exception-safe and never leave the caller in the local data folder.
+    // ---------- run FuncFit safely ----------
+    // AbortOnRTE must be placed AFTER FuncFit inside try/catch.
+    // Do not define local Variable V_FitError / V_FitQuitReason / V_FitNumIters,
+    // or they may shadow Igor's built-in fit status variables.
     Variable fitCaughtError = 0
     Variable runtimeErrorCode = 0
     Variable fitFailed = 0
-    Variable V_FitError = 0
-    Variable V_FitQuitReason = NaN
-    Variable V_FitNumIters = NaN
+    Variable fitQuitReasonLocal = NaN
+    Variable fitNumItersLocal = NaN
     String oldDF = GetDataFolder(1)
 
     KillWaves/Z W_sigma
 
     try
-        AbortOnRTE 1
         if (modelIDLocal == 2)
-            FuncFit/Q/H=holdMaskString two_pv_ljz, coefWorkingWave, roiDataWave
+            FuncFit/H=holdMaskString two_pv_ljz, coefWorkingWave, roiDataWave
         elseif (modelIDLocal == 5)
-            FuncFit/Q/H=holdMaskString asympv_plus_pv_ljz, coefWorkingWave, roiDataWave
+            FuncFit/H=holdMaskString asympv_plus_pv_ljz, coefWorkingWave, roiDataWave
         else
-            FuncFit/Q/H=holdMaskString one_pv_ljz, coefWorkingWave, roiDataWave
+            FuncFit/H=holdMaskString one_pv_ljz, coefWorkingWave, roiDataWave
         endif
-        AbortOnRTE 0
+
+        AbortOnRTE
     catch
         fitCaughtError = 1
-        AbortOnRTE 0
     endtry
 
     SetDataFolder $oldDF
     runtimeErrorCode = GetRTError(1)
-    if (fitCaughtError || runtimeErrorCode != 0 || V_FitError != 0)
+
+    if (fitCaughtError || runtimeErrorCode != 0)
         fitFailed = 1
         LJZ_MDCWB_SetLastError("FuncFit runtime failure.")
+    else
+        // Read Igor's built-in fit result variables only on the success path.
+        NVAR/Z fitErrorRef = V_FitError
+        NVAR/Z fitQuitReasonRef = V_FitQuitReason
+        NVAR/Z fitNumItersRef = V_FitNumIters
+
+        if (NVAR_Exists(fitErrorRef) && numtype(fitErrorRef) == 0 && fitErrorRef != 0)
+            fitFailed = 1
+            LJZ_MDCWB_SetLastError("FuncFit runtime failure.")
+        endif
+
+        if (NVAR_Exists(fitQuitReasonRef) && numtype(fitQuitReasonRef) == 0)
+            fitQuitReasonLocal = fitQuitReasonRef
+        endif
+
+        if (NVAR_Exists(fitNumItersRef) && numtype(fitNumItersRef) == 0)
+            fitNumItersLocal = fitNumItersRef
+        endif
     endif
 
     LJZ_MDCWB_SanitizeParamWave(coefWorkingWave, modelIDLocal)
@@ -1842,7 +1867,7 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     endif
 
     if (fitFailed)
-        // FIX: on any fit failure, keep the previous official record untouched and stay dirty.
+        // On any fit failure, keep the previous official record untouched and stay dirty.
         LJZ_MDCWB_MarkDirty(1)
         return -1
     endif
@@ -1866,27 +1891,26 @@ Function LJZ_MDCWB_CommitFitForCurrentWave()
     Wave/Z nativeSigmaWave = W_sigma
     if (WaveExists(nativeSigmaWave))
         Variable sigmaCountLocal = min(numpnts(nativeSigmaWave), paramCountLocal)
-        sigmaWorkingWave[0, sigmaCountLocal-1] = nativeSigmaWave[p]
+        sigmaWorkingWave[0, sigmaCountLocal - 1] = nativeSigmaWave[p]
     endif
 
     // ---------- coef padded to 12 ----------
     Make/FREE/N=12 coefPaddedWave = NaN
-    coefPaddedWave[0, paramCountLocal-1] = coefWorkingWave[p]
+    coefPaddedWave[0, paramCountLocal - 1] = coefWorkingWave[p]
 
     // ---------- metrics ----------
     Variable metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI
     if (LJZ_MDCWB_ComputeFitMetrics(dataWave, guessFullWave, fitFullWave, resFullWave, editXLo, editXHi, metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI) != 0)
-        // ROBUST: reject fit records with no finite metric support inside ROI.
         LJZ_MDCWB_MarkDirty(1)
         LJZ_MDCWB_SetLastError("Metric computation failed.")
         return -1
     endif
 
+    // ---------- info ----------
     Make/FREE/N=12 infoWorkingWave = NaN
     LJZ_MDCWB_BuildInfoWave(infoWorkingWave, modelIDLocal, bgOrderLocal, editXLo, editXHi, 1, metricGuessRMSE, metricFitRMSE, metricRSSROI, metricMaxAbsRes, metricNROI)
-    // FIX: persist fit quit reason and iteration count on successful fits.
-    infoWorkingWave[10] = V_FitQuitReason
-    infoWorkingWave[11] = V_FitNumIters
+    infoWorkingWave[10] = fitQuitReasonLocal
+    infoWorkingWave[11] = fitNumItersLocal
 
     // ---------- save official record ----------
     if (LJZ_MDCWB_SaveFitRecord(dataWave, coefPaddedWave, sigmaWorkingWave, infoWorkingWave, fitFullWave, resFullWave) != 0)
