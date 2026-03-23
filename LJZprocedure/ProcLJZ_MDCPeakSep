@@ -329,7 +329,10 @@ Function/S LJZ_MDCPeakSep_ListMDCShowWaves_OneDF(df)
     String df
 
     String dfc = LJZ_MDCPeakSep_df_with_colon(df)
-    String wl = WaveList("mdc_show_*", ";", "DIMS:1", dfc)
+    String oldDF = GetDataFolder(1)
+    SetDataFolder $dfc
+    String wl = WaveList("mdc_show_*", ";", "DIMS:1")
+    SetDataFolder $oldDF
     String out = ""
     Variable i, n = ItemsInList(wl, ";")
     Variable bestIdx, j
@@ -765,6 +768,22 @@ Function LJZ_MDCPeakSep_EnsureGraphWindow()
     return 0
 End
 
+Function LJZ_RemoveAllTracesFromGraph(gPath)
+    String gPath
+
+    String trList, tr
+    Variable i, n
+
+    trList = TraceNameList(gPath, ";", 1)
+    n = ItemsInList(trList, ";")
+    for (i = n - 1; i >= 0; i -= 1)
+        tr = StringFromList(i, trList, ";")
+        if (strlen(tr) > 0)
+            RemoveFromGraph/Z/W=$gPath $tr
+        endif
+    endfor
+End
+
 Function LJZ_MDCPeakSep_RefreshGraph()
     LJZ_MDCPeakSep_EnsureGraphWindow()
 
@@ -774,14 +793,14 @@ Function LJZ_MDCPeakSep_RefreshGraph()
     Wave/Z w = $sWaveSel
 
     if (strlen(sWaveSel) == 0 || !LJZ_MDCPeakSep_Is1DWave(w))
-        RemoveFromGraph/Z/W=$gPath *
+        LJZ_RemoveAllTracesFromGraph(gPath)
         AppendToGraph/W=$gPath stub
         ModifyGraph/W=$gPath rgb(stub)=(45000,45000,45000)
         TextBox/C/N=tbInfo/W=$gPath/F=0/A=RT/X=0/Y=0 "No valid MDC selected"
         return 0
     endif
 
-    RemoveFromGraph/Z/W=$gPath *
+    LJZ_RemoveAllTracesFromGraph(gPath)
     AppendToGraph/W=$gPath w
     ModifyGraph/W=$gPath rgb($NameOfWave(w))=(0,0,0)
 
