@@ -179,6 +179,11 @@ Function LJZ_EDCEdgeWidth_EnsureDF()
         Variable/G $(LJZ_EDCEdgeWidth_BaseDF() + ":Width") = NaN
     endif
 
+    NVAR/Z Dirty = $(LJZ_EDCEdgeWidth_BaseDF() + ":Dirty")
+    if (!NVAR_Exists(Dirty))
+        Variable/G $(LJZ_EDCEdgeWidth_BaseDF() + ":Dirty") = 0
+    endif
+
     Wave/T/Z wDisp = $(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Disp")
     if (!WaveExists(wDisp))
         Make/O/T/N=0 $(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Disp")
@@ -191,6 +196,60 @@ Function LJZ_EDCEdgeWidth_EnsureDF()
 
     Make/O/N=2 $(LJZ_EDCEdgeWidth_BaseDF() + ":GraphStub") = NaN
     SetScale/P x, 0, 1, "", $(LJZ_EDCEdgeWidth_BaseDF() + ":GraphStub")
+
+    return 0
+End
+
+Function LJZ_EDCEdgeWidth_MarkDirty(flag)
+    Variable flag
+
+    NVAR Dirty = $(LJZ_EDCEdgeWidth_BaseDF() + ":Dirty")
+    Dirty = (flag != 0)
+    return 0
+End
+
+Function LJZ_EDCEdgeWidth_IsDirty()
+    NVAR Dirty = $(LJZ_EDCEdgeWidth_BaseDF() + ":Dirty")
+    return Dirty
+End
+
+Function LJZ_EDCEdgeWidth_RestoreCurrentSelectionUI()
+    LJZ_EDCEdgeWidth_EnsureDF()
+
+    String panelName = LJZ_EDCEdgeWidth_PanelName()
+    NVAR SelRow = $(LJZ_EDCEdgeWidth_BaseDF() + ":SelRow")
+    Wave/Z wSel = $(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Sel")
+    if (!WaveExists(wSel))
+        return 0
+    endif
+
+    wSel = 0
+    if (SelRow >= 0 && SelRow < numpnts(wSel))
+        wSel[SelRow] = 1
+        ListBox/Z lbWave, win=$panelName, selRow=SelRow
+    else
+        ListBox/Z lbWave, win=$panelName, selRow=-1
+    endif
+
+    ControlUpdate/W=$panelName lbWave
+    return 0
+End
+
+Function LJZ_EDCEdgeWidth_ConfirmLeaveIfDirty()
+    SVAR sWave = $(LJZ_EDCEdgeWidth_BaseDF() + ":WaveSel")
+    if (strlen(sWave) == 0)
+        return 1
+    endif
+
+    if (!LJZ_EDCEdgeWidth_IsDirty())
+        return 1
+    endif
+
+    DoAlert 1, "Current edge windows have unmeasured edits. Discard them and continue?"
+    if (V_flag == 1)
+        LJZ_EDCEdgeWidth_MarkDirty(0)
+        return 1
+    endif
 
     return 0
 End
@@ -504,6 +563,7 @@ Function LJZ_EDCEdgeWidth_RebuildWaveList()
     endif
 
     LJZ_EDCEdgeWidth_EnsureResultWaves()
+    LJZ_EDCEdgeWidth_RestoreCurrentSelectionUI()
     return 0
 End
 
@@ -1016,6 +1076,9 @@ Function LJZ_EDCEdgeWidth_FindWidth()
     endif
 
     Variable ret = LJZ_EDCEdgeWidth_MeasureWaveByPath(sWave, 1)
+    if (ret == 0)
+        LJZ_EDCEdgeWidth_MarkDirty(0)
+    endif
     LJZ_EDCEdgeWidth_ShowCurrentWave()
     LJZ_EDCEdgeWidth_RefreshTitleBoxes()
     return ret
@@ -1057,6 +1120,7 @@ Function LJZ_EDCEdgeWidth_MeasureAll()
     endfor
 
     LJZ_EDCEdgeWidth_LoadStoredResultForSelection()
+    LJZ_EDCEdgeWidth_MarkDirty(0)
     LJZ_EDCEdgeWidth_ShowCurrentWave()
     LJZ_EDCEdgeWidth_RefreshTitleBoxes()
     return 0
@@ -1112,7 +1176,7 @@ Function LJZ_EDCEdgeWidth_OpenPanel()
     Button btUseCurrent,pos={480,8},size={80,24},title="Current",proc=LJZ_EDCEdgeWidth_ButtonProc
     Button btScan,pos={575,8},size={70,24},title="Scan",proc=LJZ_EDCEdgeWidth_ButtonProc
 
-    ListBox lbWave,pos={10,42},size={225,318},listWave=$(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Sel"),proc=LJZ_EDCEdgeWidth_ListBoxProc
+    ListBox lbWave,pos={10,42},size={225,318},listWave=$(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_EDCEdgeWidth_ListBoxProc
 
 
     // ------------------------------------------------------------
@@ -1171,6 +1235,7 @@ Function LJZ_EDCEdgeWidth_OpenPanel()
 
     TitleBox tbMsg,pos={10,592},size={985,18},frame=0,title="Definition: center = half-height crossing inside each window; fallback = max-slope midpoint"
     LJZ_EDCEdgeWidth_CreateGraphSubwindow()
+    LJZ_EDCEdgeWidth_RestoreCurrentSelectionUI()
     return 0
 End
 
@@ -1205,11 +1270,19 @@ Function LJZ_EDCEdgeWidth_ButtonProc(ba) : ButtonControl
     String ctrlName = ba.ctrlName
 
     if (CmpStr(ctrlName, "btUseCurrent") == 0)
+        if (!LJZ_EDCEdgeWidth_ConfirmLeaveIfDirty())
+            LJZ_EDCEdgeWidth_RestoreCurrentSelectionUI()
+            return 0
+        endif
         LJZ_EDCEdgeWidth_UseCurrentRunDF()
         return 0
     endif
 
     if (CmpStr(ctrlName, "btScan") == 0)
+        if (!LJZ_EDCEdgeWidth_ConfirmLeaveIfDirty())
+            LJZ_EDCEdgeWidth_RestoreCurrentSelectionUI()
+            return 0
+        endif
         LJZ_EDCEdgeWidth_RebuildWaveList()
         LJZ_EDCEdgeWidth_RefreshCurrentSelection()
         LJZ_EDCEdgeWidth_RefreshTitleBoxes()
@@ -1223,18 +1296,21 @@ Function LJZ_EDCEdgeWidth_ButtonProc(ba) : ButtonControl
 
     if (CmpStr(ctrlName, "btAuto") == 0)
         LJZ_EDCEdgeWidth_AutoFillWindows()
+        LJZ_EDCEdgeWidth_MarkDirty(1)
         LJZ_EDCEdgeWidth_UpdateGraphMarks()
         return 0
     endif
     
     if (CmpStr(ctrlName, "btAutoRise") == 0)
         LJZ_EDCEdgeWidth_AutoFillRiseWindow()
+        LJZ_EDCEdgeWidth_MarkDirty(1)
         LJZ_EDCEdgeWidth_UpdateGraphMarks()
         return 0
     endif
 
     if (CmpStr(ctrlName, "btAutoFall") == 0)
         LJZ_EDCEdgeWidth_AutoFillFallWindow()
+        LJZ_EDCEdgeWidth_MarkDirty(1)
         LJZ_EDCEdgeWidth_UpdateGraphMarks()
         return 0
     endif
@@ -1272,11 +1348,21 @@ Function LJZ_EDCEdgeWidth_SetVarProc(sva) : SetVariableControl
 
     if (CmpStr(ctrlName, "svSourceDF") == 0)
         SVAR sDF = $(LJZ_EDCEdgeWidth_BaseDF() + ":SourceDF")
+        if (CmpStr(sDF, LJZ_EDCEdgeWidth_df_with_colon(sva.sval)) != 0)
+            if (!LJZ_EDCEdgeWidth_ConfirmLeaveIfDirty())
+                LJZ_EDCEdgeWidth_RefreshTitleBoxes()
+                return 0
+            endif
+        endif
         sDF = LJZ_EDCEdgeWidth_df_with_colon(sva.sval)
+        LJZ_EDCEdgeWidth_RebuildWaveList()
+        LJZ_EDCEdgeWidth_RefreshCurrentSelection()
+        LJZ_EDCEdgeWidth_RefreshTitleBoxes()
         return 0
     endif
 
     if ((CmpStr(ctrlName, "svRiseX1") == 0) || (CmpStr(ctrlName, "svRiseX2") == 0) || (CmpStr(ctrlName, "svFallX1") == 0) || (CmpStr(ctrlName, "svFallX2") == 0))
+        LJZ_EDCEdgeWidth_MarkDirty(1)
         LJZ_EDCEdgeWidth_UpdateGraphMarks()
         return 0
     endif
@@ -1293,6 +1379,13 @@ Function LJZ_EDCEdgeWidth_ListBoxProc(lba) : ListBoxControl
 
     if (CmpStr(lba.ctrlName, "lbWave") == 0)
         if (lba.row >= 0)
+            NVAR SelRow = $(LJZ_EDCEdgeWidth_BaseDF() + ":SelRow")
+            if (lba.row != SelRow)
+                if (!LJZ_EDCEdgeWidth_ConfirmLeaveIfDirty())
+                    LJZ_EDCEdgeWidth_RestoreCurrentSelectionUI()
+                    return 0
+                endif
+            endif
             LJZ_EDCEdgeWidth_SelectWaveRow(lba.row)
             LJZ_EDCEdgeWidth_RefreshCurrentSelection()
             LJZ_EDCEdgeWidth_RefreshTitleBoxes()
@@ -1313,6 +1406,7 @@ Function LJZ_EDCEdgeWidth_MeasureAndNext()
 
     if (ret == 0 && n > 0)
         if (SelRow < n - 1)
+            LJZ_EDCEdgeWidth_MarkDirty(0)
             LJZ_EDCEdgeWidth_SelectWaveRow(SelRow + 1)
             LJZ_EDCEdgeWidth_RefreshCurrentSelection()
             LJZ_EDCEdgeWidth_RefreshTitleBoxes()
