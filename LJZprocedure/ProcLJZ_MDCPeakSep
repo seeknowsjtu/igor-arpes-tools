@@ -834,14 +834,14 @@ Function LJZ_MDCPeakSep_CreateGraphSubwindow()
     Wave/Z w = $sWave
     if (!WaveExists(w) || !LJZ_MDCPeakSep_Is1DWave(w))
         Wave stub = $(LJZ_MDCPeakSep_BaseDF() + ":GraphStub")
-        Display/HOST=$panelName/N=$graphName/W=(250,40,1060,360) stub
+        Display/HOST=$panelName/N=$graphName/W=(250,40,960,360) stub
         ModifyGraph/W=$graphPath margin(left)=48,margin(bottom)=32,margin(right)=16,margin(top)=12,mirror=2
         Label/W=$graphPath left "Intensity (a.u.)"
         Label/W=$graphPath bottom "k"
         return 0
     endif
 
-    Display/HOST=$panelName/N=$graphName/W=(250,40,1060,360) w
+    Display/HOST=$panelName/N=$graphName/W=(250,40,960,360) w
     ModifyGraph/W=$graphPath margin(left)=48,margin(bottom)=32,margin(right)=16,margin(top)=12,mirror=2
     Label/W=$graphPath left "Intensity (a.u.)"
     Label/W=$graphPath bottom "k"
@@ -1132,8 +1132,23 @@ Function LJZ_MDCPeakSep_MeasureAll()
 End
 
 Function LJZ_MDCPeakSep_RefreshCurrentSelection()
-    LJZ_MDCPeakSep_LoadStoredResultForSelection()
-    LJZ_MDCPeakSep_ShowCurrentWave()
+    if (LJZ_MDCPeakSep_LoadStoredResultForSelection() == 0)
+        LJZ_MDCPeakSep_ShowCurrentWave()
+    else
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+
+        SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
+        Wave/Z w = $sWave
+        if (strlen(sWave) > 0 && WaveExists(w) && LJZ_MDCPeakSep_Is1DWave(w))
+            LJZ_MDCPeakSep_AutoFillWindows()
+        endif
+
+        LJZ_MDCPeakSep_RefreshWindowControls()
+        LJZ_MDCPeakSep_ShowCurrentWave()
+    endif
+
+    LJZ_MDCPeakSep_RefreshWindowControls()
+    LJZ_MDCPeakSep_RefreshResultControls()
     return 0
 End
 
@@ -1298,7 +1313,7 @@ Function LJZ_MDCPeakSep_OpenPanel()
     String p = LJZ_MDCPeakSep_PanelName()
     DoWindow/F $p
     if (V_flag == 0)
-        NewPanel/N=$p /W=(90,90,1140,620)
+        NewPanel/N=$p /W=(90,90,1040,620)
     else
         DoWindow/F $p
         LJZ_MDCPeakSep_CreateGraphSubwindow()
@@ -1349,25 +1364,25 @@ Function LJZ_MDCPeakSep_OpenPanel()
     // ------------------------------------------------------------
     TitleBox tbRes1,pos={10,480},size={200,18},frame=0,title="Measurement Result"
 
-    SetVariable svXLeft,pos={250,506},size={160,20},title="XLeft"
+    SetVariable svXLeft,pos={10,506},size={180,20},title="XLeft"
     SetVariable svXLeft,variable=$(LJZ_MDCPeakSep_BaseDF() + ":XLeft"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
 
-    SetVariable svXRight,pos={430,506},size={160,20},title="XRight"
+    SetVariable svXRight,pos={205,506},size={180,20},title="XRight"
     SetVariable svXRight,variable=$(LJZ_MDCPeakSep_BaseDF() + ":XRight"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
 
-    SetVariable svSep,pos={610,506},size={160,20},title="Sep"
+    SetVariable svSep,pos={400,506},size={180,20},title="Sep"
     SetVariable svSep,variable=$(LJZ_MDCPeakSep_BaseDF() + ":Sep"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
 
     // ------------------------------------------------------------
     // Bottom info
     // ------------------------------------------------------------
-    SetVariable svSelWave,pos={10,542},size={1035,20},title="Selected Wave:"
+    SetVariable svSelWave,pos={10,542},size={985,20},title="Selected Wave:"
     SetVariable svSelWave,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":WaveSel",noedit=1
 
-    SetVariable svSrcDF,pos={10,566},size={1035,20},title="Source DF:"
+    SetVariable svSrcDF,pos={10,566},size={985,20},title="Source DF:"
     SetVariable svSrcDF,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":SourceDF",noedit=1
 
-    TitleBox tbMsg,pos={10,592},size={1035,18},frame=0,title="Definition: center = local peak maximum inside each window; refinement = 3-point parabola around the max"
+    TitleBox tbMsg,pos={10,592},size={985,18},frame=0,title="Definition: center = local peak maximum inside each window; refinement = 3-point parabola around the max"
     LJZ_MDCPeakSep_CreateGraphSubwindow()
     LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
     return 0
@@ -1523,13 +1538,6 @@ Function LJZ_MDCPeakSep_ListBoxProc(lba) : ListBoxControl
             endif
             LJZ_MDCPeakSep_SelectWaveRow(lba.row)
             LJZ_MDCPeakSep_RefreshCurrentSelection()
-            if (LJZ_MDCPeakSep_LoadStoredResultForSelection() != 0)
-                LJZ_MDCPeakSep_ClearCurrentResultDisplay()
-                LJZ_MDCPeakSep_AutoFillWindows()
-                LJZ_MDCPeakSep_ShowCurrentWave()
-            endif
-            LJZ_MDCPeakSep_RefreshWindowControls()
-            LJZ_MDCPeakSep_RefreshResultControls()
             LJZ_MDCPeakSep_RefreshTitleBoxes()
         endif
     endif
