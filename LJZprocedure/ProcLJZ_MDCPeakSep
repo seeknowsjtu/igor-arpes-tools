@@ -3,7 +3,7 @@
 #pragma DefaultTab={3,20,4}
 
 // ============================================================================
-//  LJZ_MDCPeakSep : panel-inline MDC edge-width tool
+//  LJZ_MDCEdgeWidth : panel-inline MDC edge-width tool
 //  只负责：
 //    1) 从当前 RunDF / 手动指定 DF 扫描严格命名的 mdc_show_i
 //    2) 在 panel 内联 graph 中显示当前选中的 mdc_show_i
@@ -26,11 +26,11 @@ End
 // ============================================================================
 
 Function/S LJZ_MDCPeakSep_BaseDF()
-    return "root:ARPES_LJZ:MDCPeakSep"
+    return "root:ARPES_LJZ:MDCEdgeWidth"
 End
 
 Function/S LJZ_MDCPeakSep_PanelName()
-    return "LJZ_MDCPeakSep_Panel"
+    return "LJZ_MDCEdgeWidth_Panel"
 End
 
 Function/S LJZ_MDCPeakSep_GraphName()
@@ -117,6 +117,15 @@ Function LJZ_MDCPeakSep_Clamp(v, lo, hi)
         return hi
     endif
     return v
+End
+
+Function LJZ_MDCPeakSep_SanitizeEdgeFrac(v)
+    Variable v
+
+    if (numtype(v) != 0)
+        return 0.5
+    endif
+    return LJZ_MDCPeakSep_Clamp(v, 0, 1)
 End
 
 Function LJZ_MDCPeakSep_HasChildSubwindow(hostWin, childName)
@@ -264,7 +273,7 @@ Function LJZ_MDCPeakSep_ConfirmLeaveIfDirty()
         return 1
     endif
 
-    DoAlert 1, "Current edge windows have unmeasured edits. Discard them and continue?"
+    DoAlert 1, "Current edge-width windows have unmeasured edits. Discard them and continue?"
     if (V_flag == 1)
         LJZ_MDCPeakSep_MarkDirty(0)
         return 1
@@ -1092,6 +1101,7 @@ Function LJZ_MDCPeakSep_MeasureWaveByPath(wPath, doAlertOnFail)
     NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
     NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
     NVAR EdgeFrac = $(LJZ_MDCPeakSep_BaseDF() + ":EdgeFrac")
+    EdgeFrac = LJZ_MDCPeakSep_SanitizeEdgeFrac(EdgeFrac)
     NVAR XRise = $(LJZ_MDCPeakSep_BaseDF() + ":XRise")
     NVAR XFall = $(LJZ_MDCPeakSep_BaseDF() + ":XFall")
     NVAR Width = $(LJZ_MDCPeakSep_BaseDF() + ":Width")
@@ -1310,11 +1320,13 @@ Function LJZ_MDCPeakSep_RefreshWindowControls()
     NVAR LeftX2 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX2")
     NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
     NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
+    NVAR EdgeFrac = $(LJZ_MDCPeakSep_BaseDF() + ":EdgeFrac")
 
     SetVariable/Z svLeftX1, win=$p, value=_NUM:LeftX1
     SetVariable/Z svLeftX2, win=$p, value=_NUM:LeftX2
     SetVariable/Z svRightX1, win=$p, value=_NUM:RightX1
     SetVariable/Z svRightX2, win=$p, value=_NUM:RightX2
+    SetVariable/Z svEdgeFrac, win=$p, value=_NUM:EdgeFrac
     return 0
 End
 
@@ -1348,8 +1360,10 @@ Function LJZ_MDCPeakSep_OpenPanel()
     DoWindow/F $p
     if (V_flag == 0)
         NewPanel/N=$p /W=(90,90,1040,620)
+        DoWindow/T $p, "MDC Edge Width"
     else
         DoWindow/F $p
+        DoWindow/T $p, "MDC Edge Width"
         LJZ_MDCPeakSep_CreateGraphSubwindow()
         return 0
     endif
@@ -1373,7 +1387,7 @@ Function LJZ_MDCPeakSep_OpenPanel()
     Button btPlotResult,pos={820,372},size={110,28},title="Plot Result",proc=LJZ_MDCPeakSep_ButtonProc
 
     // ------------------------------------------------------------
-    // Row 2 : left/right edge windows
+    // Row 2 : left/right edge-width windows
     // ------------------------------------------------------------
     TitleBox tbLeft,pos={250,414},size={210,18},frame=0,title="Left rising-edge window"
     SetVariable svLeftX1,pos={250,438},size={125,20},title="Rise x1"
@@ -1391,12 +1405,12 @@ Function LJZ_MDCPeakSep_OpenPanel()
     SetVariable svRightX2,pos={810,438},size={125,20},title="Fall x2"
     SetVariable svRightX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX2"),proc=LJZ_MDCPeakSep_SetVarProc
 
-    Button btAutoRight,pos={950,436},size={95,24},title="Auto Fall",proc=LJZ_MDCPeakSep_ButtonProc
+    Button btAutoRight,pos={940,436},size={90,24},title="Auto Fall",proc=LJZ_MDCPeakSep_ButtonProc
 
     // ------------------------------------------------------------
     // Row 3 : measurement result
     // ------------------------------------------------------------
-    TitleBox tbRes1,pos={10,480},size={200,18},frame=0,title="Measurement Result"
+    TitleBox tbRes1,pos={10,480},size={220,18},frame=0,title="Edge Width Result"
 
     SetVariable svXRise,pos={10,506},size={180,20},title="XRise"
     SetVariable svXRise,variable=$(LJZ_MDCPeakSep_BaseDF() + ":XRise"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
@@ -1407,6 +1421,9 @@ Function LJZ_MDCPeakSep_OpenPanel()
     SetVariable svWidth,pos={400,506},size={180,20},title="Width"
     SetVariable svWidth,variable=$(LJZ_MDCPeakSep_BaseDF() + ":Width"),proc=LJZ_MDCPeakSep_SetVarProc,noedit=1
 
+    SetVariable svEdgeFrac,pos={595,506},size={130,20},title="Frac"
+    SetVariable svEdgeFrac,limits={0,1,0.01},variable=$(LJZ_MDCPeakSep_BaseDF() + ":EdgeFrac"),proc=LJZ_MDCPeakSep_SetVarProc
+
     // ------------------------------------------------------------
     // Bottom info
     // ------------------------------------------------------------
@@ -1416,7 +1433,7 @@ Function LJZ_MDCPeakSep_OpenPanel()
     SetVariable svSrcDF,pos={10,566},size={985,20},title="Source DF:"
     SetVariable svSrcDF,value=_STR:LJZ_MDCPeakSep_BaseDF() + ":SourceDF",noedit=1
 
-    TitleBox tbMsg,pos={10,592},size={985,18},frame=0,title="Definition: rising/falling edge = fractional crossing inside each window (default 50% level)"
+    TitleBox tbMsg,pos={10,592},size={985,18},frame=0,title="Definition: edge width = XFall - XRise, using Frac-level crossings in each window (default 50%)."
     LJZ_MDCPeakSep_CreateGraphSubwindow()
     LJZ_MDCPeakSep_RestoreCurrentSelectionUI()
     return 0
@@ -1545,7 +1562,12 @@ Function LJZ_MDCPeakSep_SetVarProc(sva) : SetVariableControl
         return 0
     endif
 
-    if ((CmpStr(ctrlName, "svLeftX1") == 0) || (CmpStr(ctrlName, "svLeftX2") == 0) || (CmpStr(ctrlName, "svRightX1") == 0) || (CmpStr(ctrlName, "svRightX2") == 0))
+    if ((CmpStr(ctrlName, "svLeftX1") == 0) || (CmpStr(ctrlName, "svLeftX2") == 0) || (CmpStr(ctrlName, "svRightX1") == 0) || (CmpStr(ctrlName, "svRightX2") == 0) || (CmpStr(ctrlName, "svEdgeFrac") == 0))
+        if (CmpStr(ctrlName, "svEdgeFrac") == 0)
+            NVAR EdgeFrac = $(LJZ_MDCPeakSep_BaseDF() + ":EdgeFrac")
+            EdgeFrac = LJZ_MDCPeakSep_SanitizeEdgeFrac(EdgeFrac)
+            LJZ_MDCPeakSep_RefreshWindowControls()
+        endif
         LJZ_MDCPeakSep_MarkDirty(1)
         LJZ_MDCPeakSep_UpdateGraphMarks()
         return 0
