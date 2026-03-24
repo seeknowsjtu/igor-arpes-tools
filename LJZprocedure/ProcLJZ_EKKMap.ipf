@@ -1044,12 +1044,26 @@ Function/S LJZ_EKKMap_InputShapeMessage(mode, is3D)
     Variable mode, is3D
 
     if (mode == LJZ_EKKMap_Mode_EK)
-        return is3D ? "EK 3D expects angle × energy × stack." : "EK 2D expects angle × energy."
+        if (is3D)
+            return "EK 3D expects angle × energy × stack."
+        else
+            return "EK 2D expects angle × energy."
+        endif
     endif
+
     if (mode == LJZ_EKKMap_Mode_KxKy)
-        return is3D ? "KxKy 3D expects energy × angle × scan-angle." : "KxKy 2D expects mode-angle × scan-angle."
+        if (is3D)
+            return "KxKy 3D expects energy × angle × scan-angle."
+        else
+            return "KxKy 2D expects mode-angle × scan-angle."
+        endif
     endif
-    return is3D ? "KxKz 3D expects energy × angle × hv." : "KxKz 2D expects mode-angle × hv."
+
+    if (is3D)
+        return "KxKz 3D expects energy × angle × hv."
+    else
+        return "KxKz 2D expects mode-angle × hv."
+    endif
 End
 
 Function/S LJZ_EKKMap_InputKindMismatchMessage(mode)
