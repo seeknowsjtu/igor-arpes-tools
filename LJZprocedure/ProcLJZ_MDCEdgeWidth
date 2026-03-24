@@ -1144,6 +1144,8 @@ Function LJZ_MDCPeakSep_FindWidth()
     if (ret == 0)
         LJZ_MDCPeakSep_MarkDirty(0)
     endif
+    LJZ_MDCPeakSep_RefreshWindowControls()
+    LJZ_MDCPeakSep_RefreshResultControls()
     LJZ_MDCPeakSep_ShowCurrentWave()
     LJZ_MDCPeakSep_RefreshTitleBoxes()
     return ret
@@ -1176,6 +1178,13 @@ Function LJZ_MDCPeakSep_MeasureAll()
 End
 
 Function LJZ_MDCPeakSep_RefreshCurrentSelection()
+    if (LJZ_MDCPeakSep_IsDirty())
+        LJZ_MDCPeakSep_RefreshWindowControls()
+        LJZ_MDCPeakSep_RefreshResultControls()
+        LJZ_MDCPeakSep_ShowCurrentWave()
+        return 0
+    endif
+
     if (LJZ_MDCPeakSep_LoadStoredResultForSelection() == 0)
         LJZ_MDCPeakSep_ShowCurrentWave()
     else
@@ -1569,6 +1578,8 @@ Function LJZ_MDCPeakSep_SetVarProc(sva) : SetVariableControl
             LJZ_MDCPeakSep_RefreshWindowControls()
         endif
         LJZ_MDCPeakSep_MarkDirty(1)
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        LJZ_MDCPeakSep_RefreshResultControls()
         LJZ_MDCPeakSep_UpdateGraphMarks()
         return 0
     endif
