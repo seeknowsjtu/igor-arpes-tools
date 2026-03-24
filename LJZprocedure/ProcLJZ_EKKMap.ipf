@@ -52,6 +52,13 @@ Constant LJZ_EKKMap_Mode_EK = 1
 Constant LJZ_EKKMap_Mode_KxKy = 2
 Constant LJZ_EKKMap_Mode_KxKz = 3
 
+// Explicit input layout constraint for 3D runs. Igor waves usually do not carry
+// physical axis semantics, so we require user-declared input kind to prevent
+// silent EK/K-map mode mismatch on dimension-compatible but semantically wrong data.
+Constant LJZ_EKKMap_InputKind_EKStack = 1
+Constant LJZ_EKKMap_InputKind_KMapStack = 2
+Constant LJZ_EKKMap_UnitClampEps = 1e-8
+
 Function/S LJZ_EKKMap_BaseDF()
     return "root:ARPES_LJZ:EKKMap"
 End
@@ -116,6 +123,19 @@ Function/S LJZ_EKKMap_ModeName(mode)
         return "kx-kz"
     endif
     return "E-k"
+End
+
+Function/S LJZ_EKKMap_InputKindLabel(kind)
+    Variable kind
+
+    if (kind == LJZ_EKKMap_InputKind_KMapStack)
+        return "K-map stack (energy, angle, scan/hv)"
+    endif
+    return "EK stack (angle, energy, stack)"
+End
+
+Function/S LJZ_EKKMap_InputKindPopupList()
+    return "EK stack (angle, energy, stack);K-map stack (energy, angle, scan/hv)"
 End
 
 Function LJZ_EKKMap_IsNumericImageWave(w)
@@ -211,10 +231,46 @@ Function LJZ_EKKMap_IsFinite(v)
     return (numtype(v) == 0)
 End
 
+Function LJZ_EKKMap_IsValidMap2DForGridStat(w)
+    Wave/Z w
+
+    // "Dimensionally legal" does not mean a slice is physically usable.
+    // For 3D two-pass global-grid statistics, we only accept 2D numeric maps
+    // that contain at least one finite point; all-NaN / all-Inf maps are invalid.
+    if (!WaveExists(w))
+        return 0
+    endif
+    if (WaveType(w, 1) != 1)
+        return 0
+    endif
+    if (DimSize(w,0) < 2 || DimSize(w,1) < 2)
+        return 0
+    endif
+
+    Variable nx = DimSize(w,0)
+    Variable ny = DimSize(w,1)
+    Variable ix, iy
+    for (ix=0; ix<nx; ix+=1)
+        for (iy=0; iy<ny; iy+=1)
+            if (numtype(w[ix][iy]) == 0)
+                return 1
+            endif
+        endfor
+    endfor
+    return 0
+End
+
 Function LJZ_EKKMap_ClampToUnit(v)
     Variable v
 
+    // Epsilon-clamp: only repair tiny floating-point overshoot around |v|=1.
+    // Real out-of-domain values must stay NaN, otherwise asin(...) would create
+    // artificial boundary pixels from physically invalid regions.
+    Variable eps = LJZ_EKKMap_UnitClampEps
     if (!LJZ_EKKMap_IsFinite(v))
+        return NaN
+    endif
+    if (abs(v) > (1 + eps))
         return NaN
     endif
     if (v > 1)
@@ -341,6 +397,11 @@ Function LJZ_EKKMap_EnsureDF()
     NVAR/Z CurrentMode = $(LJZ_EKKMap_BaseDF() + ":CurrentMode")
     if (!NVAR_Exists(CurrentMode))
         Variable/G $(LJZ_EKKMap_BaseDF() + ":CurrentMode") = LJZ_EKKMap_Mode_EK
+    endif
+
+    NVAR/Z InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
+    if (!NVAR_Exists(InputKind))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":InputKind") = LJZ_EKKMap_InputKind_EKStack
     endif
 
     NVAR/Z ThetaAngle = $(LJZ_EKKMap_BaseDF() + ":ThetaAngle")
@@ -763,7 +824,8 @@ Function LJZ_EKKMap_RefreshTitleBoxes()
 
     String t = "Current: none"
     if (WaveExists(w))
-        t = "Current: " + NameOfWave(w) + "   mode = " + LJZ_EKKMap_ModeName(CurrentMode)
+        NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
+        t = "Current: " + NameOfWave(w) + "   mode = " + LJZ_EKKMap_ModeName(CurrentMode) + "   input = " + LJZ_EKKMap_InputKindLabel(InputKind)
         if (LJZ_EKKMap_Is3DWave(w))
             if (CurrentMode == LJZ_EKKMap_Mode_EK)
                 t += "   preview stack = " + num2str(PreviewZ)
@@ -792,8 +854,10 @@ Function LJZ_EKKMap_RefreshWindowControls()
 
     // svSourceDF / svPreviewZ 都绑定到状态变量本身；这里只做 ControlUpdate，
     // 避免把绑定控件重新覆盖成内部字符串造成闪烁或回写异常。
+    NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
     ControlUpdate/W=$p svSourceDF
     ControlUpdate/W=$p svPreviewZ
+    PopupMenu/Z pmInputKind,win=$p,mode=InputKind,popvalue=LJZ_EKKMap_InputKindLabel(InputKind)
     return 0
 End
 
@@ -988,6 +1052,18 @@ Function/S LJZ_EKKMap_InputShapeMessage(mode, is3D)
     return is3D ? "KxKz 3D expects energy × angle × hv." : "KxKz 2D expects mode-angle × hv."
 End
 
+Function/S LJZ_EKKMap_InputKindMismatchMessage(mode)
+    Variable mode
+
+    if (mode == LJZ_EKKMap_Mode_EK)
+        return "EK 3D expects InputKind = EK stack (angle × energy × stack)."
+    endif
+    if (mode == LJZ_EKKMap_Mode_KxKy)
+        return "KxKy 3D expects InputKind = K-map stack (energy × angle × scan)."
+    endif
+    return "KxKz 3D expects InputKind = K-map stack (energy × angle × hv)."
+End
+
 Function LJZ_EKKMap_AlertInvalidInput(w, msg)
     Wave/Z w
     String msg
@@ -1004,6 +1080,8 @@ Function LJZ_EKKMap_ValidateInputForEK(w, is3D)
     Wave/Z w
     Variable is3D
 
+    NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
+
     if (!WaveExists(w))
         LJZ_EKKMap_AlertInvalidInput(w, "Selected wave does not exist.")
         return 0
@@ -1011,6 +1089,10 @@ Function LJZ_EKKMap_ValidateInputForEK(w, is3D)
     if (is3D)
         if (!LJZ_EKKMap_Is3DWave(w))
             LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_EK, 1))
+            return 0
+        endif
+        if (InputKind != LJZ_EKKMap_InputKind_EKStack)
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputKindMismatchMessage(LJZ_EKKMap_Mode_EK))
             return 0
         endif
     else
@@ -1026,6 +1108,8 @@ Function LJZ_EKKMap_ValidateInputForKxKy(w, is3D)
     Wave/Z w
     Variable is3D
 
+    NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
+
     if (!WaveExists(w))
         LJZ_EKKMap_AlertInvalidInput(w, "Selected wave does not exist.")
         return 0
@@ -1033,6 +1117,10 @@ Function LJZ_EKKMap_ValidateInputForKxKy(w, is3D)
     if (is3D)
         if (!LJZ_EKKMap_Is3DWave(w))
             LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_KxKy, 1))
+            return 0
+        endif
+        if (InputKind != LJZ_EKKMap_InputKind_KMapStack)
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputKindMismatchMessage(LJZ_EKKMap_Mode_KxKy))
             return 0
         endif
     else
@@ -1048,6 +1136,8 @@ Function LJZ_EKKMap_ValidateInputForKxKz(w, is3D)
     Wave/Z w
     Variable is3D
 
+    NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
+
     if (!WaveExists(w))
         LJZ_EKKMap_AlertInvalidInput(w, "Selected wave does not exist.")
         return 0
@@ -1055,6 +1145,10 @@ Function LJZ_EKKMap_ValidateInputForKxKz(w, is3D)
     if (is3D)
         if (!LJZ_EKKMap_Is3DWave(w))
             LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputShapeMessage(LJZ_EKKMap_Mode_KxKz, 1))
+            return 0
+        endif
+        if (InputKind != LJZ_EKKMap_InputKind_KMapStack)
+            LJZ_EKKMap_AlertInvalidInput(w, LJZ_EKKMap_InputKindMismatchMessage(LJZ_EKKMap_Mode_KxKz))
             return 0
         endif
     else
@@ -1398,7 +1492,10 @@ Function LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outPath, hv, workFunc, FL, thetaAngle,
         Duplicate/O LJZ_EKKMap_CalcKxKy2D(tmpSlice, energyRel, hv, workFunc, thetaAngle, azimuth, scanOffset, pixel, latticeA, geometry), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
         Wave map2D = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
 
-        if (DimSize(map2D,0) >= 2 && DimSize(map2D,1) >= 2)
+        // Size >= 2 is not enough: failed slice remap may still return a 2x2 map
+        // filled with NaN/Inf. Global common-grid stats must use slices containing
+        // at least one finite point only.
+        if (LJZ_EKKMap_IsValidMap2DForGridStat(map2D))
             wXMin[iz] = LJZ_EKKMap_DimMin(map2D,0)
             wXMax[iz] = LJZ_EKKMap_DimMax(map2D,0)
             wYMin[iz] = LJZ_EKKMap_DimMin(map2D,1)
@@ -1446,6 +1543,11 @@ Function LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outPath, hv, workFunc, FL, thetaAngle,
         LJZ_EKKMap_MakeSliceFrom3D(w, iz, 0, tmpSlice)
         Duplicate/O LJZ_EKKMap_CalcKxKy2D(tmpSlice, energyRel2, hv, workFunc, thetaAngle, azimuth, scanOffset, pixel, latticeA, geometry), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
         Wave map2D2 = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+        if (!LJZ_EKKMap_IsValidMap2DForGridStat(map2D2))
+            out3D[][][iz] = NaN
+            KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+            continue
+        endif
         LJZ_EKKMap_Resample2DToCommonGrid(map2D2, globalXMin, globalXMax, globalYMin, globalYMax, commonNX, commonNY, commonSlice)
         out3D[][][iz] = commonSlice[p][q]
         KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
@@ -1503,7 +1605,10 @@ Function LJZ_EKKMap_RunKxKz_3D_TwoPass(w, outPath, workFunc, FL, thetaAngle, V0,
         Duplicate/O LJZ_EKKMap_CalcKxKz2D(tmpSlice, energyRel, workFunc, thetaAngle, V0, pixel, latticeA, latticeC), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
         Wave map2D = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
 
-        if (DimSize(map2D,0) >= 2 && DimSize(map2D,1) >= 2)
+        // Size >= 2 is not enough: failed slice remap may still return a 2x2 map
+        // filled with NaN/Inf. Global common-grid stats must use slices containing
+        // at least one finite point only.
+        if (LJZ_EKKMap_IsValidMap2DForGridStat(map2D))
             wXMin[iz] = LJZ_EKKMap_DimMin(map2D,0)
             wXMax[iz] = LJZ_EKKMap_DimMax(map2D,0)
             wYMin[iz] = LJZ_EKKMap_DimMin(map2D,1)
@@ -1550,6 +1655,11 @@ Function LJZ_EKKMap_RunKxKz_3D_TwoPass(w, outPath, workFunc, FL, thetaAngle, V0,
         LJZ_EKKMap_MakeSliceFrom3D(w, iz, 0, tmpSlice)
         Duplicate/O LJZ_EKKMap_CalcKxKz2D(tmpSlice, energyRel2, workFunc, thetaAngle, V0, pixel, latticeA, latticeC), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
         Wave map2D2 = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+        if (!LJZ_EKKMap_IsValidMap2DForGridStat(map2D2))
+            out3D[][][iz] = NaN
+            KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+            continue
+        endif
         LJZ_EKKMap_Resample2DToCommonGrid(map2D2, globalXMin, globalXMax, globalYMin, globalYMax, commonNX, commonNY, commonSlice)
         out3D[][][iz] = commonSlice[p][q]
         KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
@@ -1831,6 +1941,21 @@ Proc LJZ_EKKMap_ButtonProc(ctrlName) : ButtonControl
     endswitch
 End
 
+Proc LJZ_EKKMap_PopupProc(ctrlName, popNum, popStr) : PopupMenuControl
+    String ctrlName
+    Variable popNum
+    String popStr
+
+    strswitch(ctrlName)
+        case "pmInputKind":
+            NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
+            InputKind = (popNum == 2) ? LJZ_EKKMap_InputKind_KMapStack : LJZ_EKKMap_InputKind_EKStack
+            LJZ_EKKMap_RefreshWindowControls()
+            LJZ_EKKMap_RefreshTitleBoxes()
+            break
+    endswitch
+End
+
 Proc LJZ_EKKMap_SetVarProc(ctrlName, varNum, varStr, varName) : SetVariableControl
     String ctrlName
     Variable varNum
@@ -1970,11 +2095,15 @@ Function LJZ_EKKMap_OpenPanel()
     SetVariable svMDCKf,pos={265,560},size={150,20},title="MDC K_F shift"
     SetVariable svMDCKf,variable=$(LJZ_EKKMap_BaseDF() + ":MDCKf"),proc=LJZ_EKKMap_SetVarProc
 
+    NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
+    PopupMenu pmInputKind,pos={265,534},size={265,20},title="Input kind"
+    PopupMenu pmInputKind,mode=InputKind,popvalue=LJZ_EKKMap_InputKindLabel(InputKind),value=#"LJZ_EKKMap_InputKindPopupList()",proc=LJZ_EKKMap_PopupProc
+
     Button btEK,pos={445,552},size={120,32},title="Calc E-k",proc=LJZ_EKKMap_ButtonProc
     Button btKxKy,pos={590,552},size={120,32},title="Calc kx-ky",proc=LJZ_EKKMap_ButtonProc
     Button btKxKz,pos={735,552},size={120,32},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc
 
-    TitleBox tbNote,pos={265,592},size={650,18},frame=0,title="Single-select run target = current preview. 2D K-map uses E_rel; 3D K-map slice energy comes from dim0-FL."
+    TitleBox tbNote,pos={265,592},size={650,18},frame=0,title="Single-select run target = current preview. 3D run requires matching Input kind to avoid semantic mismatch."
 
     LJZ_EKKMap_CreateGraphSubwindow()
     LJZ_EKKMap_RefreshWindowControls()
