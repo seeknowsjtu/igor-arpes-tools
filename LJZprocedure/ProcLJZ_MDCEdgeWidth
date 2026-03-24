@@ -1133,6 +1133,7 @@ End
 
 Function LJZ_MDCPeakSep_FindWidth()
     LJZ_MDCPeakSep_EnsureDF()
+    LJZ_MDCPeakSep_SyncEditableControlsFromPanel()
 
     SVAR sWave = $(LJZ_MDCPeakSep_BaseDF() + ":WaveSel")
     if (strlen(sWave) == 0)
@@ -1179,6 +1180,7 @@ End
 
 Function LJZ_MDCPeakSep_RefreshCurrentSelection()
     if (LJZ_MDCPeakSep_IsDirty())
+        LJZ_MDCPeakSep_SyncEditableControlsFromPanel()
         LJZ_MDCPeakSep_RefreshWindowControls()
         LJZ_MDCPeakSep_RefreshResultControls()
         LJZ_MDCPeakSep_ShowCurrentWave()
@@ -1336,6 +1338,48 @@ Function LJZ_MDCPeakSep_RefreshWindowControls()
     SetVariable/Z svRightX1, win=$p, value=_NUM:RightX1
     SetVariable/Z svRightX2, win=$p, value=_NUM:RightX2
     SetVariable/Z svEdgeFrac, win=$p, value=_NUM:EdgeFrac
+    return 0
+End
+
+Function LJZ_MDCPeakSep_SyncEditableControlsFromPanel()
+    LJZ_MDCPeakSep_EnsureDF()
+
+    String p = LJZ_MDCPeakSep_PanelName()
+    if (WinType(p) == 0)
+        return 0
+    endif
+
+    NVAR LeftX1 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX1")
+    NVAR LeftX2 = $(LJZ_MDCPeakSep_BaseDF() + ":LeftX2")
+    NVAR RightX1 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX1")
+    NVAR RightX2 = $(LJZ_MDCPeakSep_BaseDF() + ":RightX2")
+    NVAR EdgeFrac = $(LJZ_MDCPeakSep_BaseDF() + ":EdgeFrac")
+
+    ControlInfo/W=$p svLeftX1
+    if ((V_flag != 0) && (numtype(V_value) == 0))
+        LeftX1 = V_value
+    endif
+
+    ControlInfo/W=$p svLeftX2
+    if ((V_flag != 0) && (numtype(V_value) == 0))
+        LeftX2 = V_value
+    endif
+
+    ControlInfo/W=$p svRightX1
+    if ((V_flag != 0) && (numtype(V_value) == 0))
+        RightX1 = V_value
+    endif
+
+    ControlInfo/W=$p svRightX2
+    if ((V_flag != 0) && (numtype(V_value) == 0))
+        RightX2 = V_value
+    endif
+
+    ControlInfo/W=$p svEdgeFrac
+    if ((V_flag != 0) && (numtype(V_value) == 0))
+        EdgeFrac = LJZ_MDCPeakSep_SanitizeEdgeFrac(V_value)
+    endif
+
     return 0
 End
 
@@ -1498,6 +1542,7 @@ Function LJZ_MDCPeakSep_ButtonProc(ba) : ButtonControl
     endif
 
     if (CmpStr(ctrlName, "btRefresh") == 0)
+        LJZ_MDCPeakSep_SyncEditableControlsFromPanel()
         LJZ_MDCPeakSep_RefreshCurrentSelection()
         return 0
     endif
@@ -1505,6 +1550,8 @@ Function LJZ_MDCPeakSep_ButtonProc(ba) : ButtonControl
     if (CmpStr(ctrlName, "btAuto") == 0)
         LJZ_MDCPeakSep_AutoFillWindows()
         LJZ_MDCPeakSep_MarkDirty(1)
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        LJZ_MDCPeakSep_RefreshResultControls()
         LJZ_MDCPeakSep_UpdateGraphMarks()
         return 0
     endif
@@ -1512,6 +1559,8 @@ Function LJZ_MDCPeakSep_ButtonProc(ba) : ButtonControl
     if (CmpStr(ctrlName, "btAutoLeft") == 0)
         LJZ_MDCPeakSep_AutoFillLeftWindow()
         LJZ_MDCPeakSep_MarkDirty(1)
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        LJZ_MDCPeakSep_RefreshResultControls()
         LJZ_MDCPeakSep_UpdateGraphMarks()
         return 0
     endif
@@ -1519,6 +1568,8 @@ Function LJZ_MDCPeakSep_ButtonProc(ba) : ButtonControl
     if (CmpStr(ctrlName, "btAutoRight") == 0)
         LJZ_MDCPeakSep_AutoFillRightWindow()
         LJZ_MDCPeakSep_MarkDirty(1)
+        LJZ_MDCPeakSep_ClearCurrentResultDisplay()
+        LJZ_MDCPeakSep_RefreshResultControls()
         LJZ_MDCPeakSep_UpdateGraphMarks()
         return 0
     endif
@@ -1549,13 +1600,16 @@ End
 Function LJZ_MDCPeakSep_SetVarProc(sva) : SetVariableControl
     STRUCT WMSetVariableAction &sva
 
-    if ((sva.eventCode != 1) && (sva.eventCode != 2))
+    if (sva.eventCode <= 0)
         return 0
     endif
 
     String ctrlName = sva.ctrlName
 
     if (CmpStr(ctrlName, "svSourceDF") == 0)
+        if ((sva.eventCode != 1) && (sva.eventCode != 2))
+            return 0
+        endif
         SVAR sDF = $(LJZ_MDCPeakSep_BaseDF() + ":SourceDF")
         if (CmpStr(sDF, LJZ_MDCPeakSep_df_with_colon(sva.sval)) != 0)
             if (!LJZ_MDCPeakSep_ConfirmLeaveIfDirty())
@@ -1572,6 +1626,7 @@ Function LJZ_MDCPeakSep_SetVarProc(sva) : SetVariableControl
     endif
 
     if ((CmpStr(ctrlName, "svLeftX1") == 0) || (CmpStr(ctrlName, "svLeftX2") == 0) || (CmpStr(ctrlName, "svRightX1") == 0) || (CmpStr(ctrlName, "svRightX2") == 0) || (CmpStr(ctrlName, "svEdgeFrac") == 0))
+        LJZ_MDCPeakSep_SyncEditableControlsFromPanel()
         if (CmpStr(ctrlName, "svEdgeFrac") == 0)
             NVAR EdgeFrac = $(LJZ_MDCPeakSep_BaseDF() + ":EdgeFrac")
             EdgeFrac = LJZ_MDCPeakSep_SanitizeEdgeFrac(EdgeFrac)
