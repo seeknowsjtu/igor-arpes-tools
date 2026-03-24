@@ -121,13 +121,19 @@ End
 Function LJZ_EKKMap_IsNumericImageWave(w)
     Wave/Z w
 
-    // WaveType(w)==0 表示 text wave。这里只接受 2D / 3D 数值 image wave。
+    // 注意：WaveType(w,1) 才是稳定的类别判断；不要再用 WaveType(w)
+    // 直接把 wave 误判成 numeric / text。这里只接受 2D / 3D numeric image wave。
     if (!WaveExists(w))
         return 0
     endif
-    if (WaveType(w) == 0)
+
+    Variable waveClass = WaveType(w, 1)
+    if (waveClass != 1)
+        // waveClass == 2 为 text；其它类别（wave ref / data folder ref / null 等）
+        // 也一律排除，不允许进入 image wave 列表。
         return 0
     endif
+
     if (DimSize(w,0) <= 0)
         return 0
     endif
@@ -305,6 +311,16 @@ Function LJZ_EKKMap_EnsureDF()
     SVAR/Z sSourceDF = $(LJZ_EKKMap_BaseDF() + ":SourceDF")
     if (!SVAR_Exists(sSourceDF))
         String/G $(LJZ_EKKMap_BaseDF() + ":SourceDF") = LJZ_EKKMap_GetSuggestedSourceDF()
+    endif
+
+    SVAR/Z sSourceDFLastGood = $(LJZ_EKKMap_BaseDF() + ":SourceDFLastGood")
+    if (!SVAR_Exists(sSourceDFLastGood))
+        String/G $(LJZ_EKKMap_BaseDF() + ":SourceDFLastGood") = ""
+    endif
+    SVAR sSourceDFLastGoodRef = $(LJZ_EKKMap_BaseDF() + ":SourceDFLastGood")
+    SVAR sSourceDFRef = $(LJZ_EKKMap_BaseDF() + ":SourceDF")
+    if (!DataFolderExists(sSourceDFLastGoodRef))
+        sSourceDFLastGoodRef = sSourceDFRef
     endif
 
     SVAR/Z sWave = $(LJZ_EKKMap_BaseDF() + ":WaveSel")
@@ -523,17 +539,47 @@ Function LJZ_EKKMap_RestoreCurrentSelectionUI()
         return 0
     endif
 
-    NVAR SelRow = $(LJZ_EKKMap_BaseDF() + ":SelRow")
+    Wave/T/Z wPath = $(LJZ_EKKMap_BaseDF() + ":LB_Path")
     Wave/Z wSel = $(LJZ_EKKMap_BaseDF() + ":LB_Sel")
-    if (!WaveExists(wSel))
+    NVAR/Z SelRow = $(LJZ_EKKMap_BaseDF() + ":SelRow")
+    SVAR/Z sWave = $(LJZ_EKKMap_BaseDF() + ":WaveSel")
+    if (!WaveExists(wPath) || !WaveExists(wSel) || !NVAR_Exists(SelRow) || !SVAR_Exists(sWave))
         return 0
     endif
 
-    if (SelRow >= 0 && SelRow < numpnts(wSel))
-        ListBox/Z lbWave, win=$p, selRow=SelRow
-    else
+    // 工程收尾：ListBox 改成严格单选后，这里统一修正 selWave / SelRow / WaveSel。
+    if (numpnts(wPath) <= 0)
+        wSel = 0
+        SelRow = -1
+        sWave = ""
         ListBox/Z lbWave, win=$p, selRow=-1
+        ControlUpdate/W=$p lbWave
+        return 0
     endif
+
+    Variable keepRow = -1
+    Variable i
+    if (SelRow < 0 || SelRow >= numpnts(wPath) || CmpStr(sWave, wPath[SelRow]) != 0)
+        for (i=0; i<numpnts(wPath); i+=1)
+            if (CmpStr(sWave, wPath[i]) == 0)
+                keepRow = i
+                break
+            endif
+        endfor
+        if (keepRow < 0)
+            keepRow = SelRow
+        endif
+        if (keepRow < 0 || keepRow >= numpnts(wPath))
+            keepRow = 0
+        endif
+        LJZ_EKKMap_SetSingleSelection(keepRow)
+    else
+        for (i=0; i<numpnts(wSel); i+=1)
+            wSel[i] = (i == SelRow)
+        endfor
+    endif
+
+    ListBox/Z lbWave, win=$p, selRow=SelRow
     ControlUpdate/W=$p lbWave
     return 0
 End
@@ -744,11 +790,10 @@ Function LJZ_EKKMap_RefreshWindowControls()
         return 0
     endif
 
-    SVAR sDF = $(LJZ_EKKMap_BaseDF() + ":SourceDF")
-    NVAR PreviewZ = $(LJZ_EKKMap_BaseDF() + ":PreviewZ")
-
-    SetVariable/Z svSourceDF, win=$p, value=_STR:sDF
-    SetVariable/Z svPreviewZ, win=$p, value=_NUM:PreviewZ
+    // svSourceDF / svPreviewZ 都绑定到状态变量本身；这里只做 ControlUpdate，
+    // 避免把绑定控件重新覆盖成内部字符串造成闪烁或回写异常。
+    ControlUpdate/W=$p svSourceDF
+    ControlUpdate/W=$p svPreviewZ
     return 0
 End
 
@@ -869,8 +914,9 @@ Function LJZ_EKKMap_SetSingleSelection(row)
         return -1
     endif
 
+    // 严格单选：每次先清空旧选择，再只保留当前一行。
     wSel = 0
-    if (row < 0 || row >= numpnts(wPath))
+    if (numpnts(wPath) <= 0 || row < 0 || row >= numpnts(wPath))
         SelRow = -1
         sWave = ""
         return -1
@@ -886,16 +932,48 @@ Function/S LJZ_EKKMap_GetSelectedWaveList()
     Wave/T/Z wPath = $(LJZ_EKKMap_BaseDF() + ":LB_Path")
     Wave/Z wSel = $(LJZ_EKKMap_BaseDF() + ":LB_Sel")
     NVAR/Z SelRow = $(LJZ_EKKMap_BaseDF() + ":SelRow")
+    SVAR/Z sWave = $(LJZ_EKKMap_BaseDF() + ":WaveSel")
 
-    if (WaveExists(wPath) && WaveExists(wSel) && NVAR_Exists(SelRow))
-        if (SelRow >= 0 && SelRow < numpnts(wPath))
-            if (wSel[SelRow] == 0)
-                LJZ_EKKMap_SetSingleSelection(SelRow)
-            endif
-            return wPath[SelRow] + ";"
+    if (!(WaveExists(wPath) && WaveExists(wSel) && NVAR_Exists(SelRow) && SVAR_Exists(sWave)))
+        return ""
+    endif
+    if (numpnts(wPath) <= 0)
+        LJZ_EKKMap_SetSingleSelection(-1)
+        return ""
+    endif
+    if (SelRow < 0 || SelRow >= numpnts(wPath))
+        return ""
+    endif
+    if (CmpStr(sWave, wPath[SelRow]) != 0 || wSel[SelRow] == 0)
+        if (LJZ_EKKMap_SetSingleSelection(SelRow) != 0)
+            return ""
         endif
     endif
-    return ""
+    return wPath[SelRow] + ";"
+End
+
+Function/S LJZ_EKKMap_GetLastGoodSourceDF()
+    SVAR/Z sLast = $(LJZ_EKKMap_BaseDF() + ":SourceDFLastGood")
+    SVAR/Z sDF = $(LJZ_EKKMap_BaseDF() + ":SourceDF")
+
+    if (SVAR_Exists(sLast) && DataFolderExists(sLast))
+        return LJZ_EKKMap_df_with_colon(sLast)
+    endif
+    if (SVAR_Exists(sDF) && DataFolderExists(sDF))
+        return LJZ_EKKMap_df_with_colon(sDF)
+    endif
+    return LJZ_EKKMap_GetSuggestedSourceDF()
+End
+
+Function LJZ_EKKMap_RestoreLastGoodSourceDF()
+    SVAR/Z sDF = $(LJZ_EKKMap_BaseDF() + ":SourceDF")
+    if (!SVAR_Exists(sDF))
+        return -1
+    endif
+
+    sDF = LJZ_EKKMap_GetLastGoodSourceDF()
+    LJZ_EKKMap_RefreshWindowControls()
+    return 0
 End
 
 Function/S LJZ_EKKMap_InputShapeMessage(mode, is3D)
@@ -1693,7 +1771,9 @@ Function LJZ_EKKMap_SetSourceDF(dfStr)
     endif
 
     SVAR sDF = $(LJZ_EKKMap_BaseDF() + ":SourceDF")
+    SVAR sLastGood = $(LJZ_EKKMap_BaseDF() + ":SourceDFLastGood")
     sDF = s
+    sLastGood = s
     LJZ_EKKMap_RebuildWaveList()
     LJZ_EKKMap_RefreshWindowControls()
     return 0
@@ -1761,7 +1841,7 @@ Proc LJZ_EKKMap_SetVarProc(ctrlName, varNum, varStr, varName) : SetVariableContr
         case "svSourceDF":
             if (LJZ_EKKMap_SetSourceDF(varStr) != 0)
                 DoAlert 0, "Invalid Source DF."
-                LJZ_EKKMap_RefreshWindowControls()
+                LJZ_EKKMap_RestoreLastGoodSourceDF()
             endif
             break
         case "svPreviewZ":
@@ -1818,12 +1898,14 @@ Function LJZ_EKKMap_OpenPanel()
     endif
 
     SetVariable svSourceDF,pos={10,10},size={455,20},title="Source DF"
-    SetVariable svSourceDF,value=_STR:LJZ_EKKMap_BaseDF() + ":SourceDF",proc=LJZ_EKKMap_SetVarProc
+    // 绑定到真正的 SourceDF 字符串变量，避免只改控件内部 _STR: 文本。
+    SetVariable svSourceDF,value=root:ARPES_LJZ:EKKMap:SourceDF,proc=LJZ_EKKMap_SetVarProc
 
     Button btCurrent,pos={480,8},size={80,24},title="Current",proc=LJZ_EKKMap_ButtonProc
     Button btScan,pos={575,8},size={70,24},title="Scan",proc=LJZ_EKKMap_ButtonProc
 
-    ListBox lbWave,pos={10,42},size={225,360},listWave=$(LJZ_EKKMap_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EKKMap_BaseDF() + ":LB_Sel"),mode=9,proc=LJZ_EKKMap_ListBoxProc
+    // 严格单选：当前 preview / run / WaveSel 始终对应同一行。
+    ListBox lbWave,pos={10,42},size={225,360},listWave=$(LJZ_EKKMap_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EKKMap_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_EKKMap_ListBoxProc
 
     Button btRefresh,pos={10,414},size={80,26},title="Refresh",proc=LJZ_EKKMap_ButtonProc
     Button btPrevZ,pos={100,414},size={54,26},title="Z-",proc=LJZ_EKKMap_ButtonProc
