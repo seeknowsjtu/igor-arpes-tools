@@ -1194,19 +1194,19 @@ Function LJZ_EDCEdgeWidth_OpenPanel()
     // ------------------------------------------------------------
     TitleBox tbR1,pos={250,414},size={160,18},frame=0,title="Rising edge window"
     SetVariable svRiseX1,pos={250,438},size={145,20},title="Rise x1"
-    SetVariable svRiseX1,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX1"),proc=LJZ_EDCEdgeWidth_SetVarProc
+    SetVariable svRiseX1,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX1"),proc=LJZ_EDCEdgeWidth_SetVarProc,limit={-inf,inf,0.005}
 
     SetVariable svRiseX2,pos={410,438},size={145,20},title="Rise x2"
-    SetVariable svRiseX2,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX2"),proc=LJZ_EDCEdgeWidth_SetVarProc
+    SetVariable svRiseX2,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":RiseX2"),proc=LJZ_EDCEdgeWidth_SetVarProc,limit={-inf,inf,0.005}
 
     Button btAutoRise,pos={570,436},size={90,24},title="Auto Rise",proc=LJZ_EDCEdgeWidth_ButtonProc
 
     TitleBox tbF1,pos={690,414},size={170,18},frame=0,title="Falling edge window"
     SetVariable svFallX1,pos={690,438},size={145,20},title="Fall x1"
-    SetVariable svFallX1,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":FallX1"),proc=LJZ_EDCEdgeWidth_SetVarProc
+    SetVariable svFallX1,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":FallX1"),proc=LJZ_EDCEdgeWidth_SetVarProc,limit={-inf,inf,0.005}
 
     SetVariable svFallX2,pos={850,438},size={145,20},title="Fall x2"
-    SetVariable svFallX2,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":FallX2"),proc=LJZ_EDCEdgeWidth_SetVarProc
+    SetVariable svFallX2,variable=$(LJZ_EDCEdgeWidth_BaseDF() + ":FallX2"),proc=LJZ_EDCEdgeWidth_SetVarProc,limit={-inf,inf,0.005}
 
     Button btAutoFall,pos={850,468},size={90,24},title="Auto Fall",proc=LJZ_EDCEdgeWidth_ButtonProc
 
