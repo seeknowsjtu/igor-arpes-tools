@@ -1,1 +1,63 @@
+Function GetAngle_cdh20260325(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
 
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here]
+			string savedatafolder = getdataFolder(1)
+			svar TracePockect = root:CDH:Fix:TracePockect
+			String lastFolder = ParseFilePath(3, TracePockect, ":", 0, 0)
+			// 获取信息
+    		String graphName = WinName(0, 1)
+    		string AllImageList=ImageNamelist("",";")
+    		string ImageName=stringfromlist(0,AllImageList,";")
+    		String tempDF=GetImageDFStr_ZWT("",ImageName,1)
+    		String traceList = TraceNameList(graphName, ";", 1)
+			string trace0 = StringFromList(0,traceList,";")
+			variable numoftrace = ItemsInList(traceList)
+			//print graphName
+			//print imagename
+			//print traceList
+			string xTracePockect = replaceString("y",lastFolder,"x")
+			string xlastFolder = replaceString("y",lastFolder,"x")
+			wave wPockect = $TracePockect
+			//dfref dfr = getwavesdataFolderDFR(wPockect)
+			//string tempPockedctDF =getdataFolder(1,dfr)
+			//tempPockedctDF = tempPockedctDF + TracePockect
+			duplicate/o $TracePockect root:TempVariable:BZ_Calculate_dsf:$lastFolder
+			duplicate/o $TracePockect root:TempVariable:BZ_Calculate_dsf:$xlastFolder
+			setdataFolder root:TempVariable:BZ_Calculate_dsf:
+			//print wPockect,tempPockedctDF
+			if(waveexists(wPockect))
+				print "Pockect exist."
+			else
+				print "Pockect doesnot exist."
+				return 0
+			endif
+			
+			variable ii = 0
+			string tempStr
+			string tempTraceN
+			variable x
+			Variable root
+			string xPolar
+			do
+				tempTraceN = StringFromList(ii,traceList,";")
+				tempStr = tempTraceN[0,2]
+				if(!cmpstr(tempStr,"kyy"))
+					xPolar = replaceString("y",tempTraceN,"x")
+					wave wyy = $tempTraceN
+					
+					//FindCurveIntersections_Pro($xTracePockect, $TracePockect,$xPolar,wyy)
+				endif
+			ii+=1
+			while(ii<numoftrace)
+			
+			setdataFolder savedatafolder
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
