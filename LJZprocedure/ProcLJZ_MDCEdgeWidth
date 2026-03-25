@@ -1444,19 +1444,19 @@ Function LJZ_MDCPeakSep_OpenPanel()
     // ------------------------------------------------------------
     TitleBox tbLeft,pos={250,414},size={210,18},frame=0,title="Left rising-edge window"
     SetVariable svLeftX1,pos={250,438},size={125,20},title="Rise x1"
-    SetVariable svLeftX1,variable=$(LJZ_MDCPeakSep_BaseDF() + ":LeftX1"),proc=LJZ_MDCPeakSep_SetVarProc
+    SetVariable svLeftX1,variable=$(LJZ_MDCPeakSep_BaseDF() + ":LeftX1"),proc=LJZ_MDCPeakSep_SetVarProc,limit={-inf,inf,0.005}
 
     SetVariable svLeftX2,pos={390,438},size={125,20},title="Rise x2"
-    SetVariable svLeftX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":LeftX2"),proc=LJZ_MDCPeakSep_SetVarProc
+    SetVariable svLeftX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":LeftX2"),proc=LJZ_MDCPeakSep_SetVarProc,limit={-inf,inf,0.005}
 
     Button btAutoLeft,pos={530,436},size={95,24},title="Auto Rise",proc=LJZ_MDCPeakSep_ButtonProc
 
     TitleBox tbRight,pos={670,414},size={220,18},frame=0,title="Right falling-edge window"
     SetVariable svRightX1,pos={670,438},size={125,20},title="Fall x1"
-    SetVariable svRightX1,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX1"),proc=LJZ_MDCPeakSep_SetVarProc
+    SetVariable svRightX1,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX1"),proc=LJZ_MDCPeakSep_SetVarProc,limit={-inf,inf,0.005}
 
     SetVariable svRightX2,pos={810,438},size={125,20},title="Fall x2"
-    SetVariable svRightX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX2"),proc=LJZ_MDCPeakSep_SetVarProc
+    SetVariable svRightX2,variable=$(LJZ_MDCPeakSep_BaseDF() + ":RightX2"),proc=LJZ_MDCPeakSep_SetVarProc,limit={-inf,inf,0.005}
 
     Button btAutoRight,pos={940,436},size={90,24},title="Auto Fall",proc=LJZ_MDCPeakSep_ButtonProc
 
