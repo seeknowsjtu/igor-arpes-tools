@@ -3,61 +3,132 @@ Function GetAngle_cdh20260325(ba) : ButtonControl
 
 	switch( ba.eventCode )
 		case 2: // mouse up
-			// click code here]
-			string savedatafolder = getdataFolder(1)
-			svar TracePockect = root:CDH:Fix:TracePockect
+			String savedatafolder = GetDataFolder(1)
+			SVAR TracePockect = root:CDH:Fix:TracePockect
 			String lastFolder = ParseFilePath(3, TracePockect, ":", 0, 0)
-			// 获取信息
-    		String graphName = WinName(0, 1)
-    		string AllImageList=ImageNamelist("",";")
-    		string ImageName=stringfromlist(0,AllImageList,";")
-    		String tempDF=GetImageDFStr_ZWT("",ImageName,1)
-    		String traceList = TraceNameList(graphName, ";", 1)
-			string trace0 = StringFromList(0,traceList,";")
-			variable numoftrace = ItemsInList(traceList)
-			//print graphName
-			//print imagename
-			//print traceList
-			string xTracePockect = replaceString("y",lastFolder,"x")
-			string xlastFolder = replaceString("y",lastFolder,"x")
-			wave wPockect = $TracePockect
-			//dfref dfr = getwavesdataFolderDFR(wPockect)
-			//string tempPockedctDF =getdataFolder(1,dfr)
-			//tempPockedctDF = tempPockedctDF + TracePockect
-			duplicate/o $TracePockect root:TempVariable:BZ_Calculate_dsf:$lastFolder
-			duplicate/o $TracePockect root:TempVariable:BZ_Calculate_dsf:$xlastFolder
-			setdataFolder root:TempVariable:BZ_Calculate_dsf:
-			//print wPockect,tempPockedctDF
-			if(waveexists(wPockect))
-				print "Pockect exist."
-			else
+
+			String graphName = WinName(0, 1)
+			String traceList = TraceNameList(graphName, ";", 1)
+			Variable numoftrace = ItemsInList(traceList)
+			String xlastFolder = ReplaceString("y", lastFolder, "x")
+
+			Wave wPockect = $TracePockect
+			Duplicate/O $TracePockect root:TempVariable:BZ_Calculate_dsf:$lastFolder
+			Duplicate/O $TracePockect root:TempVariable:BZ_Calculate_dsf:$xlastFolder
+			SetDataFolder root:TempVariable:BZ_Calculate_dsf:
+
+			if(!WaveExists(wPockect))
 				print "Pockect doesnot exist."
+				SetDataFolder savedatafolder
 				return 0
 			endif
-			
-			variable ii = 0
-			string tempStr
-			string tempTraceN
-			variable x
-			Variable root
-			string xPolar
+
+			Variable ii = 0
+			String tempTraceN
+			String tempStr
+			String validTraceList = ""
 			do
-				tempTraceN = StringFromList(ii,traceList,";")
-				tempStr = tempTraceN[0,2]
-				if(!cmpstr(tempStr,"kyy"))
-					xPolar = replaceString("y",tempTraceN,"x")
-					wave wyy = $tempTraceN
-					
-					//FindCurveIntersections_Pro($xTracePockect, $TracePockect,$xPolar,wyy)
+				tempTraceN = StringFromList(ii, traceList, ";")
+				tempStr = tempTraceN[0, 2]
+				if(!cmpstr(tempStr, "kyy"))
+					validTraceList += tempTraceN + ";"
 				endif
-			ii+=1
-			while(ii<numoftrace)
-			
-			setdataFolder savedatafolder
+				ii += 1
+			while(ii < numoftrace)
+
+			FindAllCurveIntersections_CDH(validTraceList)
+
+			SetDataFolder savedatafolder
 			break
 		case -1: // control being killed
 			break
 	endswitch
 
 	return 0
+End
+
+Function FindAllCurveIntersections_CDH(validTraceList)
+	String validTraceList
+
+	Variable traceCount = ItemsInList(validTraceList)
+	Variable i, j
+	for(i = 0; i < traceCount - 1; i += 1)
+		String traceA = StringFromList(i, validTraceList, ";")
+		String xTraceA = ReplaceString("y", traceA, "x")
+		Wave wy1 = $traceA
+		Wave wx1 = $xTraceA
+		if(!WaveExists(wy1) || !WaveExists(wx1))
+			continue
+		endif
+
+		for(j = i + 1; j < traceCount; j += 1)
+			String traceB = StringFromList(j, validTraceList, ";")
+			String xTraceB = ReplaceString("y", traceB, "x")
+			Wave wy2 = $traceB
+			Wave wx2 = $xTraceB
+			if(!WaveExists(wy2) || !WaveExists(wx2))
+				continue
+			endif
+
+			String pairTag = CleanupName(traceA + "_" + traceB, 0)
+			String xOutName = "IntX_" + pairTag
+			String yOutName = "IntY_" + pairTag
+			Make/O/N=0 $(xOutName)
+			Make/O/N=0 $(yOutName)
+			Wave outX = $(xOutName)
+			Wave outY = $(yOutName)
+
+			Variable nInt = FindCurveIntersections_AllSegments(wx1, wy1, wx2, wy2, outX, outY)
+			if(nInt > 0)
+				print "Found ", nInt, " intersections: ", traceA, " vs ", traceB
+			else
+				KillWaves/Z outX, outY
+			endif
+		endfor
+	endfor
+End
+
+Function FindCurveIntersections_AllSegments(wx1, wy1, wx2, wy2, outX, outY)
+	Wave wx1, wy1, wx2, wy2, outX, outY
+
+	Variable n1 = numpnts(wx1)
+	Variable n2 = numpnts(wx2)
+	Variable i, j
+	Variable x1, y1, x2, y2, x3, y3, x4, y4
+	Variable den, ua, ub
+	Variable xi, yi
+	Variable nFound = 0
+	Variable eps = 1e-12
+
+	for(i = 0; i < n1 - 1; i += 1)
+		x1 = wx1[i]
+		y1 = wy1[i]
+		x2 = wx1[i + 1]
+		y2 = wy1[i + 1]
+
+		for(j = 0; j < n2 - 1; j += 1)
+			x3 = wx2[j]
+			y3 = wy2[j]
+			x4 = wx2[j + 1]
+			y4 = wy2[j + 1]
+
+			den = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3)
+			if(abs(den) < eps)
+				continue
+			endif
+
+			ua = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / den
+			ub = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / den
+			if((ua >= 0) && (ua <= 1) && (ub >= 0) && (ub <= 1))
+				xi = x1 + ua * (x2 - x1)
+				yi = y1 + ua * (y2 - y1)
+				Redimension/N=(nFound + 1) outX, outY
+				outX[nFound] = xi
+				outY[nFound] = yi
+				nFound += 1
+			endif
+		endfor
+	endfor
+
+	return nFound
 End
