@@ -893,12 +893,52 @@ Function LJZ_MDCWB_CopyActiveLayoutFromWork(slotMap)
     Wave activeTypes   = $(base + ":Active_peakTypes")
     Wave activeSlotMap = $(base + ":Active_slotMap")
 
+    // Active_* is only a live evaluator snapshot for FuncFit callbacks.
+    // Persistent fit metadata must be re-derived from per-wave fit records.
+    Make/FREE/N=(nPeak) rebuiltTypes
+    Make/FREE/N=(nPeak + 1) rebuiltSlots
+    if (LJZ_MDCWB_BuildLayoutFromPeaksNum(wPN, rebuiltTypes, rebuiltSlots) != 0)
+        return -1
+    endif
+    if (numpnts(slotMap) < nPeak + 1)
+        return -1
+    endif
+
     Variable ip
     for (ip = 0; ip < nPeak; ip += 1)
-        activeTypes[ip] = round(wPN[ip][0])
+        activeTypes[ip] = rebuiltTypes[ip]
+        // keep the caller-provided slot map used for this fit pass
         activeSlotMap[ip] = slotMap[ip]
     endfor
     activeSlotMap[nPeak] = slotMap[nPeak]
+
+    return 0
+End
+
+Function LJZ_MDCWB_BuildLayoutFromPeaksNum(pn, types, slotMap)
+    Wave pn, types, slotMap
+
+    Variable nPeak = DimSize(pn, 0)
+    if (nPeak < 0)
+        return -1
+    endif
+    if (numpnts(types) < nPeak || numpnts(slotMap) < nPeak + 1)
+        return -1
+    endif
+
+    Variable cursor = LJZ_MDCWB_FlatBaseSlots()
+    Variable ip, t, nSlot
+    for (ip = 0; ip < nPeak; ip += 1)
+        t = round(pn[ip][0])
+        nSlot = LJZ_MDCWB_PeakSlotCount(t)
+        if (nSlot <= 0)
+            return -1
+        endif
+        types[ip] = t
+        slotMap[ip] = cursor
+        cursor += nSlot
+    endfor
+    slotMap[nPeak] = cursor
 
     return 0
 End

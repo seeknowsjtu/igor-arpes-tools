@@ -869,52 +869,54 @@ Function LJZ_MDCWB_RefreshMetricBoxes()
     else
         lTxt = "Fitted params\r"
         rTxt = "Sigma (1σ)\r"
-        Wave/Z slotMap = $(base + ":Active_slotMap")
-        Wave/Z types   = $(base + ":Active_peakTypes")
-        if (!WaveExists(slotMap) || !WaveExists(types))
-            lTxt += "(slot map missing — re-fit needed)\r"
+        // Active_* is only a transient evaluator snapshot. For persisted fit
+        // results, always re-derive layout from saved peaks_num.
+        Make/FREE/N=(nPeaks) fitTypes
+        Make/FREE/N=(nPeaks + 1) fitSlots
+        if (LJZ_MDCWB_BuildLayoutFromPeaksNum(wPN, fitTypes, fitSlots) != 0)
+            lTxt += "(layout invalid — re-fit needed)\r"
         else
             // BG / resH first
-            lTxt += "[BG c0]= " + LJZ_MDCWB_FormatNum(coefW[0]) + "\r"
-            rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[0]) + "\r"
+            lTxt += "[BG c0]= " + LJZ_MDCWB_FormatNum((0 < numpnts(coefW)) ? coefW[0] : NaN) + "\r"
+            rTxt += "± " + LJZ_MDCWB_FormatNum((0 < numpnts(sigmaW)) ? sigmaW[0] : NaN) + "\r"
             if (LJZ_MDCWB_WorkGetBGOrder() >= 1)
-                lTxt += "[BG c1]= " + LJZ_MDCWB_FormatNum(coefW[1]) + "\r"
-                rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[1]) + "\r"
+                lTxt += "[BG c1]= " + LJZ_MDCWB_FormatNum((1 < numpnts(coefW)) ? coefW[1] : NaN) + "\r"
+                rTxt += "± " + LJZ_MDCWB_FormatNum((1 < numpnts(sigmaW)) ? sigmaW[1] : NaN) + "\r"
             endif
             if (LJZ_MDCWB_WorkGetBGOrder() >= 2)
-                lTxt += "[BG c2]= " + LJZ_MDCWB_FormatNum(coefW[2]) + "\r"
-                rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[2]) + "\r"
+                lTxt += "[BG c2]= " + LJZ_MDCWB_FormatNum((2 < numpnts(coefW)) ? coefW[2] : NaN) + "\r"
+                rTxt += "± " + LJZ_MDCWB_FormatNum((2 < numpnts(sigmaW)) ? sigmaW[2] : NaN) + "\r"
             endif
-            lTxt += "[resH]= " + LJZ_MDCWB_FormatNum(coefW[3]) + "\r"
-            rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[3]) + "\r"
+            lTxt += "[resH]= " + LJZ_MDCWB_FormatNum((3 < numpnts(coefW)) ? coefW[3] : NaN) + "\r"
+            rTxt += "± " + LJZ_MDCWB_FormatNum((3 < numpnts(sigmaW)) ? sigmaW[3] : NaN) + "\r"
 
-            Variable np = numpnts(types)
+            Variable np = numpnts(fitTypes)
             Variable ip
             for (ip = 0; ip < np; ip += 1)
-                Variable s = slotMap[ip]
-                Variable tt = types[ip]
+                Variable s = fitSlots[ip]
+                Variable tt = fitTypes[ip]
                 String tnFit = LJZ_MDCWB_PeakTypeName(tt)
                 lTxt += "[" + num2str(ip) + " " + tnFit + "]\r"
                 rTxt += "\r"
-                lTxt += "  x0= " + LJZ_MDCWB_FormatNum(coefW[s + 0]) + "\r"
-                rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[s + 0]) + "\r"
+                lTxt += "  x0= " + LJZ_MDCWB_FormatNum((s + 0 < numpnts(coefW)) ? coefW[s + 0] : NaN) + "\r"
+                rTxt += "± " + LJZ_MDCWB_FormatNum((s + 0 < numpnts(sigmaW)) ? sigmaW[s + 0] : NaN) + "\r"
                 if (tt == LJZ_MDCWB_PeakTypeAsymPV())
-                    lTxt += "  wL= " + LJZ_MDCWB_FormatNum(coefW[s + 1]) + "\r"
-                    rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[s + 1]) + "\r"
-                    lTxt += "  wR= " + LJZ_MDCWB_FormatNum(coefW[s + 2]) + "\r"
-                    rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[s + 2]) + "\r"
-                    lTxt += "  H=  " + LJZ_MDCWB_FormatNum(coefW[s + 3]) + "\r"
-                    rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[s + 3]) + "\r"
-                    lTxt += "  eta=" + LJZ_MDCWB_FormatNum(coefW[s + 4]) + "\r"
-                    rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[s + 4]) + "\r"
+                    lTxt += "  wL= " + LJZ_MDCWB_FormatNum((s + 1 < numpnts(coefW)) ? coefW[s + 1] : NaN) + "\r"
+                    rTxt += "± " + LJZ_MDCWB_FormatNum((s + 1 < numpnts(sigmaW)) ? sigmaW[s + 1] : NaN) + "\r"
+                    lTxt += "  wR= " + LJZ_MDCWB_FormatNum((s + 2 < numpnts(coefW)) ? coefW[s + 2] : NaN) + "\r"
+                    rTxt += "± " + LJZ_MDCWB_FormatNum((s + 2 < numpnts(sigmaW)) ? sigmaW[s + 2] : NaN) + "\r"
+                    lTxt += "  H=  " + LJZ_MDCWB_FormatNum((s + 3 < numpnts(coefW)) ? coefW[s + 3] : NaN) + "\r"
+                    rTxt += "± " + LJZ_MDCWB_FormatNum((s + 3 < numpnts(sigmaW)) ? sigmaW[s + 3] : NaN) + "\r"
+                    lTxt += "  eta=" + LJZ_MDCWB_FormatNum((s + 4 < numpnts(coefW)) ? coefW[s + 4] : NaN) + "\r"
+                    rTxt += "± " + LJZ_MDCWB_FormatNum((s + 4 < numpnts(sigmaW)) ? sigmaW[s + 4] : NaN) + "\r"
                 else
-                    lTxt += "  w=  " + LJZ_MDCWB_FormatNum(coefW[s + 1]) + "\r"
-                    rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[s + 1]) + "\r"
-                    lTxt += "  H=  " + LJZ_MDCWB_FormatNum(coefW[s + 2]) + "\r"
-                    rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[s + 2]) + "\r"
+                    lTxt += "  w=  " + LJZ_MDCWB_FormatNum((s + 1 < numpnts(coefW)) ? coefW[s + 1] : NaN) + "\r"
+                    rTxt += "± " + LJZ_MDCWB_FormatNum((s + 1 < numpnts(sigmaW)) ? sigmaW[s + 1] : NaN) + "\r"
+                    lTxt += "  H=  " + LJZ_MDCWB_FormatNum((s + 2 < numpnts(coefW)) ? coefW[s + 2] : NaN) + "\r"
+                    rTxt += "± " + LJZ_MDCWB_FormatNum((s + 2 < numpnts(sigmaW)) ? sigmaW[s + 2] : NaN) + "\r"
                     if (tt != LJZ_MDCWB_PeakTypeLor() && tt != LJZ_MDCWB_PeakTypeGau())
-                        lTxt += "  eta=" + LJZ_MDCWB_FormatNum(coefW[s + 3]) + "\r"
-                        rTxt += "± " + LJZ_MDCWB_FormatNum(sigmaW[s + 3]) + "\r"
+                        lTxt += "  eta=" + LJZ_MDCWB_FormatNum((s + 3 < numpnts(coefW)) ? coefW[s + 3] : NaN) + "\r"
+                        rTxt += "± " + LJZ_MDCWB_FormatNum((s + 3 < numpnts(sigmaW)) ? sigmaW[s + 3] : NaN) + "\r"
                     endif
                 endif
             endfor
@@ -1696,8 +1698,8 @@ Function LJZ_MDCWB_ExportSummary()
         Variable resH = abs(coefW[3])
 
         // Walk this fit record's peaks via the saved edit-state on disk.
-        // We re-derive types/slot map from <wname>_peaks_num so that this
-        // function does not depend on the live Active_* snapshot.
+        // Active_* is only an evaluator snapshot; fit metadata is persisted
+        // in record waves and must be reconstructed from peaks_num.
         Wave/Z pn = $(LJZ_MDCWB_PathPeaksNum(w))
         if (!WaveExists(pn))
             skipped += 1
@@ -1709,38 +1711,38 @@ Function LJZ_MDCWB_ExportSummary()
             continue
         endif
 
-        // Rebuild slot map locally.
+        Make/FREE/N=(np) tLocal
         Make/FREE/N=(np + 1) sm
-        Variable cur = 4
-        Variable ip
-        for (ip = 0; ip < np; ip += 1)
-            sm[ip] = cur
-            cur += LJZ_MDCWB_PeakSlotCount(round(pn[ip][0]))
-        endfor
-        sm[np] = cur
+        if (LJZ_MDCWB_BuildLayoutFromPeaksNum(pn, tLocal, sm) != 0)
+            skipped += 1
+            continue
+        endif
 
         Make/FREE/N=(np) cx, cwid, carea, csigX
+        Variable nCoef = numpnts(coefW)
+        Variable nSigma = numpnts(sigmaW)
+        Variable ip
         for (ip = 0; ip < np; ip += 1)
-            Variable t = round(pn[ip][0])
+            Variable t = tLocal[ip]
             Variable s = sm[ip]
-            cx[ip] = coefW[s + 0]
-            csigX[ip] = (s < numpnts(sigmaW)) ? sigmaW[s + 0] : NaN
+            cx[ip] = (s + 0 < nCoef) ? coefW[s + 0] : NaN
+            csigX[ip] = (s + 0 < nSigma) ? sigmaW[s + 0] : NaN
 
             Variable wid, ar
             if (t == LJZ_MDCWB_PeakTypeAsymPV())
-                Variable wL = abs(coefW[s + 1])
-                Variable wR = abs(coefW[s + 2])
-                Variable HA = coefW[s + 3]
-                Variable etaA = coefW[s + 4]
+                Variable wL = abs((s + 1 < nCoef) ? coefW[s + 1] : NaN)
+                Variable wR = abs((s + 2 < nCoef) ? coefW[s + 2] : NaN)
+                Variable HA = (s + 3 < nCoef) ? coefW[s + 3] : NaN
+                Variable etaA = (s + 4 < nCoef) ? coefW[s + 4] : NaN
                 Variable wEff = sqrt(0.5 * (wL*wL + wR*wR) + resH*resH)
                 wid = wEff
                 Variable lor = pi * abs(HA) * wEff
                 Variable gau = sqrt(pi / ln(2)) * abs(HA) * wEff
                 ar = etaA * lor + (1 - etaA) * gau
             else
-                Variable w0 = abs(coefW[s + 1])
-                Variable HP = coefW[s + 2]
-                Variable etaP = coefW[s + 3]
+                Variable w0 = abs((s + 1 < nCoef) ? coefW[s + 1] : NaN)
+                Variable HP = (s + 2 < nCoef) ? coefW[s + 2] : NaN
+                Variable etaP = (s + 3 < nCoef) ? coefW[s + 3] : NaN
                 if (t == LJZ_MDCWB_PeakTypeLor())
                     etaP = 1
                 elseif (t == LJZ_MDCWB_PeakTypeGau())
