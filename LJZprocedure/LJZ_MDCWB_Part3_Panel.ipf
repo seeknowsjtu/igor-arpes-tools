@@ -125,9 +125,9 @@ Function LJZ_MDCWB_EnsurePanelState()
         Make/O/N=1 $(base + ":UI_resSelR") = 0
     endif
 
-    NVAR/Z useCsr = $(base + ":UI_useCursors")
+    NVAR/Z useCsr = $(base + ":UseCursors")
     if (!NVAR_Exists(useCsr))
-        Variable/G $(base + ":UI_useCursors") = 1
+        Variable/G $(base + ":UseCursors") = 1
     endif
 
     NVAR/Z autoPreview = $(base + ":UI_autoPreview")
@@ -573,7 +573,7 @@ Function LJZ_MDCWB_RefreshBGRoiResHControls()
     SetVariable svResH, win=$panel, value=_NUM:LJZ_MDCWB_WorkGetResH()
     CheckBox cbResHHold, win=$panel, value=LJZ_MDCWB_WorkGetResHHold()
 
-    NVAR useCsr = $(LJZ_MDCWB_BaseDF() + ":UI_useCursors")
+    NVAR useCsr = $(LJZ_MDCWB_BaseDF() + ":UseCursors")
     CheckBox cbCsr, win=$panel, value=useCsr
 
     SVAR target = $(LJZ_MDCWB_BaseDF() + ":TargetDF")
@@ -936,7 +936,7 @@ End
 
 Function LJZ_MDCWB_PullROIFromCursorsIfWanted()
     LJZ_MDCWB_EnsureBaseDF()
-    NVAR useCsr = $(LJZ_MDCWB_BaseDF() + ":UI_useCursors")
+    NVAR useCsr = $(LJZ_MDCWB_BaseDF() + ":UseCursors")
     if (!useCsr)
         return 0
     endif
@@ -1216,8 +1216,8 @@ End
 Function LJZ_MDCWB_SetVarProc(sva) : SetVariableControl
     STRUCT WMSetVariableAction &sva
 
-    // Only react on commit events (mouse-up = 1, enter = 2). Live typing (3) is ignored.
-    if (sva.eventCode != 1 && sva.eventCode != 2)
+    // Only react on commit/end-edit events (mouse-up = 1, enter = 2, end-edit = 8). Live typing (3) is ignored.
+    if (sva.eventCode != 1 && sva.eventCode != 2 && sva.eventCode != 8)
         return 0
     endif
 
@@ -1317,7 +1317,7 @@ Function LJZ_MDCWB_CheckProc(cba) : CheckBoxControl
     Variable on = cba.checked
 
     if (StringMatch(c, "cbCsr"))
-        NVAR useCsr = $(LJZ_MDCWB_BaseDF() + ":UI_useCursors")
+        NVAR useCsr = $(LJZ_MDCWB_BaseDF() + ":UseCursors")
         useCsr = on
         return 0
     endif
