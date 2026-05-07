@@ -922,14 +922,17 @@ Function LJZ_MDCWB_BuildLayoutFromPeaksNum(pn, types, slotMap)
     if (nPeak < 0)
         return -1
     endif
-    if (numpnts(types) < nPeak || numpnts(slotMap) < nPeak + 1)
-        return -1
-    endif
+
+    Redimension/N=(nPeak) types
+    Redimension/N=(nPeak + 1) slotMap
 
     Variable cursor = LJZ_MDCWB_FlatBaseSlots()
     Variable ip, t, nSlot
     for (ip = 0; ip < nPeak; ip += 1)
         t = round(pn[ip][0])
+        if (!LJZ_MDCWB_IsValidPeakType(t))
+            return -1
+        endif
         nSlot = LJZ_MDCWB_PeakSlotCount(t)
         if (nSlot <= 0)
             return -1
