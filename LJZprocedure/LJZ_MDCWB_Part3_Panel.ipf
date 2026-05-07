@@ -588,26 +588,44 @@ End
 // ============================================================================
 
 Function LJZ_MDCWB_CreatePreviewGraphs()
-    String panel = LJZ_MDCWB_PanelName()
-    DoWindow $panel
-    if (!V_flag)
-        return -1
+    String host = "MDCIFit_LJZ_Panel"
+
+    String pvChild = "PVGraph"
+    String rvChild = "RVGraph"
+
+    String pvWin = host + "#" + pvChild
+    String rvWin = host + "#" + rvChild
+
+    // Check whether the subwindows already exist.
+    String childList = ChildWindowList(host)
+
+    if (WhichListItem(pvChild, childList, ";") < 0)
+        Display /HOST=$host /N=PVGraph /W=(310,82,810,245)
     endif
 
-    KillWindow/Z $LJZ_MDCWB_PVGraphPath()
-    KillWindow/Z $LJZ_MDCWB_RSGraphPath()
+    childList = ChildWindowList(host)
 
-    Display/HOST=$panel/N=pvGraph/W=(252, 36, 564, 220)
-    ModifyGraph/W=$LJZ_MDCWB_PVGraphPath() margin(left)=44, margin(bottom)=18, mirror=1
-    Label/W=$LJZ_MDCWB_PVGraphPath() left "Intensity"
+    if (WhichListItem(rvChild, childList, ";") < 0)
+        Display /HOST=$host /N=RVGraph /W=(310,252,810,315)
+    endif
 
-    Display/HOST=$panel/N=rsGraph/W=(252, 224, 564, 290)
-    ModifyGraph/W=$LJZ_MDCWB_RSGraphPath() margin(left)=44, margin(bottom)=28, mirror=1
-    Label/W=$LJZ_MDCWB_RSGraphPath() left "Res"
-    Label/W=$LJZ_MDCWB_RSGraphPath() bottom "k / x"
+    // Move them every time, but do not delete/recreate them.
+    MoveSubwindow /W=$pvWin fnum=(310,82,810,245)
+    MoveSubwindow /W=$rvWin fnum=(310,252,810,315)
 
-    return 0
+    // --------------------------------------------------
+    // Your original AppendToGraph code should go below.
+    // Every AppendToGraph must explicitly specify /W.
+    // --------------------------------------------------
+
+    // Example:
+    // AppendToGraph /W=$pvWin yRaw vs xWave
+    // AppendToGraph /W=$pvWin yFit vs xWave
+    // AppendToGraph /W=$rvWin yRes vs xWave
+
 End
+
+
 
 Function/S LJZ_MDCWB_PreviewGuessPath()
     return LJZ_MDCWB_BaseDF() + ":UI_guessPreview"
@@ -1027,104 +1045,124 @@ End
 
 Window LJZ_MDCWB_Panel() : Panel
     PauseUpdate; Silent 1
-    NewPanel /W=(120,60,940,650) /N=MDCIFit_LJZ_Panel as "MDC Workbench"
+
+    // Compact panel height. Old version was /W=(70,40,1180,760).
+    NewPanel /W=(70,40,1180,715) /N=MDCIFit_LJZ_Panel as "MDC Workbench"
     ModifyPanel frameStyle=1
 
     // ---- target DF ----
-    TitleBox tbT, pos={12,8}, size={250,18}, title="Target DF (default: ShowMDC runDF)", frame=0
-    SetVariable svTarget, pos={12,28}, size={500,20}, proc=LJZ_MDCWB_SetVarProc, title="DF:"
+    TitleBox tbT, pos={12,8}, size={260,18}, title="Target DF (default: ShowMDC runDF)", frame=0, fSize=12
+    SetVariable svTarget, pos={12,28}, size={500,20}, proc=LJZ_MDCWB_SetVarProc, title="DF:", fSize=11
     SetVariable svTarget, value=_STR:""
-    Button btnRebuild, pos={525,27}, size={95,22}, proc=LJZ_MDCWB_ButtonProc, title="Refresh"
+    Button btnRebuild, pos={522,27}, size={80,22}, proc=LJZ_MDCWB_ButtonProc, title="Refresh", fSize=11
+
+    // ---- top buttons ----
+    Button btnPrev,           pos={628,27},  size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Prev", fSize=11
+    Button btnNext,           pos={680,27},  size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Next", fSize=11
+    Button btnNextUnchecked,  pos={732,27},  size={92,22}, proc=LJZ_MDCWB_ButtonProc, title="Next Unchecked", fSize=11
+    Button btnAccept,         pos={830,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Accept", fSize=11
+    Button btnReject,         pos={888,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Reject", fSize=11
+    Button btnClear,          pos={946,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Clear", fSize=11
+    Button btnExport,         pos={1004,27}, size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Export", fSize=11
+
+    Button btnAutoInit,       pos={628,55}, size={62,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoInit", fSize=10
+    Button btnAutoDetect,     pos={696,55}, size={72,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoDetect", fSize=10
+    Button btnSaveEdit,       pos={774,55}, size={68,20}, proc=LJZ_MDCWB_ButtonProc, title="SaveEdit", fSize=10
+    Button btnGuess,          pos={848,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Guess", fSize=10
+    Button btnFit,            pos={904,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Fit", fSize=10
+    CheckBox cbCsr,           pos={964,58}, size={92,16}, proc=LJZ_MDCWB_CheckProc, title="cursor ROI", fSize=10
+    CheckBox cbCsr,           value=1
 
     // ---- left wave list ----
-    ListBox lbMDC, pos={12,58}, size={228,520}, proc=LJZ_MDCWB_LBProc
+    ListBox lbMDC, pos={12,58}, size={280,590}, proc=LJZ_MDCWB_LBProc, fSize=11
     ListBox lbMDC, listWave=$(LJZ_MDCWB_BaseDF() + ":UI_waveDisp")
     ListBox lbMDC, selWave=$(LJZ_MDCWB_BaseDF() + ":UI_waveSel"), mode=1
 
-    Button btnPrev,           pos={245,58},  size={55,22}, proc=LJZ_MDCWB_ButtonProc, title="Prev"
-    Button btnNext,           pos={302,58},  size={55,22}, proc=LJZ_MDCWB_ButtonProc, title="Next"
-    Button btnNextUnchecked,  pos={362,58},  size={110,22}, proc=LJZ_MDCWB_ButtonProc, title="Next Unchecked"
-    Button btnAccept,         pos={478,58},  size={62,22}, proc=LJZ_MDCWB_ButtonProc, title="Accept"
-    Button btnReject,         pos={544,58},  size={62,22}, proc=LJZ_MDCWB_ButtonProc, title="Reject"
-    Button btnClear,          pos={610,58},  size={62,22}, proc=LJZ_MDCWB_ButtonProc, title="Clear"
-    Button btnExport,         pos={676,58},  size={62,22}, proc=LJZ_MDCWB_ButtonProc, title="Export"
+    // ---- preview title ----
+    TitleBox tbPV, pos={310,58}, size={70,16}, title="Preview", frame=0, fStyle=1, fSize=12
 
-    Button btnAutoInit,       pos={245,86}, size={68,22}, proc=LJZ_MDCWB_ButtonProc, title="AutoInit"
-    Button btnAutoDetect,     pos={315,86}, size={78,22}, proc=LJZ_MDCWB_ButtonProc, title="AutoDetect"
-    Button btnSaveEdit,       pos={395,86}, size={75,22}, proc=LJZ_MDCWB_ButtonProc, title="SaveEdit"
-    Button btnGuess,          pos={472,86}, size={60,22}, proc=LJZ_MDCWB_ButtonProc, title="Guess"
-    Button btnFit,            pos={534,86}, size={60,22}, proc=LJZ_MDCWB_ButtonProc, title="Fit"
-    CheckBox cbCsr,           pos={598,90}, size={70,16}, proc=LJZ_MDCWB_CheckProc, title="cursor ROI"
-    CheckBox cbCsr,           value=1
+    // NOTE:
+    // The actual PV/RV graph subwindow positions are controlled in
+    // LJZ_MDCWB_CreatePreviewGraphs().
+    // Suggested compact positions:
+    // PV: /W=(310,82,810,245)
+    // RV: /W=(310,252,810,315)
 
-    // ---- preview / residual subgraphs are created in Code below ----
-    TitleBox tbPV, pos={252,18}, size={70,16}, title="Preview", frame=0, fStyle=1
+    // ---- BG / ROI / resH ----
+    GroupBox gbBG, pos={310,324}, size={500,72}, title="Background / ROI / resH", fSize=11
 
-    // ---- BG / ROI / resH compact strip ----
-    GroupBox gbBG, pos={245,294}, size={325,72}, title="Background / ROI / resH"
-    PopupMenu pmBG, pos={252,314}, size={120,20}, mode=3, popvalue="Quad", value=#"\"Const;Linear;Quad\"", proc=LJZ_MDCWB_PopupProc, title="BG"
-    SetVariable svBG0, pos={252,338}, size={90,18}, proc=LJZ_MDCWB_SetVarProc, title="c0"
-    SetVariable svBG0, value=_NUM:0
-    SetVariable svBG1, pos={345,338}, size={90,18}, proc=LJZ_MDCWB_SetVarProc, title="c1"
-    SetVariable svBG1, value=_NUM:0
-    SetVariable svBG2, pos={438,338}, size={90,18}, proc=LJZ_MDCWB_SetVarProc, title="c2"
-    SetVariable svBG2, value=_NUM:0
-    CheckBox cbBGHold0, pos={252,358}, size={20,16}, proc=LJZ_MDCWB_CheckProc, title="H"
-    CheckBox cbBGHold1, pos={345,358}, size={20,16}, proc=LJZ_MDCWB_CheckProc, title="H"
-    CheckBox cbBGHold2, pos={438,358}, size={20,16}, proc=LJZ_MDCWB_CheckProc, title="H"
+    PopupMenu pmBG, pos={322,344}, size={92,18}, mode=3, popvalue="Quad", value=#"\"Const;Linear;Quad\"", proc=LJZ_MDCWB_PopupProc, title="BG", fSize=10
 
-    SetVariable svXLo, pos={395,314}, size={85,18}, proc=LJZ_MDCWB_SetVarProc, title="xLo"
+    SetVariable svXLo, pos={455,344}, size={96,18}, proc=LJZ_MDCWB_SetVarProc, title="xLo", fSize=10
     SetVariable svXLo, value=_NUM:0
-    SetVariable svXHi, pos={482,314}, size={85,18}, proc=LJZ_MDCWB_SetVarProc, title="xHi"
+    SetVariable svXHi, pos={560,344}, size={96,18}, proc=LJZ_MDCWB_SetVarProc, title="xHi", fSize=10
     SetVariable svXHi, value=_NUM:0
-
-    SetVariable svResH, pos={500,338}, size={75,18}, proc=LJZ_MDCWB_SetVarProc, title="resH"
+    SetVariable svResH, pos={665,344}, size={132,18}, proc=LJZ_MDCWB_SetVarProc, title="resH", fSize=10
     SetVariable svResH, value=_NUM:1e-4
-    CheckBox cbResHHold, pos={500,358}, size={50,16}, proc=LJZ_MDCWB_CheckProc, title="hold"
+
+    SetVariable svBG0, pos={322,368}, size={128,18}, proc=LJZ_MDCWB_SetVarProc, title="c0", fSize=10
+    SetVariable svBG0, value=_NUM:0
+    SetVariable svBG1, pos={470,368}, size={128,18}, proc=LJZ_MDCWB_SetVarProc, title="c1", fSize=10
+    SetVariable svBG1, value=_NUM:0
+    SetVariable svBG2, pos={618,368}, size={128,18}, proc=LJZ_MDCWB_SetVarProc, title="c2", fSize=10
+    SetVariable svBG2, value=_NUM:0
+
+    CheckBox cbBGHold0, pos={398,382}, size={22,14}, proc=LJZ_MDCWB_CheckProc, title="H", fSize=10
+    CheckBox cbBGHold1, pos={546,382}, size={22,14}, proc=LJZ_MDCWB_CheckProc, title="H", fSize=10
+    CheckBox cbBGHold2, pos={694,382}, size={22,14}, proc=LJZ_MDCWB_CheckProc, title="H", fSize=10
+    CheckBox cbResHHold, pos={760,382}, size={46,14}, proc=LJZ_MDCWB_CheckProc, title="hold", fSize=10
 
     // ---- Peaks ----
-    TitleBox tbPeaks, pos={252,374}, size={50,16}, title="Peaks", frame=0, fStyle=1
-    ListBox lbPeaks, pos={252,394}, size={320,116}, proc=LJZ_MDCWB_LBProc
+    TitleBox tbPeaks, pos={310,404}, size={50,16}, title="Peaks", frame=0, fStyle=1, fSize=12
+
+    ListBox lbPeaks, pos={310,424}, size={500,88}, proc=LJZ_MDCWB_LBProc, fSize=11
     ListBox lbPeaks, listWave=$(LJZ_MDCWB_BaseDF() + ":UI_peakDisp")
     ListBox lbPeaks, selWave=$(LJZ_MDCWB_BaseDF() + ":UI_peakSel"), mode=1
 
-    PopupMenu pmDefaultPeakType, pos={252,514}, size={110,20}, mode=1, popvalue="PV", value=#"\"PV;Lor;Gau;AsymPV\"", proc=LJZ_MDCWB_PopupProc, title="New"
-    Button btnAddPeak,    pos={368,512}, size={50,22}, proc=LJZ_MDCWB_ButtonProc, title="Add"
-    Button btnDelPeak,    pos={420,512}, size={50,22}, proc=LJZ_MDCWB_ButtonProc, title="Del"
-    Button btnDupPeak,    pos={472,512}, size={50,22}, proc=LJZ_MDCWB_ButtonProc, title="Dup"
+    PopupMenu pmDefaultPeakType, pos={310,520}, size={96,18}, mode=1, popvalue="PV", value=#"\"PV;Lor;Gau;AsymPV\"", proc=LJZ_MDCWB_PopupProc, title="New", fSize=10
+    Button btnAddPeak, pos={430,518}, size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Add", fSize=10
+    Button btnDelPeak, pos={484,518}, size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Del", fSize=10
+    Button btnDupPeak, pos={538,518}, size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Dup", fSize=10
 
-    // ---- selected-peak editor ----
-    GroupBox gbPeakEd, pos={252,538}, size={320,46}, title="Selected peak"
-    PopupMenu pmPeakType, pos={258,557}, size={80,20}, mode=1, popvalue="PV", value=#"\"PV;Lor;Gau;AsymPV\"", proc=LJZ_MDCWB_PopupProc, title="t"
-    SetVariable svPeakX0,  pos={350,557}, size={80,18}, proc=LJZ_MDCWB_SetVarProc, title="x0"
+    // ---- selected peak editor ----
+    GroupBox gbPeakEd, pos={310,548}, size={500,100}, title="Selected peak", fSize=11
+
+    PopupMenu pmPeakType, pos={322,570}, size={68,18}, mode=1, popvalue="PV", value=#"\"PV;Lor;Gau;AsymPV\"", proc=LJZ_MDCWB_PopupProc, title="t", fSize=10
+
+    SetVariable svPeakX0,  pos={408,570}, size={86,18}, proc=LJZ_MDCWB_SetVarProc, title="x0", fSize=10
     SetVariable svPeakX0, value=_NUM:NaN
-    SetVariable svPeakW,   pos={432,557}, size={70,18}, proc=LJZ_MDCWB_SetVarProc, title="w"
+    SetVariable svPeakW,   pos={508,570}, size={86,18}, proc=LJZ_MDCWB_SetVarProc, title="w", fSize=10
     SetVariable svPeakW, value=_NUM:NaN
-    SetVariable svPeakWR,  pos={502,557}, size={68,18}, proc=LJZ_MDCWB_SetVarProc, title="wR"
+    SetVariable svPeakWR,  pos={608,570}, size={86,18}, proc=LJZ_MDCWB_SetVarProc, title="wR", fSize=10
     SetVariable svPeakWR, value=_NUM:NaN
-    SetVariable svPeakH,   pos={258,575}, size={80,18}, proc=LJZ_MDCWB_SetVarProc, title="H"
+
+    SetVariable svPeakH,   pos={322,596}, size={86,18}, proc=LJZ_MDCWB_SetVarProc, title="H", fSize=10
     SetVariable svPeakH, value=_NUM:NaN
-    SetVariable svPeakEta, pos={350,575}, size={80,18}, proc=LJZ_MDCWB_SetVarProc, title="eta"
+    SetVariable svPeakEta, pos={422,596}, size={86,18}, proc=LJZ_MDCWB_SetVarProc, title="eta", fSize=10
     SetVariable svPeakEta, value=_NUM:NaN
-    CheckBox cbHoldX0,  pos={258,595}, size={26,16}, proc=LJZ_MDCWB_CheckProc, title="x"
-    CheckBox cbHoldW,   pos={290,595}, size={26,16}, proc=LJZ_MDCWB_CheckProc, title="w"
-    CheckBox cbHoldWR,  pos={322,595}, size={32,16}, proc=LJZ_MDCWB_CheckProc, title="wR"
-    CheckBox cbHoldH,   pos={358,595}, size={26,16}, proc=LJZ_MDCWB_CheckProc, title="H"
-    CheckBox cbHoldEta, pos={388,595}, size={36,16}, proc=LJZ_MDCWB_CheckProc, title="eta"
+
+    CheckBox cbHoldX0,  pos={322,622}, size={22,14}, proc=LJZ_MDCWB_CheckProc, title="x", fSize=10
+    CheckBox cbHoldW,   pos={360,622}, size={22,14}, proc=LJZ_MDCWB_CheckProc, title="w", fSize=10
+    CheckBox cbHoldWR,  pos={400,622}, size={28,14}, proc=LJZ_MDCWB_CheckProc, title="wR", fSize=10
+    CheckBox cbHoldH,   pos={446,622}, size={22,14}, proc=LJZ_MDCWB_CheckProc, title="H", fSize=10
+    CheckBox cbHoldEta, pos={484,622}, size={34,14}, proc=LJZ_MDCWB_CheckProc, title="eta", fSize=10
 
     // ---- right-side metrics + result ----
-    TitleBox tbMetric, pos={585,18}, size={70,16}, title="Metrics", frame=0, fStyle=1
-    GroupBox gbMetric, pos={585,36}, size={222,200}, title=""
-    ListBox lbMetric, pos={593,46}, size={206,182}
+    TitleBox tbMetric, pos={825,90}, size={70,16}, title="Metrics", frame=0, fStyle=1, fSize=12
+
+    GroupBox gbMetric, pos={825,110}, size={270,240}, title=""
+    ListBox lbMetric, pos={835,122}, size={250,216}, fSize=11
     ListBox lbMetric, listWave=$(LJZ_MDCWB_BaseDF() + ":UI_metricDisp")
     ListBox lbMetric, selWave=$(LJZ_MDCWB_BaseDF() + ":UI_metricSel"), mode=1
 
-    TitleBox tbRes, pos={585,238}, size={70,16}, title="Fit Result", frame=0, fStyle=1
-    GroupBox gbRes, pos={585,256}, size={222,326}, title=""
-    ListBox lbResL, pos={593,266}, size={102,310}
+    TitleBox tbRes, pos={825,364}, size={80,16}, title="Fit Result", frame=0, fStyle=1, fSize=12
+
+    GroupBox gbRes, pos={825,384}, size={270,264}, title=""
+    ListBox lbResL, pos={835,396}, size={118,240}, fSize=11
     ListBox lbResL, listWave=$(LJZ_MDCWB_BaseDF() + ":UI_resDispL")
     ListBox lbResL, selWave=$(LJZ_MDCWB_BaseDF() + ":UI_resSelL"), mode=1
-    ListBox lbResR, pos={697,266}, size={102,310}
+
+    ListBox lbResR, pos={963,396}, size={122,240}, fSize=11
     ListBox lbResR, listWave=$(LJZ_MDCWB_BaseDF() + ":UI_resDispR")
     ListBox lbResR, selWave=$(LJZ_MDCWB_BaseDF() + ":UI_resSelR"), mode=1
 
@@ -1614,24 +1652,55 @@ End
 // ============================================================================
 //  Section 14. Export to FIT_HP
 //
-//  Output schema:
-//    Same DF as targetDF, subfolder "FIT_HP".
-//    Per-MDC output:
-//      MDCIndex[]              : original mdc_show_<k> index
-//      Peak1K, Peak2K, Peak3K  : peak centers ranked by x (NaN if absent)
+//  Output:
+//    Same targetDF subfolder: FIT_HP
+//
+//  Compatibility summary:
+//      MDCIndex
+//      Peak1K, Peak2K, Peak3K
 //      WeffP1K, WeffP2K, WeffP3K
 //      AreaP1K, AreaP2K, AreaP3K, AreaSum123K
-//      SigmaP1K, SigmaP2K, SigmaP3K (sigma on x0)
+//      SigmaP1K, SigmaP2K, SigmaP3K
 //      Sep12K, Sep13K, Sep23K
 //      BG_c0, BG_c1, BG_c2
-//      layer_show_<k>  copy of original
-//      fit_layer_<k>   copy of fit
+//      layer_show_<k>
+//      fit_layer_<k>
 //
-//  Notes:
-//    - Reads only clean fit records (HasFitRecord && fitOK).
-//    - Up to 3 peaks reported; extra peaks are dropped from the table but
-//      kept in fit_layer_<k> so the curve is exact.
-//    - Sigma on x0 uses fitsigma at the peak's slot offset.
+//  New all-peak export:
+//      NPeaksK
+//      AreaSumAllK
+//
+//      PeakK_All[row][rank]
+//      WeffP_All[row][rank]
+//      AreaP_All[row][rank]
+//      SigmaX_All[row][rank]
+//      H_All[row][rank]
+//      Eta_All[row][rank]
+//      WidthL_All[row][rank]
+//      WidthR_All[row][rank]
+//      Type_All[row][rank]
+//      SourcePeakIndex_All[row][rank]
+//
+//  New long-table export:
+//      Long_MDCRow
+//      Long_MDCIndex
+//      Long_PeakRank
+//      Long_SourcePeakIndex
+//      Long_PeakK
+//      Long_Weff
+//      Long_Area
+//      Long_SigmaX
+//      Long_H
+//      Long_Eta
+//      Long_WidthL
+//      Long_WidthR
+//      Long_Type
+//      Long_WaveName
+//      Long_PeakTypeName
+//
+//  Meaning:
+//      rank means peak order after sorting by fitted x0.
+//      SourcePeakIndex means the original peak index before sorting.
 // ============================================================================
 
 Function LJZ_MDCWB_ExportSummary()
@@ -1651,21 +1720,102 @@ Function LJZ_MDCWB_ExportSummary()
         return -1
     endif
 
+    // ------------------------------------------------------------------------
+    // First pass: find maximum number of peaks and total long-table rows.
+    // ------------------------------------------------------------------------
+    Variable maxPeaks = 0
+    Variable totalPeakRows = 0
+
+    Variable i
+    for (i = 0; i < n; i += 1)
+        String full0 = StringFromList(i, lst, ";")
+        Wave/Z w0 = $full0
+        if (!WaveExists(w0))
+            continue
+        endif
+        if (!LJZ_MDCWB_HasFitRecord(w0))
+            continue
+        endif
+        if (!LJZ_MDCWB_ReadFitOK(w0))
+            continue
+        endif
+
+        Wave/Z pn0 = $(LJZ_MDCWB_PathPeaksNum(w0))
+        if (!WaveExists(pn0))
+            continue
+        endif
+
+        Variable np0 = DimSize(pn0, 0)
+        if (np0 <= 0)
+            continue
+        endif
+
+        maxPeaks = max(maxPeaks, np0)
+        totalPeakRows += np0
+    endfor
+
+    Variable nPeakCols = max(1, maxPeaks)
+    Variable nLongRows = max(1, totalPeakRows)
+
     String oldDF = GetDataFolder(1)
     String exDF = RemoveEnding(df, ":") + ":FIT_HP"
     NewDataFolder/O $exDF
     SetDataFolder $exDF
 
+    // ------------------------------------------------------------------------
+    // Compatibility waves: old 3-peak style.
+    // ------------------------------------------------------------------------
     Make/O/N=(n) MDCIndex = NaN
+    Make/O/N=(n) NPeaksK = NaN
+
     Make/O/N=(n) Peak1K = NaN, Peak2K = NaN, Peak3K = NaN
     Make/O/N=(n) WeffP1K = NaN, WeffP2K = NaN, WeffP3K = NaN
-    Make/O/N=(n) AreaP1K = NaN, AreaP2K = NaN, AreaP3K = NaN, AreaSum123K = NaN
+    Make/O/N=(n) AreaP1K = NaN, AreaP2K = NaN, AreaP3K = NaN
+    Make/O/N=(n) AreaSum123K = NaN, AreaSumAllK = NaN
     Make/O/N=(n) SigmaP1K = NaN, SigmaP2K = NaN, SigmaP3K = NaN
     Make/O/N=(n) Sep12K = NaN, Sep13K = NaN, Sep23K = NaN
     Make/O/N=(n) BG_c0 = NaN, BG_c1 = NaN, BG_c2 = NaN
 
+    // ------------------------------------------------------------------------
+    // New wide all-peak waves.
+    // Rows correspond to MDC waves. Columns correspond to sorted peak rank.
+    // ------------------------------------------------------------------------
+    Make/O/N=(n, nPeakCols) PeakK_All = NaN
+    Make/O/N=(n, nPeakCols) WeffP_All = NaN
+    Make/O/N=(n, nPeakCols) AreaP_All = NaN
+    Make/O/N=(n, nPeakCols) SigmaX_All = NaN
+    Make/O/N=(n, nPeakCols) H_All = NaN
+    Make/O/N=(n, nPeakCols) Eta_All = NaN
+    Make/O/N=(n, nPeakCols) WidthL_All = NaN
+    Make/O/N=(n, nPeakCols) WidthR_All = NaN
+    Make/O/N=(n, nPeakCols) Type_All = NaN
+    Make/O/N=(n, nPeakCols) SourcePeakIndex_All = NaN
+    Make/O/T/N=(n, nPeakCols) PeakTypeName_All = ""
+
+    // ------------------------------------------------------------------------
+    // New long table.
+    // One row = one fitted peak.
+    // This is the safest format for more than 3 peaks.
+    // ------------------------------------------------------------------------
+    Make/O/N=(nLongRows) Long_MDCRow = NaN
+    Make/O/N=(nLongRows) Long_MDCIndex = NaN
+    Make/O/N=(nLongRows) Long_PeakRank = NaN
+    Make/O/N=(nLongRows) Long_SourcePeakIndex = NaN
+    Make/O/N=(nLongRows) Long_PeakK = NaN
+    Make/O/N=(nLongRows) Long_Weff = NaN
+    Make/O/N=(nLongRows) Long_Area = NaN
+    Make/O/N=(nLongRows) Long_SigmaX = NaN
+    Make/O/N=(nLongRows) Long_H = NaN
+    Make/O/N=(nLongRows) Long_Eta = NaN
+    Make/O/N=(nLongRows) Long_WidthL = NaN
+    Make/O/N=(nLongRows) Long_WidthR = NaN
+    Make/O/N=(nLongRows) Long_Type = NaN
+    Make/O/T/N=(nLongRows) Long_WaveName = ""
+    Make/O/T/N=(nLongRows) Long_PeakTypeName = ""
+
     Variable skipped = 0
-    Variable i
+    Variable longRow = 0
+
     for (i = 0; i < n; i += 1)
         String full = StringFromList(i, lst, ";")
         Wave/Z w = $full
@@ -1691,14 +1841,12 @@ Function LJZ_MDCWB_ExportSummary()
             continue
         endif
 
-        // Walk this fit record's peaks via the saved edit-state on disk.
-        // Active_* is only an evaluator snapshot; fit metadata is persisted
-        // in record waves and must be reconstructed from peaks_num.
         Wave/Z pn = $(LJZ_MDCWB_PathPeaksNum(w))
         if (!WaveExists(pn))
             skipped += 1
             continue
         endif
+
         Variable np = DimSize(pn, 0)
         if (np <= 0)
             skipped += 1
@@ -1716,12 +1864,14 @@ Function LJZ_MDCWB_ExportSummary()
         Wave/Z sigmaW = $(LJZ_MDCWB_PathFitSigma(w))
         Wave/Z infoW  = $(LJZ_MDCWB_PathFitInfo(w))
         Wave/Z fitW   = $(LJZ_MDCWB_PathFit(w))
+
         if (!WaveExists(coefW) || !WaveExists(sigmaW) || !WaveExists(infoW) || !WaveExists(fitW))
             skipped += 1
             continue
         endif
 
         Variable nCoef = numpnts(coefW)
+        Variable nSigma = numpnts(sigmaW)
         if (nCoef < sm[np])
             skipped += 1
             continue
@@ -1732,71 +1882,144 @@ Function LJZ_MDCWB_ExportSummary()
         BG_c0[i] = coefW[0]
         BG_c1[i] = coefW[1]
         BG_c2[i] = coefW[2]
+
         Variable resH = abs(coefW[3])
+        NPeaksK[i] = np
 
         Make/FREE/N=(np) cx, cwid, carea, csigX
-        Variable nSigma = numpnts(sigmaW)
+        Make/FREE/N=(np) cH, cEta, cwL, cwR, cType
+
         Variable ip
         for (ip = 0; ip < np; ip += 1)
             Variable t = tLocal[ip]
             Variable s = sm[ip]
+
+            cType[ip] = t
             cx[ip] = (s + 0 < nCoef) ? coefW[s + 0] : NaN
             csigX[ip] = (s + 0 < nSigma) ? sigmaW[s + 0] : NaN
 
             Variable wid, ar
+            Variable hVal, etaVal, wLeft, wRight
+
             if (t == LJZ_MDCWB_PeakTypeAsymPV())
                 Variable wL = abs((s + 1 < nCoef) ? coefW[s + 1] : NaN)
                 Variable wR = abs((s + 2 < nCoef) ? coefW[s + 2] : NaN)
                 Variable HA = (s + 3 < nCoef) ? coefW[s + 3] : NaN
                 Variable etaA = (s + 4 < nCoef) ? coefW[s + 4] : NaN
+
                 Variable wEff = sqrt(0.5 * (wL*wL + wR*wR) + resH*resH)
-                wid = wEff
                 Variable lor = pi * abs(HA) * wEff
                 Variable gau = sqrt(pi / ln(2)) * abs(HA) * wEff
+
+                wid = wEff
                 ar = etaA * lor + (1 - etaA) * gau
+
+                hVal = HA
+                etaVal = etaA
+                wLeft = wL
+                wRight = wR
             else
-                Variable w0 = abs((s + 1 < nCoef) ? coefW[s + 1] : NaN)
-                Variable HP = (s + 2 < nCoef) ? coefW[s + 2] : NaN
-                Variable etaP = (s + 3 < nCoef) ? coefW[s + 3] : NaN
-                if (t == LJZ_MDCWB_PeakTypeLor())
-                    etaP = 1
-                elseif (t == LJZ_MDCWB_PeakTypeGau())
-                    etaP = 0
-                endif
-                Variable wEffP = sqrt(w0*w0 + resH*resH)
-                wid = wEffP
-                Variable lorP = pi * abs(HP) * wEffP
-                Variable gauP = sqrt(pi / ln(2)) * abs(HP) * wEffP
-                ar = etaP * lorP + (1 - etaP) * gauP
+			Variable wBase = abs((s + 1 < nCoef) ? coefW[s + 1] : NaN)
+			Variable HP = (s + 2 < nCoef) ? coefW[s + 2] : NaN
+			Variable etaP = (s + 3 < nCoef) ? coefW[s + 3] : NaN
+
+			if (t == LJZ_MDCWB_PeakTypeLor())
+    				etaP = 1
+			elseif (t == LJZ_MDCWB_PeakTypeGau())
+    				etaP = 0
+			endif
+
+			Variable wEffP = sqrt(wBase*wBase + resH*resH)
+			Variable lorP = pi * abs(HP) * wEffP
+			Variable gauP = sqrt(pi / ln(2)) * abs(HP) * wEffP
+
+			wid = wEffP
+			ar = etaP * lorP + (1 - etaP) * gauP
+
+			hVal = HP
+			etaVal = etaP
+			wLeft = wBase
+			wRight = wBase
             endif
+
             cwid[ip] = wid
             carea[ip] = ar
+            cH[ip] = hVal
+            cEta[ip] = etaVal
+            cwL[ip] = wLeft
+            cwR[ip] = wRight
         endfor
 
         // Sort peaks by x ascending.
         Make/FREE/N=(np) ord = p
         Sort cx, ord, cx
 
+        Variable areaAll = 0
+        Variable hasArea = 0
+
         Variable j
-        for (j = 0; j < min(np, 3); j += 1)
+        for (j = 0; j < np; j += 1)
             Variable srcIdx = ord[j]
+            Variable rank = j + 1
+            Variable xSorted = cx[j]
+
+            PeakK_All[i][j] = xSorted
+            WeffP_All[i][j] = cwid[srcIdx]
+            AreaP_All[i][j] = carea[srcIdx]
+            SigmaX_All[i][j] = csigX[srcIdx]
+            H_All[i][j] = cH[srcIdx]
+            Eta_All[i][j] = cEta[srcIdx]
+            WidthL_All[i][j] = cwL[srcIdx]
+            WidthR_All[i][j] = cwR[srcIdx]
+            Type_All[i][j] = cType[srcIdx]
+            SourcePeakIndex_All[i][j] = srcIdx
+            PeakTypeName_All[i][j] = LJZ_MDCWB_PeakTypeName(cType[srcIdx])
+
+            if (numtype(carea[srcIdx]) == 0)
+                areaAll += carea[srcIdx]
+                hasArea = 1
+            endif
+
+            // Keep old first-three export for backward compatibility.
             if (j == 0)
-                Peak1K[i]  = cx[j]
+                Peak1K[i] = xSorted
                 WeffP1K[i] = cwid[srcIdx]
                 AreaP1K[i] = carea[srcIdx]
                 SigmaP1K[i] = csigX[srcIdx]
             elseif (j == 1)
-                Peak2K[i]  = cx[j]
+                Peak2K[i] = xSorted
                 WeffP2K[i] = cwid[srcIdx]
                 AreaP2K[i] = carea[srcIdx]
                 SigmaP2K[i] = csigX[srcIdx]
             elseif (j == 2)
-                Peak3K[i]  = cx[j]
+                Peak3K[i] = xSorted
                 WeffP3K[i] = cwid[srcIdx]
                 AreaP3K[i] = carea[srcIdx]
                 SigmaP3K[i] = csigX[srcIdx]
             endif
+
+            // Long-table export.
+            if (longRow < nLongRows)
+                Long_MDCRow[longRow] = i
+                Long_MDCIndex[longRow] = kIdx
+                Long_PeakRank[longRow] = rank
+                Long_SourcePeakIndex[longRow] = srcIdx
+                Long_PeakK[longRow] = xSorted
+                Long_Weff[longRow] = cwid[srcIdx]
+                Long_Area[longRow] = carea[srcIdx]
+                Long_SigmaX[longRow] = csigX[srcIdx]
+                Long_H[longRow] = cH[srcIdx]
+                Long_Eta[longRow] = cEta[srcIdx]
+                Long_WidthL[longRow] = cwL[srcIdx]
+                Long_WidthR[longRow] = cwR[srcIdx]
+                Long_Type[longRow] = cType[srcIdx]
+                Long_WaveName[longRow] = NameOfWave(w)
+                Long_PeakTypeName[longRow] = LJZ_MDCWB_PeakTypeName(cType[srcIdx])
+                longRow += 1
+            endif
         endfor
+
+        AreaSumAllK[i] = hasArea ? areaAll : NaN
 
         Variable s12 = NaN, s13 = NaN, s23 = NaN
         if (np >= 2)
@@ -1811,24 +2034,28 @@ Function LJZ_MDCWB_ExportSummary()
         Sep23K[i] = s23
 
         Variable a1 = AreaP1K[i], a2 = AreaP2K[i], a3 = AreaP3K[i]
-        Variable asum = 0
-        Variable any = 0
+        Variable asum123 = 0
+        Variable any123 = 0
+
         if (numtype(a1) == 0)
-            asum += a1
-            any = 1
+            asum123 += a1
+            any123 = 1
         endif
         if (numtype(a2) == 0)
-            asum += a2
-            any = 1
+            asum123 += a2
+            any123 = 1
         endif
         if (numtype(a3) == 0)
-            asum += a3
-            any = 1
+            asum123 += a3
+            any123 = 1
         endif
-        AreaSum123K[i] = (any ? asum : NaN)
+
+        AreaSum123K[i] = any123 ? asum123 : NaN
     endfor
 
     SetDataFolder $oldDF
-    DoAlert 0, "FIT_HP exported under: " + exDF + ":\rSkipped (no clean fit): " + num2str(skipped)
+
+    DoAlert 0, "FIT_HP exported under: " + exDF + ":\rSkipped (no clean fit): " + num2str(skipped) + "\rMax peaks exported: " + num2str(maxPeaks) + "\rLong-table rows: " + num2str(totalPeakRows)
+
     return 0
 End
