@@ -1600,6 +1600,8 @@ Function LJZ_MDCWB_ActionDuplicatePeak()
         for (ih = 0; ih < LJZ_MDCWB_PeaksHoldCols(); ih += 1)
             wPH[idx][ih] = wPH[sp][ih]
         endfor
+        LJZ_MDCWB_SanitizeWorkState()
+        sp = idx
     endif
     return idx
 End
@@ -1685,18 +1687,6 @@ Function LJZ_MDCWB_ExportSummary()
             continue
         endif
 
-        Wave coefW  = $(LJZ_MDCWB_PathFitCoef(w))
-        Wave sigmaW = $(LJZ_MDCWB_PathFitSigma(w))
-        Wave infoW  = $(LJZ_MDCWB_PathFitInfo(w))
-        Wave fitW   = $(LJZ_MDCWB_PathFit(w))
-
-        Duplicate/O fitW, $("fit_layer_" + num2str(kIdx))
-
-        BG_c0[i] = coefW[0]
-        BG_c1[i] = coefW[1]
-        BG_c2[i] = coefW[2]
-        Variable resH = abs(coefW[3])
-
         // Walk this fit record's peaks via the saved edit-state on disk.
         // Active_* is only an evaluator snapshot; fit metadata is persisted
         // in record waves and must be reconstructed from peaks_num.
@@ -1718,8 +1708,29 @@ Function LJZ_MDCWB_ExportSummary()
             continue
         endif
 
-        Make/FREE/N=(np) cx, cwid, carea, csigX
+        Wave/Z coefW  = $(LJZ_MDCWB_PathFitCoef(w))
+        Wave/Z sigmaW = $(LJZ_MDCWB_PathFitSigma(w))
+        Wave/Z infoW  = $(LJZ_MDCWB_PathFitInfo(w))
+        Wave/Z fitW   = $(LJZ_MDCWB_PathFit(w))
+        if (!WaveExists(coefW) || !WaveExists(sigmaW) || !WaveExists(infoW) || !WaveExists(fitW))
+            skipped += 1
+            continue
+        endif
+
         Variable nCoef = numpnts(coefW)
+        if (nCoef < sm[np])
+            skipped += 1
+            continue
+        endif
+
+        Duplicate/O fitW, $("fit_layer_" + num2str(kIdx))
+
+        BG_c0[i] = coefW[0]
+        BG_c1[i] = coefW[1]
+        BG_c2[i] = coefW[2]
+        Variable resH = abs(coefW[3])
+
+        Make/FREE/N=(np) cx, cwid, carea, csigX
         Variable nSigma = numpnts(sigmaW)
         Variable ip
         for (ip = 0; ip < np; ip += 1)
