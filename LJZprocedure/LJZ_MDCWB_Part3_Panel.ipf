@@ -838,8 +838,12 @@ Function LJZ_MDCWB_RefreshMetricBoxes()
     // ---- fit result panes (left = preview/current params; right = sigma) ----
     String lTxt = ""
     String rTxt = ""
+    Variable hasCompleteFit = WaveExists(coefW) && WaveExists(sigmaW) && WaveExists(infoW)
+    if (hasCompleteFit)
+        hasCompleteFit = (numpnts(coefW) > 0 && numpnts(sigmaW) == numpnts(coefW) && numpnts(infoW) >= LJZ_MDCWB_FitInfoSize())
+    endif
 
-    if (dirty || !WaveExists(coefW) || !WaveExists(infoW))
+    if (dirty || !hasCompleteFit)
         lTxt = "Current preview\r"
         rTxt = "(no fitted sigma)\r"
         Variable i

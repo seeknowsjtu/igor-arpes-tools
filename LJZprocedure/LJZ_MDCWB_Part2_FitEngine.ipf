@@ -919,7 +919,13 @@ Function LJZ_MDCWB_BuildLayoutFromPeaksNum(pn, types, slotMap)
     Wave pn, types, slotMap
 
     Variable nPeak = DimSize(pn, 0)
+    if (DimSize(pn, 1) != LJZ_MDCWB_PeaksNumCols())
+        return -1
+    endif
     if (nPeak < 0)
+        return -1
+    endif
+    if (nPeak > LJZ_MDCWB_MaxPeaks())
         return -1
     endif
 
