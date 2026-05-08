@@ -326,14 +326,26 @@ End
 
 Function LJZ_Extract_KillWavesByPatternInRunDF(runDF, patt)
     String runDF, patt
-    String list = WaveList(patt, ";", "DIMS:1", runDF)
+
+    DFREF oldDF = GetDataFolderDFR()
+
+    if (DataFolderExists(runDF) == 0)
+        return 0
+    endif
+
+    SetDataFolder $runDF
+
+    String list = WaveList(patt, ";", "DIMS:1")
     Variable i, n = ItemsInList(list, ";")
+
     for (i = 0; i < n; i += 1)
         String nm = StringFromList(i, list, ";")
         if (strlen(nm) > 0)
-            KillWaves/Z $(runDF + nm)
+            KillWaves/Z $nm
         endif
     endfor
+
+    SetDataFolder oldDF
     return 0
 End
 
