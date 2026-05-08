@@ -333,6 +333,12 @@ Function LJZ_EDCEdgeWidth_ParseWaveIndex(nm)
         return NaN
     endif
 
+    String exact
+    sprintf exact, "edc_show_%d", idx
+    if (CmpStr(nm, exact) != 0)
+        return NaN
+    endif
+
     return idx
 End
 
@@ -1340,7 +1346,7 @@ End
 Function LJZ_EDCEdgeWidth_SetVarProc(sva) : SetVariableControl
     STRUCT WMSetVariableAction &sva
 
-    if ((sva.eventCode != 1) && (sva.eventCode != 2))
+    if (sva.eventCode != 1 && sva.eventCode != 2 && sva.eventCode != 8)
         return 0
     endif
 
@@ -1503,9 +1509,9 @@ Function LJZ_EDCEdgeWidth_PlotResults()
     AppendToGraph/R wFall
 
     ModifyGraph mode=3,marker=19
-    ModifyGraph rgb(edc_width)=(0,0,0)
-    ModifyGraph rgb(edc_xrise)=(0,0,65535)
-    ModifyGraph rgb(edc_xfall)=(65535,0,0)
+    ModifyGraph rgb($NameOfWave(wWidth))=(0,0,0)
+    ModifyGraph rgb($NameOfWave(wRise))=(0,0,65535)
+    ModifyGraph rgb($NameOfWave(wFall))=(65535,0,0)
 
     Label left "Width"
     Label right "XRise / XFall"
