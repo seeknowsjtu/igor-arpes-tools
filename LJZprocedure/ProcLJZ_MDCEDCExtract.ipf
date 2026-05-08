@@ -75,6 +75,23 @@ Function LJZ_Extract_df_exists(dfStr)
     return DataFolderExists(s)
 End
 
+Function LJZ_Extract_EnsureDataFolderPath(dfPath)
+    String dfPath
+
+    String p = LJZ_Extract_df_with_colon(dfPath)
+    String cur = "root:"
+    Variable i, n = ItemsInList(p, ":")
+    for (i = 1; i < n; i += 1)
+        String seg = StringFromList(i, p, ":")
+        if (strlen(seg) == 0)
+            continue
+        endif
+        cur += seg + ":"
+        NewDataFolder/O $(RemoveEnding(cur, ":"))
+    endfor
+    return 0
+End
+
 // ---- Wave type checks ----
 
 Function LJZ_Extract_Is3DNumericWave(w)
@@ -245,17 +262,78 @@ End
 Function LJZ_Extract_PushRunDFToWorkbench(runDF, targetGlobalPath)
     String runDF, targetGlobalPath
 
-    String dfPart = targetGlobalPath[0, strsearch(targetGlobalPath, ":", Inf) - 1]
-
-    // Build path up to the required folder step by step so we don't fail on
-    // partially-existing folder trees.
-    NewDataFolder/O root:Packages
-    NewDataFolder/O root:Packages:ARPES_LJZ
-
-    String folder2 = StringFromList(ItemsInList(targetGlobalPath, ":") - 2, targetGlobalPath, ":")
-    NewDataFolder/O $(dfPart)
-
+    Variable p = strsearch(targetGlobalPath, ":", Inf)
+    String dfPart = ""
+    if (p > 0)
+        dfPart = targetGlobalPath[0, p - 1]
+    endif
+    if (strlen(dfPart) > 0)
+        LJZ_Extract_EnsureDataFolderPath(dfPart)
+    endif
     String/G $targetGlobalPath = runDF
+    return 0
+End
+
+Function/S LJZ_Extract_BuildDimInfoString(w)
+    Wave/Z w
+    String s
+    if (!WaveExists(w))
+        return "Source wave not found."
+    endif
+    sprintf s, "Dim0(E): n=%d off=%.6g d=%.6g u=%s | Dim1(k): n=%d off=%.6g d=%.6g u=%s | Dim2(stack): n=%d off=%.6g d=%.6g u=%s", \
+        DimSize(w,0), DimOffset(w,0), DimDelta(w,0), WaveUnits(w,0), \
+        DimSize(w,1), DimOffset(w,1), DimDelta(w,1), WaveUnits(w,1), \
+        DimSize(w,2), DimOffset(w,2), DimDelta(w,2), WaveUnits(w,2)
+    return s
+End
+
+Function LJZ_Extract_PrintDimSanity(w, label)
+    Wave/Z w
+    String label
+    String s = LJZ_Extract_BuildDimInfoString(w)
+    Print label + " | " + s
+    if (!LJZ_Extract_Is3DNumericWave(w))
+        Print "WARNING: selected source wave is not a strict 3D numeric wave (dim0=E, dim1=k, dim2=stack expected)."
+    endif
+    return 0
+End
+
+Function LJZ_Extract_WindowPhysToIndex(off, delta, n, v0In, v1In, idxLo, idxHi)
+    Variable off, delta, n, v0In, v1In, &idxLo, &idxHi
+    Variable lo = v0In, hi = v1In, t
+    if (n <= 0 || numtype(delta) != 0 || delta == 0)
+        idxLo = 0; idxHi = -1
+        return -1
+    endif
+    if (lo > hi)
+        t = lo; lo = hi; hi = t
+    endif
+    if (delta > 0)
+        idxLo = ceil((lo - off) / delta)
+        idxHi = floor((hi - off) / delta)
+    else
+        idxLo = ceil((hi - off) / delta)
+        idxHi = floor((lo - off) / delta)
+    endif
+    t = idxLo
+    idxLo = max(0, min(n - 1, idxLo))
+    idxHi = max(0, min(n - 1, idxHi))
+    if (idxLo > idxHi)
+        return -1
+    endif
+    return 0
+End
+
+Function LJZ_Extract_KillWavesByPatternInRunDF(runDF, patt)
+    String runDF, patt
+    String list = WaveList(patt, ";", "DIMS:1", runDF)
+    Variable i, n = ItemsInList(list, ";")
+    for (i = 0; i < n; i += 1)
+        String nm = StringFromList(i, list, ";")
+        if (strlen(nm) > 0)
+            KillWaves/Z $(runDF + nm)
+        endif
+    endfor
     return 0
 End
 
@@ -369,7 +447,7 @@ Function LJZ_MDCExtract_EnsureDF()
     // ---- smoothing parameters ----
     NVAR/Z SmEnable = $(LJZ_MDCExtract_BaseDF() + ":SmEnable")
     if (!NVAR_Exists(SmEnable))
-        Variable/G $(LJZ_MDCExtract_BaseDF() + ":SmEnable") = 1
+        Variable/G $(LJZ_MDCExtract_BaseDF() + ":SmEnable") = 0
     endif
 
     NVAR/Z SmMethod = $(LJZ_MDCExtract_BaseDF() + ":SmMethod")
@@ -568,28 +646,32 @@ Function LJZ_MDCExtract_BuildRawMDCs(w, eStart, eEnd, runDF)
     try
         SetDataFolder $(RemoveEnding(runDF, ":"))
 
-        // Kill any stale raw+show waves from a previous run in this same folder.
-        Variable killIdx = 0
-        do
-            Wave/Z oldRaw  = $("mdc_raw_"  + num2str(killIdx))
-            Wave/Z oldShow = $("mdc_show_" + num2str(killIdx))
-            if (!WaveExists(oldRaw) && !WaveExists(oldShow))
-                break
-            endif
-            KillWaves/Z oldRaw, oldShow
-            killIdx += 1
-        while (1)
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "mdc_raw_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "mdc_show_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "edc_raw_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "edc_show_*")
 
-        Variable t, e
+        Variable t, e, k, cnt, v
         for (t = 0; t < nT; t += 1)
-            Make/O/N=(nK) $("mdc_raw_" + num2str(t)) = 0
+            Make/O/N=(nK) $("mdc_raw_" + num2str(t)) = NaN
             Wave mdc = $("mdc_raw_" + num2str(t))
             SetScale/P x, k0, dk, WaveUnits(w, 1), mdc
-
-            for (e = eStart; e <= eEnd; e += 1)
-                mdc += w[e][p][t]
+            for (k = 0; k < nK; k += 1)
+                mdc[k] = 0
+                cnt = 0
+                for (e = eStart; e <= eEnd; e += 1)
+                    v = w[e][k][t]
+                    if (numtype(v) == 0)
+                        mdc[k] += v
+                        cnt += 1
+                    endif
+                endfor
+                if (cnt > 0)
+                    mdc[k] /= cnt
+                else
+                    mdc[k] = NaN
+                endif
             endfor
-            mdc /= nAvg
         endfor
     catch
         hadError = 1
@@ -647,6 +729,11 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF)
     Wave w
     Variable eStart, eEnd
     String runDF
+    NVAR SmEnable = $(LJZ_MDCExtract_BaseDF() + ":SmEnable")
+    NVAR SmN = $(LJZ_MDCExtract_BaseDF() + ":SmN")
+    NVAR SmN2 = $(LJZ_MDCExtract_BaseDF() + ":SmN2")
+    NVAR SmMethod = $(LJZ_MDCExtract_BaseDF() + ":SmMethod")
+    NVAR SmPoly = $(LJZ_MDCExtract_BaseDF() + ":SmPoly")
 
     // BaseDF globals (current session)
     String/G  $(LJZ_MDCExtract_BaseDF() + ":RunDF")      = runDF
@@ -665,6 +752,24 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF)
     Variable/G Run_dt     = DimDelta(w, 2)
     Variable/G Run_nT     = DimSize(w, 2)
     String/G   SourceWave = GetWavesDataFolder(w, 2)
+    String/G   Run_sourceWavePath = GetWavesDataFolder(w, 2)
+    String/G   Run_sourceWaveName = NameOfWave(w)
+    String/G   Run_mode = "MDC"
+    Variable/G Run_nTraces = DimSize(w, 2)
+    Variable/G Run_smoothingEnabled = SmEnable
+    Variable/G Run_smoothingN = SmN
+    Variable/G Run_smoothingN2 = SmN2
+    Variable/G Run_smoothingMethod = SmMethod
+    Variable/G Run_smoothingPoly = SmPoly
+    Make/O/N=3 Run_dimSize = {DimSize(w,0), DimSize(w,1), DimSize(w,2)}
+    Make/O/N=3 Run_dimOffset = {DimOffset(w,0), DimOffset(w,1), DimOffset(w,2)}
+    Make/O/N=3 Run_dimDelta = {DimDelta(w,0), DimDelta(w,1), DimDelta(w,2)}
+    Make/O/T/N=3 Run_dimUnits = {WaveUnits(w,0), WaveUnits(w,1), WaveUnits(w,2)}
+    Make/O/N=(DimSize(w,2)) Run_windowLow = eStart
+    Make/O/N=(DimSize(w,2)) Run_windowHigh = eEnd
+    Make/O/N=(DimSize(w,2)) Run_indexLow = eStart
+    Make/O/N=(DimSize(w,2)) Run_indexHigh = eEnd
+    String/G Run_createdAt = Secs2Date(DateTime, 0) + " " + Secs2Time(DateTime, 3)
     SetDataFolder $oldDF
 
     return 0
@@ -772,6 +877,7 @@ Function LJZ_MDCExtract_DoExtract()
     endif
 
     Wave/Z w = $sWave
+    LJZ_Extract_PrintDimSanity(w, "MDC source")
     if (!LJZ_Extract_Is3DNumericWave(w))
         DoAlert 0, "当前选择不是有效的 3D wave（energy × k × stack）。"
         return -1
@@ -785,8 +891,10 @@ Function LJZ_MDCExtract_DoExtract()
     Variable eStart = round(e0)
     Variable eEnd   = round(e1)
     if (usePhys)
-        eStart = LJZ_MDCExtract_PhysEToIndex(w, e0)
-        eEnd   = LJZ_MDCExtract_PhysEToIndex(w, e1)
+        if (LJZ_Extract_WindowPhysToIndex(DimOffset(w,0), DimDelta(w,0), DimSize(w,0), e0, e1, eStart, eEnd) != 0)
+            Print "WARNING: MDC energy window is empty after physical→index conversion. Extraction skipped."
+            return -1
+        endif
     endif
 
     String runDF = LJZ_MDCExtract_RunFrom3DWave(w, eStart, eEnd, bn)
@@ -1028,6 +1136,9 @@ Function LJZ_MDCExtract_ListBoxProc(lba) : ListBoxControl
     endif
 
     LJZ_MDCExtract_SelectWaveRow(lba.row)
+    Wave/T wPath = $(LJZ_MDCExtract_BaseDF() + ":LB_Path")
+    Wave/Z wSel = $(wPath[lba.row])
+    LJZ_Extract_PrintDimSanity(wSel, "MDC selected")
     LJZ_MDCExtract_RefreshTitleBoxes()
     return 0
 End
@@ -1142,7 +1253,7 @@ Function LJZ_EDCExtract_EnsureDF()
     // ---- smoothing parameters ----
     NVAR/Z SmEnable = $(LJZ_EDCExtract_BaseDF() + ":SmEnable")
     if (!NVAR_Exists(SmEnable))
-        Variable/G $(LJZ_EDCExtract_BaseDF() + ":SmEnable") = 1
+        Variable/G $(LJZ_EDCExtract_BaseDF() + ":SmEnable") = 0
     endif
 
     NVAR/Z SmMethod = $(LJZ_EDCExtract_BaseDF() + ":SmMethod")
@@ -1339,27 +1450,32 @@ Function LJZ_EDCExtract_BuildRawEDCs(w, kStart, kEnd, runDF)
     try
         SetDataFolder $(RemoveEnding(runDF, ":"))
 
-        Variable killIdx = 0
-        do
-            Wave/Z oldRaw  = $("edc_raw_"  + num2str(killIdx))
-            Wave/Z oldShow = $("edc_show_" + num2str(killIdx))
-            if (!WaveExists(oldRaw) && !WaveExists(oldShow))
-                break
-            endif
-            KillWaves/Z oldRaw, oldShow
-            killIdx += 1
-        while (1)
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "mdc_raw_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "mdc_show_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "edc_raw_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "edc_show_*")
 
-        Variable t, k
+        Variable t, k, e, cnt, v
         for (t = 0; t < nT; t += 1)
-            Make/O/N=(nE) $("edc_raw_" + num2str(t)) = 0
+            Make/O/N=(nE) $("edc_raw_" + num2str(t)) = NaN
             Wave edc = $("edc_raw_" + num2str(t))
             SetScale/P x, e0, de, WaveUnits(w, 0), edc
-
-            for (k = kStart; k <= kEnd; k += 1)
-                edc += w[p][k][t]
+            for (e = 0; e < nE; e += 1)
+                edc[e] = 0
+                cnt = 0
+                for (k = kStart; k <= kEnd; k += 1)
+                    v = w[e][k][t]
+                    if (numtype(v) == 0)
+                        edc[e] += v
+                        cnt += 1
+                    endif
+                endfor
+                if (cnt > 0)
+                    edc[e] /= cnt
+                else
+                    edc[e] = NaN
+                endif
             endfor
-            edc /= nAvg
         endfor
     catch
         hadError = 1
@@ -1413,6 +1529,11 @@ Function LJZ_EDCExtract_RecordRunMeta(w, kStart, kEnd, runDF)
     Wave w
     Variable kStart, kEnd
     String runDF
+    NVAR SmEnable = $(LJZ_EDCExtract_BaseDF() + ":SmEnable")
+    NVAR SmN = $(LJZ_EDCExtract_BaseDF() + ":SmN")
+    NVAR SmN2 = $(LJZ_EDCExtract_BaseDF() + ":SmN2")
+    NVAR SmMethod = $(LJZ_EDCExtract_BaseDF() + ":SmMethod")
+    NVAR SmPoly = $(LJZ_EDCExtract_BaseDF() + ":SmPoly")
 
     String/G  $(LJZ_EDCExtract_BaseDF() + ":RunDF")       = runDF
     Variable/G $(LJZ_EDCExtract_BaseDF() + ":Run_kStart") = kStart
@@ -1429,6 +1550,24 @@ Function LJZ_EDCExtract_RecordRunMeta(w, kStart, kEnd, runDF)
     Variable/G Run_dt     = DimDelta(w, 2)
     Variable/G Run_nT     = DimSize(w, 2)
     String/G   SourceWave = GetWavesDataFolder(w, 2)
+    String/G   Run_sourceWavePath = GetWavesDataFolder(w, 2)
+    String/G   Run_sourceWaveName = NameOfWave(w)
+    String/G   Run_mode = "EDC"
+    Variable/G Run_nTraces = DimSize(w, 2)
+    Variable/G Run_smoothingEnabled = SmEnable
+    Variable/G Run_smoothingN = SmN
+    Variable/G Run_smoothingN2 = SmN2
+    Variable/G Run_smoothingMethod = SmMethod
+    Variable/G Run_smoothingPoly = SmPoly
+    Make/O/N=3 Run_dimSize = {DimSize(w,0), DimSize(w,1), DimSize(w,2)}
+    Make/O/N=3 Run_dimOffset = {DimOffset(w,0), DimOffset(w,1), DimOffset(w,2)}
+    Make/O/N=3 Run_dimDelta = {DimDelta(w,0), DimDelta(w,1), DimDelta(w,2)}
+    Make/O/T/N=3 Run_dimUnits = {WaveUnits(w,0), WaveUnits(w,1), WaveUnits(w,2)}
+    Make/O/N=(DimSize(w,2)) Run_windowLow = kStart
+    Make/O/N=(DimSize(w,2)) Run_windowHigh = kEnd
+    Make/O/N=(DimSize(w,2)) Run_indexLow = kStart
+    Make/O/N=(DimSize(w,2)) Run_indexHigh = kEnd
+    String/G Run_createdAt = Secs2Date(DateTime, 0) + " " + Secs2Time(DateTime, 3)
     SetDataFolder $oldDF
 
     return 0
@@ -1532,6 +1671,7 @@ Function LJZ_EDCExtract_DoExtract()
     endif
 
     Wave/Z w = $sWave
+    LJZ_Extract_PrintDimSanity(w, "EDC source")
     if (!LJZ_Extract_Is3DNumericWave(w))
         DoAlert 0, "当前选择不是有效的 3D wave（energy × k × stack）。"
         return -1
@@ -1545,8 +1685,10 @@ Function LJZ_EDCExtract_DoExtract()
     Variable kStart = round(k0)
     Variable kEnd   = round(k1)
     if (usePhys)
-        kStart = LJZ_EDCExtract_PhysKToIndex(w, k0)
-        kEnd   = LJZ_EDCExtract_PhysKToIndex(w, k1)
+        if (LJZ_Extract_WindowPhysToIndex(DimOffset(w,1), DimDelta(w,1), DimSize(w,1), k0, k1, kStart, kEnd) != 0)
+            Print "WARNING: EDC k window is empty after physical→index conversion. Extraction skipped."
+            return -1
+        endif
     endif
 
     String runDF = LJZ_EDCExtract_RunFrom3DWave(w, kStart, kEnd, bn)
