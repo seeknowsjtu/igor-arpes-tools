@@ -781,7 +781,12 @@ Function/S LJZ_MDCExtract_BuildGraphTitle(w, eStart, eEnd, baseName)
     Variable eStart, eEnd
     String baseName
 
-    String nm = (strlen(baseName) > 0) ? baseName : NameOfWave(w)
+    String nm
+    if (strlen(baseName) > 0)
+        nm = baseName
+    else
+        nm = NameOfWave(w)
+    endif
     nm = LJZ_Extract_ShortenForTitle(nm, 60)
 
     Variable physE0 = DimOffset(w, 0) + eStart * DimDelta(w, 0)
@@ -814,7 +819,12 @@ Function/S LJZ_MDCExtract_RunFrom3DWave(w, e0, e1, baseName)
     if (strlen(nm) > 20)
         nm = nm[0, 19]
     endif
-    String tag = (strlen(CleanupName(baseName, 0)) > 0) ? CleanupName(baseName, 0) : "MDC"
+    String tag
+    if (strlen(CleanupName(baseName, 0)) > 0)
+        tag = CleanupName(baseName, 0)
+    else
+        tag = "MDC"
+    endif
     String runDF = LJZ_MDCExtract_RunRoot() + ":" + nm + "_" + tag + "_e" + num2str(eStart) + "_" + num2str(eEnd) + ":"
 
     if (LJZ_MDCExtract_BuildRawMDCs(w, eStart, eEnd, runDF) != 0)
@@ -1579,7 +1589,12 @@ Function/S LJZ_EDCExtract_BuildGraphTitle(w, kStart, kEnd, baseName)
     Variable kStart, kEnd
     String baseName
 
-    String nm = (strlen(baseName) > 0) ? baseName : NameOfWave(w)
+    String nm
+    if (strlen(baseName) > 0)
+        nm = baseName
+    else
+        nm = NameOfWave(w)
+    endif
     nm = LJZ_Extract_ShortenForTitle(nm, 60)
 
     Variable physK0 = DimOffset(w, 1) + kStart * DimDelta(w, 1)
@@ -1610,7 +1625,12 @@ Function/S LJZ_EDCExtract_RunFrom3DWave(w, k0, k1, baseName)
     if (strlen(nm) > 20)
         nm = nm[0, 19]
     endif
-    String tag = (strlen(CleanupName(baseName, 0)) > 0) ? CleanupName(baseName, 0) : "EDC"
+    String tag
+    if (strlen(CleanupName(baseName, 0)) > 0)
+        tag = CleanupName(baseName, 0)
+    else
+        tag = "EDC"
+    endif
     String runDF = LJZ_EDCExtract_RunRoot() + ":" + nm + "_" + tag + "_k" + num2str(kStart) + "_" + num2str(kEnd) + ":"
 
     if (LJZ_EDCExtract_BuildRawEDCs(w, kStart, kEnd, runDF) != 0)
