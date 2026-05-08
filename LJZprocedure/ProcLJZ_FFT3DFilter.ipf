@@ -133,14 +133,13 @@ Function LJZ_20251014FFTfilter3D(w, hfFrac, kSigma, radDilate, notchFactor, atte
         Variable attenNat = attenDB * ln(10) / 20.0
         Variable rr = max(0, radDilate)
         
-        Progress_OpenFFT3D(0, 1, nz0)
+        Progress_OpenFFT3D(nz0)
 
         // ===== 主循环：逐层处理并写入 3 个 3D 输出 =====
         Variable k
+        NVAR abortFlag = root:Packages:LJZ_FFT3D:ljzabortion
         for (k = 0; k < nz0; k += 1)
-        
-                    // ★ 可中止检查（Stop 按钮把 abort=1）
-            NVAR abortFlag = root:Packages:LJZ_FFT3D:ljzabortion
+            // ★ 可中止检查（Stop 按钮把 abort=1）
             if (abortFlag != 0)
                 Progress_CloseFFT3D()
                 Abort "User stopped FFT3D."
@@ -225,14 +224,13 @@ Function LJZ_20251014FFTfilter3D(w, hfFrac, kSigma, radDilate, notchFactor, atte
         // 出错也不删文件夹，方便排查
         Progress_CloseFFT3D()
         SetDataFolder savedDFR
-        Variable err = GetRTError(0)
+        Variable err = GetRTError(1)
         String msg
         if (err != 0)
             msg = GetErrMessage(err)
         else
             msg = "Aborted inside LJZ_20251014FFTfilter3D."
         endif
-        err = GetRTError(1)
         Abort msg
     endtry
 End
@@ -241,7 +239,7 @@ End
 // 列出 root: 及其一级子文件夹（用于下拉菜单）
 // 结果形如 "root:;root:DF1:;root:DF2:" （分号分隔）
 //============================
-Function/S LJZ_ListRootDFs()
+Function/S FFT3D_ListRootDFs()
     String lst = "root:"
     Variable n = CountObjects("root:", 4)
     Variable i
@@ -278,7 +276,7 @@ End
 // 重建（非递归）ListBox 的数据波
 // 使用：root:ARPES_LJZ:FFT3D:LB_Items3D / LB_Sel3D
 //============================
-Function LJZ_RebuildWaveLB_Here(basePath)
+Function FFT3D_RebuildWaveLB_Here(basePath)
     String basePath
     NewDataFolder/O root:ARPES_LJZ
     NewDataFolder/O root:ARPES_LJZ:FFT3D
@@ -317,7 +315,7 @@ Proc FFT3D_LJZ()
     String/G FFTWaveSel  = ""                   // 选中的 3D 波全路径
 
     // 下拉菜单项缓存（可直接用函数）与参数
-    String/G DFMenuList = LJZ_ListRootDFs()
+    String/G DFMenuList = FFT3D_ListRootDFs()
 
     // 滤波参数（与函数形参一致）
     Variable/G hfFrac = 0.8
@@ -329,7 +327,7 @@ Proc FFT3D_LJZ()
     Variable/G doSymDisplay = 0
 
     // 首次构建列表（非递归，只扫 BasePathSel）
-    LJZ_RebuildWaveLB_Here(BasePathSel)
+    FFT3D_RebuildWaveLB_Here(BasePathSel)
 
     SetDataFolder root:
     DoWindow/F FFT3D_LJZ_P
@@ -345,8 +343,6 @@ Window FFT3D_LJZ_P() : Panel
 	PauseUpdate; Silent 1		// building window...
 	NewPanel /W=(326.4,166.8,887.4,595.8) as "2025FFT3D_LJZ"
 	ModifyPanel frameStyle=1
-	ShowTools/A
-	ShowInfo/W=$WinName(0,64)
 	TitleBox tb0,pos={12.00,6.00},size={66.60,18.00},title="Base Folder:",frame=0
 	PopupMenu pmBase,pos={99.00,6.00},size={102.60,20.40},proc=FFT3D_PMBaseProc
 	PopupMenu pmBase,mode=3,popvalue="root:ARPES_LJZ:",value= #"root:ARPES_LJZ:FFT3D:DFMenuList"
@@ -395,7 +391,7 @@ Function FFT3D_PMBaseProc(ctrlName, popNum, popStr) : PopupMenuControl
     endif
 
     // 重新扫描当前根目录（非递归）
-    LJZ_RebuildWaveLB_Here(basePath)
+    FFT3D_RebuildWaveLB_Here(basePath)
     return 0
 End
 
@@ -428,7 +424,7 @@ End
 Function FFT3D_RefreshList(ctrlName) : ButtonControl
     String ctrlName
     SVAR basePath = root:ARPES_LJZ:FFT3D:BasePathSel
-    LJZ_RebuildWaveLB_Here(basePath)
+    FFT3D_RebuildWaveLB_Here(basePath)
     return 0
 End
 
@@ -494,8 +490,8 @@ Function FFT3D_Close(ctrlName) : ButtonControl
 End
 
 // 打开/重置进度窗（用你的变量名；用 _NUM: 逐次更新）
-Function Progress_OpenFFT3D(indefinite, useIgorDraw, high)
-    Variable indefinite, useIgorDraw, high
+Function Progress_OpenFFT3D(high)
+    Variable high
 
     DFREF savedDF = GetDataFolderDFR()
 
@@ -517,14 +513,8 @@ Function Progress_OpenFFT3D(indefinite, useIgorDraw, high)
     ValDisplay pv, win=FFT3D_Progress, limits={0, high, 0}
     ValDisplay pv, win=FFT3D_Progress, value=_NUM:0
 
-    if (indefinite)
-        ValDisplay pv, win=FFT3D_Progress, mode=4   // 不确定型（糖果条）
-    else
-        ValDisplay pv, win=FFT3D_Progress, mode=3   // 确定型
-    endif
-    if (useIgorDraw)
-        ValDisplay pv, win=FFT3D_Progress, highColor=(0,0,65535)
-    endif
+    ValDisplay pv, win=FFT3D_Progress, mode=3
+    ValDisplay pv, win=FFT3D_Progress, highColor=(0,0,65535)
 
     Button bStop, win=FFT3D_Progress, pos={360,4}, size={50,20}, title="Stop", proc=FFT3D_ProgressStop
 

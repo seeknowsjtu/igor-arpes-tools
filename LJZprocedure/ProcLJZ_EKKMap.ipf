@@ -232,32 +232,15 @@ Function LJZ_EKKMap_IsFinite(v)
 End
 
 Function LJZ_EKKMap_IsValidMap2DForGridStat(w)
-    Wave/Z w
-
-    // "Dimensionally legal" does not mean a slice is physically usable.
-    // For 3D two-pass global-grid statistics, we only accept 2D numeric maps
-    // that contain at least one finite point; all-NaN / all-Inf maps are invalid.
+    Wave w
     if (!WaveExists(w))
         return 0
     endif
-    if (WaveType(w, 1) != 1)
+    if (DimSize(w, 0) <= 0 || DimSize(w, 1) <= 0)
         return 0
     endif
-    if (DimSize(w,0) < 2 || DimSize(w,1) < 2)
-        return 0
-    endif
-
-    Variable nx = DimSize(w,0)
-    Variable ny = DimSize(w,1)
-    Variable ix, iy
-    for (ix=0; ix<nx; ix+=1)
-        for (iy=0; iy<ny; iy+=1)
-            if (numtype(w[ix][iy]) == 0)
-                return 1
-            endif
-        endfor
-    endfor
-    return 0
+    WaveStats/Q/M=1 w
+    return (V_npnts > 0)
 End
 
 Function LJZ_EKKMap_ClampToUnit(v)
@@ -451,7 +434,6 @@ Function LJZ_EKKMap_EnsureDF()
         Variable/G $(LJZ_EKKMap_BaseDF() + ":Energy") = EnergyRelRef
     endif
     NVAR EnergyCompatRef = $(LJZ_EKKMap_BaseDF() + ":Energy")
-    EnergyCompatRef = EnergyRelRef
 
     NVAR/Z Azimuth = $(LJZ_EKKMap_BaseDF() + ":Azimuth")
     if (!NVAR_Exists(Azimuth))
@@ -1213,13 +1195,11 @@ Function LJZ_EKKMap_ShowResultWave(w, graphName)
         AppendImage/W=$graphName dispSlice
         ModifyGraph/W=$graphName width={Plan,1,bottom,left}
         ModifyGraph/W=$graphName mirror=2
-        ModifyImage/W=$graphName $imName3D, ctab={*,*,Rainbow,0}
     else
         String imName2D = NameOfWave(w)
         AppendImage/W=$graphName w
         ModifyGraph/W=$graphName width={Plan,1,bottom,left}
         ModifyGraph/W=$graphName mirror=2
-        ModifyImage/W=$graphName $imName2D, ctab={*,*,Rainbow,0}
     endif
     return 0
 End
@@ -1377,6 +1357,7 @@ Function/WAVE LJZ_EKKMap_CalcKxKy2D(srcIn, energyRel, hv, workFunc, tilt, azimut
     if (geo)
         if (abs(tilt) < 1e-10)
             LJZ_EKKMap_tmpA2 = asin(LJZ_EKKMap_ClampToUnit(sqrt(x^2+y^2)/k0 * sin(atan2(y,x) - azimuth*pi/180))) * 180/pi
+            // tmpB2 reads tmpA2 pointwise from the already-computed temporary wave (Igor wave-expression semantics).
             LJZ_EKKMap_tmpB2 = abs(cos(LJZ_EKKMap_tmpA2*pi/180)) < 1e-12 ? NaN : asin(LJZ_EKKMap_ClampToUnit(sqrt(x^2+y^2)/k0 * cos(atan2(y,x) - azimuth*pi/180) / cos(LJZ_EKKMap_tmpA2*pi/180))) * 180/pi
         else
             Duplicate/O LJZ_EKKMap_tmpKxKy, LJZ_EKKMap_tmpKxr, LJZ_EKKMap_tmpKyr, LJZ_EKKMap_tmpAA, LJZ_EKKMap_tmpBB, LJZ_EKKMap_tmpCC, LJZ_EKKMap_tmpDisc
@@ -1387,11 +1368,13 @@ Function/WAVE LJZ_EKKMap_CalcKxKy2D(srcIn, energyRel, hv, workFunc, tilt, azimut
             LJZ_EKKMap_tmpCC = (LJZ_EKKMap_tmpKxr/k0)^2 + (LJZ_EKKMap_tmpKyr/k0/sin(tilt*pi/180))^2 - 1
             LJZ_EKKMap_tmpDisc = LJZ_EKKMap_tmpBB^2 - 4 * LJZ_EKKMap_tmpAA * LJZ_EKKMap_tmpCC
 
+            // For positive tilt, choose the +sqrt branch so solved angle stays on the physical analyzer side.
             if (tilt > 0)
                 LJZ_EKKMap_tmpA2 = LJZ_EKKMap_tmpDisc < 0 ? NaN : asin(LJZ_EKKMap_ClampToUnit((-LJZ_EKKMap_tmpBB + sqrt(LJZ_EKKMap_tmpDisc)) / (2 * LJZ_EKKMap_tmpAA))) * 180/pi
             else
                 LJZ_EKKMap_tmpA2 = LJZ_EKKMap_tmpDisc < 0 ? NaN : asin(LJZ_EKKMap_ClampToUnit((-LJZ_EKKMap_tmpBB - sqrt(LJZ_EKKMap_tmpDisc)) / (2 * LJZ_EKKMap_tmpAA))) * 180/pi
             endif
+            // tmpB2 reads tmpA2 pointwise from the already-computed temporary wave (Igor wave-expression semantics).
             LJZ_EKKMap_tmpB2 = abs(cos(LJZ_EKKMap_tmpA2*pi/180)) < 1e-12 ? NaN : asin(LJZ_EKKMap_ClampToUnit(LJZ_EKKMap_tmpKxr / k0 / cos(LJZ_EKKMap_tmpA2*pi/180))) * 180/pi
             KillWaves/Z LJZ_EKKMap_tmpKxr, LJZ_EKKMap_tmpKyr, LJZ_EKKMap_tmpAA, LJZ_EKKMap_tmpBB, LJZ_EKKMap_tmpCC, LJZ_EKKMap_tmpDisc
         endif
@@ -1903,7 +1886,7 @@ Function LJZ_EKKMap_SetSourceDF(dfStr)
     return 0
 End
 
-Proc LJZ_EKKMap_ButtonProc(ctrlName) : ButtonControl
+Function LJZ_EKKMap_ButtonProc(ctrlName) : ButtonControl
     String ctrlName
 
     strswitch(ctrlName)
@@ -1955,7 +1938,7 @@ Proc LJZ_EKKMap_ButtonProc(ctrlName) : ButtonControl
     endswitch
 End
 
-Proc LJZ_EKKMap_PopupProc(ctrlName, popNum, popStr) : PopupMenuControl
+Function LJZ_EKKMap_PopupProc(ctrlName, popNum, popStr) : PopupMenuControl
     String ctrlName
     Variable popNum
     String popStr
@@ -1970,7 +1953,7 @@ Proc LJZ_EKKMap_PopupProc(ctrlName, popNum, popStr) : PopupMenuControl
     endswitch
 End
 
-Proc LJZ_EKKMap_SetVarProc(ctrlName, varNum, varStr, varName) : SetVariableControl
+Function LJZ_EKKMap_SetVarProc(ctrlName, varNum, varStr, varName) : SetVariableControl
     String ctrlName
     Variable varNum
     String varStr

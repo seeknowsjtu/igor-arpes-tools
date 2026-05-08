@@ -756,25 +756,7 @@ End
 // 1D 数值 wave 升序排序（简单版，N 很小时足够）
 Function sg_sort_numeric_wave_ascending(wv)
     Wave wv
-
-    Variable n = DimSize(wv, 0)
-    Variable i, j, tempVal
-
-    if (n <= 1)
-        return 0
-    endif
-
-    for (i = 0; i < n - 1; i += 1)
-        for (j = i + 1; j < n; j += 1)
-            if (wv[j] < wv[i])
-                tempVal = wv[i]
-                wv[i] = wv[j]
-                wv[j] = tempVal
-            endif
-        endfor
-    endfor
-
-    return 0
+    Sort wv, wv
 End
 
 
@@ -803,36 +785,19 @@ End
 // 保持原顺序去重
 Function sg_dedup_numeric_wave_keep_order(wv)
     Wave wv
-
-    Variable n = DimSize(wv, 0)
+    Variable n = numpnts(wv)
     if (n <= 1)
         return 0
     endif
-
-    Make/FREE/D/N=(n) tempKeep
-    Variable outCount = 0
-    Variable i, j, v, foundSame
-
-    for (i = 0; i < n; i += 1)
-        v = wv[i]
-        foundSame = 0
-
-        for (j = 0; j < outCount; j += 1)
-            if (tempKeep[j] == v)
-                foundSame = 1
-                break
-            endif
-        endfor
-
-        if (!foundSame)
-            tempKeep[outCount] = v
-            outCount += 1
+    Sort wv, wv
+    Variable i, writeIdx = 1
+    for (i = 1; i < n; i += 1)
+        if (wv[i] != wv[writeIdx - 1])
+            wv[writeIdx] = wv[i]
+            writeIdx += 1
         endif
     endfor
-
-    Redimension/N=(outCount) tempKeep
-    Duplicate/O tempKeep, wv
-
+    Redimension/N=(writeIdx) wv
     return 0
 End
 
@@ -1821,7 +1786,7 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	ShowTools/A
 	TitleBox sg_title,pos={12.00,6.00},size={291.60,18.00},title="SliceGallery v1  —  State / Scan / Layer Selection / UI"
 	TitleBox sg_title,frame=0
-	TitleBox sg_status,pos={12.00,30.00},size={418.20,18.00},title="Selected: root:Ekimage:EK_DS_Sw6_dv4_1mW_10272024_Combine0To23_VV"
+	TitleBox sg_status,pos={12.00,30.00},size={418.20,18.00},title=""
 	TitleBox sg_status,frame=0
 	GroupBox sg_gb_data,pos={6.00,57.00},size={432.00,87.00},title="Data Source"
 	TitleBox sg_t_scan,pos={18.00,78.00},size={60.60,18.00},title="Wave Scan"
@@ -1896,10 +1861,10 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	SetVariable sg_sv_y1,pos={852.00,223.80},size={162.00,19.80},title="yMax"
 	SetVariable sg_sv_y1,value= root:ARPES_LJZ:SliceGallery:yMax
 	GroupBox sg_gb_color,pos={840.00,270.60},size={186.00,210.60},title="Color Settings"
-	TitleBox sg_tb_ct_current,pos={852.60,299.40},size={66.00,18.00},title="CT: Mualani"
+	TitleBox sg_tb_ct_current,pos={852.60,299.40},size={66.00,18.00},title=""
 	TitleBox sg_tb_ct_current,frame=0
 	Button sg_btn_browse_ct,pos={962.40,300.60},size={30.00,18.00},proc=sg_btn_open_ct_browser,title="..."
-	TitleBox sg_tb_mode_hint,pos={764.40,35.40},size={267.00,12.60},title="Mode: Raw slices; color popup controls PerPanel/Shared/Manual"
+	TitleBox sg_tb_mode_hint,pos={764.40,35.40},size={267.00,12.60},title=""
 	TitleBox sg_tb_mode_hint,fSize=10,frame=0
 	CheckBox sg_ck_lut,pos={852.00,328.80},size={56.40,18.00},title="Use LUT"
 	CheckBox sg_ck_lut,variable= root:ARPES_LJZ:SliceGallery:useLUT
@@ -1911,7 +1876,7 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	SetVariable sg_sv_c0,value= root:ARPES_LJZ:SliceGallery:cMin
 	SetVariable sg_sv_c1,pos={852.00,415.80},size={78.00,19.80},title="cMax"
 	SetVariable sg_sv_c1,value= root:ARPES_LJZ:SliceGallery:cMax
-	TitleBox sg_tb_range_hint,pos={852.00,441.60},size={100.20,12.60},title="Manual c range: [0, 500]"
+	TitleBox sg_tb_range_hint,pos={852.00,441.60},size={100.20,12.60},title=""
 	TitleBox sg_tb_range_hint,fSize=10,frame=0
 	GroupBox sg_gb_label,pos={840.00,492.00},size={184.80,178.20},title="Label Settings"
 	PopupMenu sg_pm_label,pos={852.00,519.00},size={72.60,20.40},proc=sg_pm_label_proc
@@ -1927,9 +1892,9 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	SetVariable sg_sv_tby,pos={852.00,644.00},size={78.00,19.80},title="Y%"
 	SetVariable sg_sv_tby,value= root:ARPES_LJZ:SliceGallery:tbY
 	GroupBox sg_gb_summary,pos={6.00,576.00},size={810.00,84.00},title="Summary Information"
-	TitleBox sg_layers_txt,pos={18.00,600.00},size={127.20,18.00},title="Layers: 0, 1, 4, 7, 11, 18"
+	TitleBox sg_layers_txt,pos={18.00,600.00},size={127.20,18.00},title=""
 	TitleBox sg_layers_txt,frame=0
-	TitleBox sg_vals_txt,pos={18.00,624.00},size={105.60,12.60},title="Dim2: -1, 4, 19, 34, 54, 89"
+	TitleBox sg_vals_txt,pos={18.00,624.00},size={105.60,12.60},title=""
 	TitleBox sg_vals_txt,fSize=10,frame=0
 	GroupBox sg_gb_buttons,pos={519.00,441.00},size={297.00,120.00},title="Actions"
 	SetVariable sg_sv_exportname,pos={537.00,609.60},size={249.00,19.80},title="Name"
@@ -3523,7 +3488,7 @@ Function sg_ct_browser_lb_proc(ctrlName, row, col, eventCode) : ListBoxControl
     String ctrlName
     Variable row, col, eventCode
 
-    if (eventCode != 1 && eventCode != 3 && eventCode != 4)
+    if (eventCode != 4)
         return 0
     endif
 
