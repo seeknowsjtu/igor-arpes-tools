@@ -1,60 +1,92 @@
-# igor-arpes-tools
+# Igor ARPES Tools
 
-这是一个面向 **ARPES 数据处理与分析** 的 Igor Pro 脚本工具箱仓库。
+一个面向 **ARPES（角分辨光电子能谱）** 数据处理的 Igor Pro 脚本工具仓库。  
+本仓库包含一系列可独立加载、可组合使用的 `.ipf` 模块，覆盖从数据浏览、预处理到拟合分析与图形整理的常见研究流程。
 
-仓库里的内容不是单一程序，而是一组可以按需加载、相互配合使用的 `.ipf` 模块，整体偏研究工作流工具，主要围绕数据浏览、预处理、拟合、结果展示和版面整理展开。
+---
 
-## 主要功能
+## 仓库定位
 
-- **数据浏览与展示**
-  - 多层切片查看（如 6 层预览）
-  - Slice Gallery 浏览
-  - 自定义色表与图像配色
-  - Layout 排版辅助
+- 这是一个 **研究工作流工具箱**，不是单一可执行程序。
+- 模块设计以 Igor 的 **菜单（Menu）+ 面板（Panel）+ 回调函数** 为主。
+- 部分功能为稳定主流程，部分文件是历史版本、实验脚本或阶段性工具。
 
-- **数据处理**
-  - 3D FFT 滤波
-  - 3D 二阶导处理
-  - 多边形 ROI 积分与时序追踪
-  - 角度到 `k` 空间的转换
+---
 
-- **拟合与谱线分析**
-  - MDC 拟合与交互式 Workbench
-  - EDC 提取
-  - EDC Workbench 拟合
-  - EDC 边沿宽度分析
+## 功能概览
 
-- **辅助与历史脚本**
-  - 一些通用 wave 工具函数
-  - 部分实验性、测试性或历史兼容模块
+### 1) 数据浏览与可视化
+- 多层切片查看（如 6 层联动预览）
+- Slice Gallery 快速浏览
+- 色表调整与图像渲染控制
+- Layout 排版辅助
 
-## 仓库特点
+### 2) 数据处理与变换
+- 3D FFT 滤波
+- 3D 二阶导数计算
+- 多边形 ROI 选区积分与时序追踪
+- 角度空间到动量空间（k-space）转换
 
-- 以 **面板（Panel）+ 菜单（Menu）+ 回调函数** 的方式组织。
-- 新旧流程并存，部分模块已经拆分成更清晰的 Workbench 结构。
-- 更适合看作一个持续演化中的 **ARPES 研究工具箱**，而不是一个完整封装的软件产品。
+### 3) 谱线提取与拟合
+- MDC 拟合与交互式 Workbench
+- EDC 提取与 Workbench 拟合
+- EDC 边沿宽度分析
+- 与拟合流程配套的预处理与结果展示模块
 
-## 主要模块一览
+---
 
-- `ProcLJZ_MainMenu.ipf`：较早期的主菜单入口，包含 FFT、MDC 拟合、ROI、色表和多层显示入口。
-- `ProcLJZ_FFT3DFilter.ipf`：3D FFT 滤波。
-- `ProcLJZ_SecondDerivative3D.ipf`：3D 二阶导计算。
-- `ProcLJZ_ROIPolygonTrace.ipf`：多边形 ROI 积分、背景处理与 FFT 分析。
-- `ProcLJZ_AngleToKTransform.ipf`：角度到动量空间转换及相关绘图。
-- `ProcLJZ_EDCExtract.ipf`：从 3D 数据中提取 EDC。
-- `ProcLJZ_EDCWB*.ipf`：模块化 EDC Workbench。
-- `ProcLJZ_EDCEdgeWidth.ipf`：EDC 边沿宽度测量。
-- `ProcLJZ_MDCInteractiveFitWorkbench.ipf` / `ProcLJZ_MDCWB.ipf`：MDC 拟合工作台。
-- `ProcLJZ_ColorTablePanel.ipf`：色表编辑与应用。
-- `ProcLJZ_Show6LayerPanel.ipf` / `ProcLJZ_GallerySlice.ipf`：切片浏览与展示。
-- `ProcLJZ_LayoutTools.ipf`：Layout 排版与对象整理。
+## 目录说明
 
-## 适合如何理解这个仓库
+```text
+.
+├── LJZprocedure/        # 核心 Igor Pro 过程文件（主要功能模块）
+├── CDHprocedure/        # 兼容/历史过程文件
+├── docs/                # 附加文档（如错误记录）
+├── ONBOARDING.md        # 上手说明（若存在）
+└── IgorManual8.pdf      # Igor Pro 参考手册（本地副本）
+```
 
-如果你第一次接触这个仓库，建议优先从菜单入口和面板型模块开始看：
+---
 
-1. 先看 `Menu "ARPES_LJZ"` 里有哪些入口。
-2. 再看对应的 `Proc` / `Function` 如何打开面板。
-3. 最后顺着按钮、列表框、弹窗回调进入具体算法。
+## 关键模块（LJZprocedure）
 
-这样会比从头到尾顺读单个大文件更容易理解。
+- `ProcLJZ_MainMenu.ipf`：主菜单入口，聚合常用功能。
+- `ProcLJZ_FFT3DFilter.ipf`：3D FFT 滤波处理。
+- `ProcLJZ_SecondDerivative3D.ipf`：3D 二阶导算法。
+- `ProcLJZ_ROIPolygonTrace.ipf`：ROI 选区、积分与分析流程。
+- `ProcLJZ_AngleToKTransform.ipf`：角度到 k 空间转换。
+- `ProcLJZ_EDCExtract.ipf`：从 3D 数据提取 EDC。
+- `ProcLJZ_EDCWB*.ipf`：EDC Workbench 分模块实现。
+- `ProcLJZ_EDCEdgeWidth.ipf`：EDC 边沿宽度分析。
+- `LJZ_MDCWB_Part*.ipf`：MDC Workbench 核心、拟合引擎与面板。
+- `ProcLJZ_ColorTablePanel.ipf`：色表面板与样式应用。
+- `ProcLJZ_Show6LayerPanel.ipf` / `ProcLJZ_GallerySlice.ipf`：多层切片与图库浏览。
+- `ProcLJZ_LayoutTools.ipf`：图版布局与对象整理工具。
+
+---
+
+## 建议阅读顺序
+
+如果你第一次接触本仓库，建议按下面顺序理解代码结构：
+
+1. 从主菜单入口开始：`ProcLJZ_MainMenu.ipf`。
+2. 找到对应面板创建函数（`Panel`/`Window` 相关函数）。
+3. 顺着按钮与控件回调进入数据处理或拟合核心函数。
+4. 最后再阅读独立算法模块（FFT、二阶导、拟合引擎等）。
+
+这种“从入口到实现”的路径，通常比直接通读单个大文件更高效。
+
+---
+
+## 使用建议
+
+- 建议先在测试数据上跑通完整流程，再迁移到批量数据。
+- 不同实验线站/数据格式可能需要做变量命名或数据组织层面的适配。
+- 对历史脚本进行改动前，建议先备份或新建分支，避免影响既有分析流程。
+
+---
+
+## 免责声明
+
+本仓库主要服务于科研分析场景，脚本可能随课题需求持续演进。  
+如需长期维护，建议在你自己的分支中固定版本并补充实验室内部文档。
