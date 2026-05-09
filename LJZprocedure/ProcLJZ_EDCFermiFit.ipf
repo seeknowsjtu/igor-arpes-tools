@@ -2183,6 +2183,8 @@ End
 
 Function LJZ_EDCFermiFit_OpenPanel()
     LJZ_EDCFermiFit_EnsureDF()
+    String sSourceDFRef = LJZ_EDCFermiFit_BaseDF() + ":SourceDF"
+    String sWaveSelRef  = LJZ_EDCFermiFit_BaseDF() + ":WaveSel"
 
     String p = LJZ_EDCFermiFit_PanelName()
     DoWindow/F $p
@@ -2195,7 +2197,7 @@ Function LJZ_EDCFermiFit_OpenPanel()
     endif
 
     SetVariable svSourceDF,pos={10,10},size={455,20},title="Source DF"
-    SetVariable svSourceDF,value=_STR:LJZ_EDCFermiFit_BaseDF() + ":SourceDF",proc=LJZ_EDCFermiFit_SetVarProc
+    SetVariable svSourceDF,value=_STR:$sSourceDFRef,proc=LJZ_EDCFermiFit_SetVarProc
 
     Button btUseCurrent,pos={480,8},size={80,24},title="Current",proc=LJZ_EDCFermiFit_ButtonProc
     Button btScan,pos={575,8},size={70,24},title="Scan",proc=LJZ_EDCFermiFit_ButtonProc
@@ -2276,7 +2278,7 @@ Function LJZ_EDCFermiFit_OpenPanel()
     Button btPlotResult,pos={875,618},size={80,24},title="Plot",proc=LJZ_EDCFermiFit_ButtonProc
 
     SetVariable svSelWave,pos={10,678},size={945,20},title="Selected Wave:"
-    SetVariable svSelWave,value=_STR:LJZ_EDCFermiFit_BaseDF() + ":WaveSel",noedit=1
+    SetVariable svSelWave,value=_STR:$sWaveSelRef,noedit=1
 
     TitleBox tbWorkMode,pos={10,700},size={945,18},frame=0,title="Showing source wave"
     TitleBox tbMsg,pos={10,720},size={945,18},frame=0,title="Model: [(Height + OccSlope*(E-EF)) * FD] convolved with Gaussian + BG + normalized Shirley"
