@@ -951,6 +951,7 @@ Function LJZ_EDCWB_BootstrapTargetDF()
         return 0
     endif
 
+    // Preferred: EDCWB TargetDF (already bound to base:TargetDF above).
     SVAR/Z runDF = root:ARPES_LJZ:EDCExtract:RunDF
     if (SVAR_Exists(runDF) && strlen(runDF) > 0)
         target = runDF
