@@ -345,6 +345,7 @@ End
 Function LJZ_EKKMap_EnsureDF()
     NewDataFolder/O root:ARPES_LJZ
     NewDataFolder/O $(LJZ_EKKMap_BaseDF())
+    NewDataFolder/O $(LJZ_EKKMap_BaseDF() + ":TMP")
     NewDataFolder/O $(LJZ_EKKMap_OutputBaseDF())
 
     SVAR/Z sSourceDF = $(LJZ_EKKMap_BaseDF() + ":SourceDF")
@@ -469,6 +470,14 @@ Function LJZ_EKKMap_EnsureDF()
     if (!NVAR_Exists(Geometry))
         Variable/G $(LJZ_EKKMap_BaseDF() + ":Geometry") = 1
     endif
+    NVAR/Z EnergyAxisMode = $(LJZ_EKKMap_BaseDF() + ":EnergyAxisMode")
+    if (!NVAR_Exists(EnergyAxisMode))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":EnergyAxisMode") = 0
+    endif
+    SVAR/Z LastErrorMsg = $(LJZ_EKKMap_BaseDF() + ":LastErrorMsg")
+    if (!SVAR_Exists(LastErrorMsg))
+        String/G $(LJZ_EKKMap_BaseDF() + ":LastErrorMsg") = ""
+    endif
 
     Wave/T/Z wDisp = $(LJZ_EKKMap_BaseDF() + ":LB_Disp")
     if (!WaveExists(wDisp))
@@ -493,6 +502,17 @@ Function LJZ_EKKMap_EnsureDF()
     SetScale/P x, 0, 1, "", $(LJZ_EKKMap_BaseDF() + ":Preview2D")
     SetScale/P y, 0, 1, "", $(LJZ_EKKMap_BaseDF() + ":Preview2D")
 
+    return 0
+End
+
+Function LJZ_EKKMap_LogWaveAxisSanity(w, modeName)
+    Wave w
+    String modeName
+    Print "EKKMap source = " + GetWavesDataFolder(w,2)
+    Print "EKKMap mode   = " + modeName
+    Print "dim0: n=" + num2str(DimSize(w,0)) + ", off=" + num2str(DimOffset(w,0)) + ", del=" + num2str(DimDelta(w,0)) + ", unit=" + WaveUnits(w,0)
+    Print "dim1: n=" + num2str(DimSize(w,1)) + ", off=" + num2str(DimOffset(w,1)) + ", del=" + num2str(DimDelta(w,1)) + ", unit=" + WaveUnits(w,1)
+    Print "dim2: n=" + num2str(DimSize(w,2)) + ", off=" + num2str(DimOffset(w,2)) + ", del=" + num2str(DimDelta(w,2)) + ", unit=" + WaveUnits(w,2)
     return 0
 End
 
@@ -1780,15 +1800,21 @@ Function LJZ_EKKMap_RunKxKy()
         if (!LJZ_EKKMap_ValidateInputForKxKy(w, is3D))
             continue
         endif
+        LJZ_EKKMap_LogWaveAxisSanity(w, "KxKy")
+        if (abs(DimDelta(w,1)) <= 1e-12)
+            DoAlert 0, "KxKy warning: dim1 (scan-angle axis) delta is zero or missing."
+        endif
 
         if (LJZ_EKKMap_Is2DWave(w))
             Duplicate/O LJZ_EKKMap_CalcKxKy2D(w, EnergyRel, hv, WorkFunc, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry), $(outDF + outName)
             Wave out2D = $(outDF + outName)
             LJZ_EKKMap_ShowResultWave(out2D, "Im_" + outName)
         elseif (LJZ_EKKMap_Is3DWave(w))
-            LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outDF + outName, hv, WorkFunc, FL, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry)
-            Wave out3DShow = $(outDF + outName)
-            LJZ_EKKMap_ShowResultWave(out3DShow, "Im_" + outName)
+            Variable rcKxKy = LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outDF + outName, hv, WorkFunc, FL, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry)
+            if (rcKxKy == 0)
+                Wave out3DShow = $(outDF + outName)
+                LJZ_EKKMap_ShowResultWave(out3DShow, "Im_" + outName)
+            endif
         endif
     endfor
     return 0
@@ -1834,15 +1860,21 @@ Function LJZ_EKKMap_RunKxKz()
         if (!LJZ_EKKMap_ValidateInputForKxKz(w, is3D))
             continue
         endif
+        LJZ_EKKMap_LogWaveAxisSanity(w, "KxKz")
+        if (abs(DimDelta(w,1)) <= 1e-12)
+            DoAlert 0, "KxKz warning: dim1 (hv axis) delta is zero or missing."
+        endif
 
         if (LJZ_EKKMap_Is2DWave(w))
             Duplicate/O LJZ_EKKMap_CalcKxKz2D(w, EnergyRel, WorkFunc, ThetaAngle, V0, Pixel, LatticeA, LatticeC), $(outDF + outName)
             Wave out2D = $(outDF + outName)
             LJZ_EKKMap_ShowResultWave(out2D, "Im_" + outName)
         elseif (LJZ_EKKMap_Is3DWave(w))
-            LJZ_EKKMap_RunKxKz_3D_TwoPass(w, outDF + outName, WorkFunc, FL, ThetaAngle, V0, Pixel, LatticeA, LatticeC)
-            Wave out3DShow = $(outDF + outName)
-            LJZ_EKKMap_ShowResultWave(out3DShow, "Im_" + outName)
+            Variable rcKxKz = LJZ_EKKMap_RunKxKz_3D_TwoPass(w, outDF + outName, WorkFunc, FL, ThetaAngle, V0, Pixel, LatticeA, LatticeC)
+            if (rcKxKz == 0)
+                Wave out3DShow = $(outDF + outName)
+                LJZ_EKKMap_ShowResultWave(out3DShow, "Im_" + outName)
+            endif
         endif
     endfor
     return 0

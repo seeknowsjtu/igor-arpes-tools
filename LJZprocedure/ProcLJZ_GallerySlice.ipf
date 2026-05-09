@@ -1,5 +1,6 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3
+// Dependency: ProcLJZ_CTLUZ.ipf must be loaded before this file (uses ctluz_* helpers).
 
 //============================================================
 // SliceGallery v1 - Module 1
@@ -89,7 +90,16 @@ Function sg_wave_is_valid_3d(w)
     if (!WaveExists(w))
         return 0
     endif
-    return (WaveDims(w) == 3)
+    if (WaveType(w, 1) != 1)
+        return 0
+    endif
+    if (WaveDims(w) != 3)
+        return 0
+    endif
+    if (DimSize(w,0) <= 0 || DimSize(w,1) <= 0 || DimSize(w,2) <= 0)
+        return 0
+    endif
+    return 1
 End
 
 
@@ -580,8 +590,10 @@ Function sg_refresh_target_wave_info()
     dim1_del = DimDelta(w, 1)
     dim2_del = DimDelta(w, 2)
 
-    dim2_vmin = dim2_off
-    dim2_vmax = dim2_off + dim2_del * (dim2_n - 1)
+    Variable a = dim2_off
+    Variable b = dim2_off + dim2_del * (dim2_n - 1)
+    dim2_vmin = min(a, b)
+    dim2_vmax = max(a, b)
 
     sg_sync_panel_from_state()
     return 0
@@ -789,11 +801,20 @@ Function sg_dedup_numeric_wave_keep_order(wv)
     if (n <= 1)
         return 0
     endif
-    Sort wv, wv
-    Variable i, writeIdx = 1
-    for (i = 1; i < n; i += 1)
-        if (wv[i] != wv[writeIdx - 1])
-            wv[writeIdx] = wv[i]
+    Variable i, j, found
+    Variable writeIdx = 0
+    Variable val
+    for (i = 0; i < n; i += 1)
+        val = wv[i]
+        found = 0
+        for (j = 0; j < writeIdx; j += 1)
+            if (wv[j] == val)
+                found = 1
+                break
+            endif
+        endfor
+        if (!found)
+            wv[writeIdx] = val
             writeIdx += 1
         endif
     endfor
@@ -891,6 +912,7 @@ Function sg_build_layers_manual(inputStr)
     sg_init_defaults_if_needed()
 
     Wave selLayers = root:ARPES_LJZ:SliceGallery:selLayers
+    Wave selValuesDim2 = root:ARPES_LJZ:SliceGallery:selValuesDim2
 
     if (!sg_target_wave_is_ready(1))
         Redimension/N=0 selLayers
@@ -2213,6 +2235,9 @@ Function sg_extract_selected_slices_to_preview_tmp()
         DoAlert 0, "SliceGallery: selLayers is empty. Please build layers first."
         return -1
     endif
+    if (!sg_target_wave_is_ready(1))
+        return -1
+    endif
 
     Wave sourceWave = $targetWavePath
     sg_prepare_preview_tmp_folder()
@@ -2233,8 +2258,8 @@ Function sg_extract_selected_slices_to_preview_tmp()
         Wave imgWave = $imgName
         imgWave[][] = sourceWave[p][q][layerIdx]
 
-        SetScale/P x DimOffset(sourceWave, 0), DimDelta(sourceWave, 0), imgWave
-        SetScale/P y DimOffset(sourceWave, 1), DimDelta(sourceWave, 1), imgWave
+        SetScale/P x, DimOffset(sourceWave,0), DimDelta(sourceWave,0), WaveUnits(sourceWave,0), imgWave
+        SetScale/P y, DimOffset(sourceWave,1), DimDelta(sourceWave,1), WaveUnits(sourceWave,1), imgWave
 
         if (sg_second_derivative_view_enabled())
             sg_apply_second_derivative_to_image(imgWave)
@@ -2275,7 +2300,10 @@ Function sg_compute_shared_color_range()
             continue
         endif
 
-        WaveStats/Q imgWave
+        WaveStats/Q/M=1 imgWave
+        if (numtype(V_min) != 0 || numtype(V_max) != 0)
+            continue
+        endif
         if (numtype(globalMin) != 0)
             globalMin = V_min
             globalMax = V_max
@@ -2286,6 +2314,7 @@ Function sg_compute_shared_color_range()
     endfor
 
     if (numtype(globalMin) != 0 || numtype(globalMax) != 0)
+        DoAlert 0, "SliceGallery: no finite values found in selected slices."
         return NaN
     endif
 
@@ -2686,7 +2715,7 @@ Function sg_render_preview_legacytight()
         imgName   = sg_img_name_from_index(i)
         imgPath   = sg_preview_tmp_df() + imgName
 
-        Wave/Z imgWave = $imgPath
+        imgWave = $imgPath
         if (!WaveExists(imgWave))
             continue
         endif
@@ -2888,7 +2917,7 @@ Function sg_render_preview_equalplot()
         imgName   = sg_img_name_from_index(i)
         imgPath   = sg_preview_tmp_df() + imgName
 
-        Wave/Z imgWave = $imgPath
+        imgWave = $imgPath
         if (!WaveExists(imgWave))
             continue
         endif
@@ -3060,6 +3089,12 @@ Function sg_export_current_preview()
         baseName = "SGExport"
         exportBaseName = baseName
     endif
+    SVAR layoutMode = root:ARPES_LJZ:SliceGallery:layoutMode
+    SVAR renderStyle = root:ARPES_LJZ:SliceGallery:renderStyle
+    if (!(StringMatch(renderStyle, "LegacyTight") || StringMatch(renderStyle, "EqualPlot")))
+        DoAlert 0, "SliceGallery: unsupported renderStyle."
+        return -1
+    endif
 
     // overwrite mode
     sg_export_kill_existing(baseName)
@@ -3081,8 +3116,26 @@ Function sg_export_current_preview()
     Variable firstColScale, firstColLeftPad
     Variable gapX, gapY, left0, top0
 
-    SVAR layoutMode = root:ARPES_LJZ:SliceGallery:layoutMode
-    SVAR renderStyle = root:ARPES_LJZ:SliceGallery:renderStyle
+    SVAR targetWavePath = root:ARPES_LJZ:SliceGallery:targetWavePath
+    Wave sourceWave = $targetWavePath
+    String/G $(outDF + "Run_sourceWavePath") = targetWavePath
+    String/G $(outDF + "Run_sourceWaveName") = NameOfWave(sourceWave)
+    Duplicate/O selLayers, $(outDF + "Run_selectedLayerIndex")
+    Duplicate/O selValuesDim2, $(outDF + "Run_selectedLayerValue")
+    Make/O/N=3 $(outDF + "Run_dimOffset")
+    Make/O/N=3 $(outDF + "Run_dimDelta")
+    Make/O/N=3 $(outDF + "Run_dimSize")
+    Make/O/T/N=3 $(outDF + "Run_dimUnits")
+    Wave runDimOffset = $(outDF + "Run_dimOffset")
+    Wave runDimDelta = $(outDF + "Run_dimDelta")
+    Wave runDimSize = $(outDF + "Run_dimSize")
+    Wave/T runDimUnits = $(outDF + "Run_dimUnits")
+    runDimOffset = DimOffset(sourceWave,p)
+    runDimDelta = DimDelta(sourceWave,p)
+    runDimSize = DimSize(sourceWave,p)
+    runDimUnits = WaveUnits(sourceWave,p)
+    String/G $(outDF + "Run_renderMode") = renderStyle
+    String/G $(outDF + "Run_layoutMode") = layoutMode
     NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
 
