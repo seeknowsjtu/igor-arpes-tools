@@ -113,6 +113,29 @@ Function LJZ_EDCWB_NConvSigma()
     return 4.0
 End
 
+Function LJZ_EDCWB_ClampFiniteNonneg(x, fallback)
+    Variable x, fallback
+    if (numtype(x) != 0)
+        return max(0, fallback)
+    endif
+    return max(0, x)
+End
+
+Function LJZ_EDCWB_ClampFinitePositive(x, fallback, minVal)
+    Variable x, fallback, minVal
+    Variable v = x
+    if (numtype(v) != 0)
+        v = fallback
+    endif
+    if (numtype(v) != 0)
+        v = minVal
+    endif
+    if (v < minVal)
+        v = minVal
+    endif
+    return v
+End
+
 
 // ============================================================================
 //  Section 2. Kernel functions
@@ -299,8 +322,9 @@ End
 
 // Evaluate spectral intensity curve for a given model over an entire wave.
 // Writes unsmoothed spectrum into specWave; caller must then convolve.
-Function LJZ_EDCWB_EvalSpectrumNoConv(wData, coef, specWave)
+Function LJZ_EDCWB_EvalSpectrumNoConv_ModelID(wData, coef, specWave, modelID)
     Wave wData, coef, specWave
+    Variable modelID
 
     Variable nPts = numpnts(wData)
     if (numpnts(specWave) != nPts)
@@ -308,7 +332,7 @@ Function LJZ_EDCWB_EvalSpectrumNoConv(wData, coef, specWave)
     endif
     CopyScales wData, specWave
 
-    Variable m = LJZ_EDCWB_WorkGetModelID()
+    Variable m = modelID
 
     Variable i, E, val
     Variable bg0, bg1, A, T, EF, res
@@ -371,9 +395,15 @@ Function LJZ_EDCWB_EvalSpectrumNoConv(wData, coef, specWave)
     return 0
 End
 
+Function LJZ_EDCWB_EvalSpectrumNoConv(wData, coef, specWave)
+    Wave wData, coef, specWave
+    return LJZ_EDCWB_EvalSpectrumNoConv_ModelID(wData, coef, specWave, LJZ_EDCWB_WorkGetModelID())
+End
+
 // Full model evaluation with convolution. Output written into outWave.
-Function LJZ_EDCWB_EvalModelFull(wData, coef, outWave)
+Function LJZ_EDCWB_EvalModelFull_ModelID(wData, coef, outWave, modelID)
     Wave wData, coef, outWave
+    Variable modelID
 
     Variable nPts = numpnts(wData)
     if (numpnts(outWave) != nPts)
@@ -381,7 +411,7 @@ Function LJZ_EDCWB_EvalModelFull(wData, coef, outWave)
     endif
     CopyScales wData, outWave
 
-    Variable m = LJZ_EDCWB_WorkGetModelID()
+    Variable m = modelID
     Variable nPar = LJZ_EDCWB_ModelNPar(m)
     if (numpnts(coef) < nPar)
         outWave = NaN
@@ -403,7 +433,7 @@ Function LJZ_EDCWB_EvalModelFull(wData, coef, outWave)
     Make/FREE/N=(nPts) specNoConv
     CopyScales wData, specNoConv
 
-    LJZ_EDCWB_EvalSpectrumNoConv(wData, coef, specNoConv)
+    LJZ_EDCWB_EvalSpectrumNoConv_ModelID(wData, coef, specNoConv, m)
 
     if (doConv && res > LJZ_EDCWB_MinRes())
         LJZ_EDCWB_ConvolveWithGauss(specNoConv, res, outWave)
@@ -412,6 +442,11 @@ Function LJZ_EDCWB_EvalModelFull(wData, coef, outWave)
     endif
 
     return 0
+End
+
+Function LJZ_EDCWB_EvalModelFull(wData, coef, outWave)
+    Wave wData, coef, outWave
+    return LJZ_EDCWB_EvalModelFull_ModelID(wData, coef, outWave, LJZ_EDCWB_WorkGetModelID())
 End
 
 
@@ -437,19 +472,35 @@ End
 
 // Weighted coefficient fingerprint used by convolution-based FitFuncs.
 // A plain sum(coef) can miss parameter changes that keep the total sum unchanged.
-Function LJZ_EDCWB_CoefFingerprint(coef)
-    Wave coef
+Function LJZ_EDCWB_ResetFitCacheState()
+    String base = LJZ_EDCWB_BaseDF()
+    KillWaves/Z $(base + ":TMP_LastCoef")
+    return 0
+End
 
-    Variable s = 0
+Function LJZ_EDCWB_CoefChanged(coef)
+    Wave coef
+    Wave/Z lastCoef = $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoef")
     Variable i, v
+    if (!WaveExists(lastCoef) || numpnts(lastCoef) != numpnts(coef))
+        return 1
+    endif
     for (i = 0; i < numpnts(coef); i += 1)
         v = coef[i]
-        if (numtype(v) != 0)
-            return NaN
+        if (numtype(v) != 0 || numtype(lastCoef[i]) != 0)
+            return 1
         endif
-        s += (i + 1.317) * v + 1e-6 * (i + 1) * v * v
+        if (v != lastCoef[i])
+            return 1
+        endif
     endfor
-    return s
+    return 0
+End
+
+Function LJZ_EDCWB_SaveLastCoef(coef)
+    Wave coef
+    Duplicate/O coef, $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoef")
+    return 0
 End
 
 Function/S LJZ_EDCWB_FitCachePath()
@@ -462,22 +513,15 @@ Function LJZ_EDCWB_PrepareConvCache(wData, coefW)
 
     LJZ_EDCWB_EnsureFitEngineState()
     LJZ_EDCWB_CopyActiveModeFromWork()
+    LJZ_EDCWB_ResetFitCacheState()
 
     Variable nPts = numpnts(wData)
     Make/O/N=(nPts) $(LJZ_EDCWB_FitCachePath())
     Wave cache = $(LJZ_EDCWB_FitCachePath())
     CopyScales wData, cache
 
-    LJZ_EDCWB_EvalModelFull(wData, coefW, cache)
-
-    // Force the first subsequent FitFunc call to refresh the cache for the
-    // current fitting model and current coefficient vector.
-    NVAR/Z lastCoefSum = $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoefSum")
-    if (!NVAR_Exists(lastCoefSum))
-        Variable/G $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoefSum") = NaN
-    else
-        lastCoefSum = NaN
-    endif
+    NVAR activeMID = $(LJZ_EDCWB_BaseDF() + ":Active_modelID")
+    LJZ_EDCWB_EvalModelFull_ModelID(wData, coefW, cache, activeMID)
     return 0
 End
 
@@ -492,33 +536,10 @@ Function LJZ_EDCWB_FitFunc_FDModels(coef, x) : FitFunc
         return NaN
     endif
 
-    // Recompute full cache from the current coef.
-    // FuncFit calls this function for each x in the ROI; we use the first call
-    // to regenerate the cache, then return indexed values for subsequent calls.
-    // We detect "new coef pass" by storing a weighted fingerprint of coef.
-    NVAR/Z lastCoefSum = $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoefSum")
-    if (!NVAR_Exists(lastCoefSum))
-        Variable/G $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoefSum") = NaN
-        NVAR lastCoefSum = $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoefSum")
-    endif
-
-    Variable csum = LJZ_EDCWB_CoefFingerprint(coef)
-    if (csum != lastCoefSum || numtype(csum) != 0)
-        lastCoefSum = csum
-        // Use wData cached for axis info: same as cache's scaling
-        Make/FREE/N=(numpnts(cache)) tmpSpec
-        CopyScales cache, tmpSpec
-
+    if (LJZ_EDCWB_CoefChanged(coef))
         NVAR activeMID = $(LJZ_EDCWB_BaseDF() + ":Active_modelID")
-        Variable savedMID = LJZ_EDCWB_WorkGetModelID()
-        // Temporarily override via Active_modelID so EvalSpectrumNoConv uses it
-        Wave wEI = $(LJZ_EDCWB_BaseDF() + ":Work_editinfo")
-        Variable origMID = wEI[LJZ_EDCWB_EI_ModelID()]
-        wEI[LJZ_EDCWB_EI_ModelID()] = activeMID
-
-        LJZ_EDCWB_EvalModelFull(cache, coef, cache)
-
-        wEI[LJZ_EDCWB_EI_ModelID()] = origMID
+        LJZ_EDCWB_EvalModelFull_ModelID(cache, coef, cache, activeMID)
+        LJZ_EDCWB_SaveLastCoef(coef)
     endif
 
     // Return the cache value at x
@@ -542,20 +563,10 @@ Function LJZ_EDCWB_FitFunc_SymGap(coef, x) : FitFunc
         return NaN
     endif
 
-    NVAR/Z lastCoefSum = $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoefSum")
-    if (!NVAR_Exists(lastCoefSum))
-        Variable/G $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoefSum") = NaN
-        NVAR lastCoefSum = $(LJZ_EDCWB_BaseDF() + ":TMP_LastCoefSum")
-    endif
-
-    Variable csum = LJZ_EDCWB_CoefFingerprint(coef)
-    if (csum != lastCoefSum || numtype(csum) != 0)
-        lastCoefSum = csum
-        Wave wEI = $(LJZ_EDCWB_BaseDF() + ":Work_editinfo")
-        Variable origMID = wEI[LJZ_EDCWB_EI_ModelID()]
-        wEI[LJZ_EDCWB_EI_ModelID()] = LJZ_EDCWB_Model_SymGap()
-        LJZ_EDCWB_EvalModelFull(cache, coef, cache)
-        wEI[LJZ_EDCWB_EI_ModelID()] = origMID
+    if (LJZ_EDCWB_CoefChanged(coef))
+        NVAR activeMID = $(LJZ_EDCWB_BaseDF() + ":Active_modelID")
+        LJZ_EDCWB_EvalModelFull_ModelID(cache, coef, cache, activeMID)
+        LJZ_EDCWB_SaveLastCoef(coef)
     endif
 
     Variable dx = DimDelta(cache, 0)
@@ -628,7 +639,7 @@ Function LJZ_EDCWB_SanitizeWorkState()
         endif
         // w > 0
         if (numtype(wPar[4]) != 0 || wPar[4] <= 0)
-            wPar[4] = max(LJZ_EDCWB_MinWidth(), abs(wPar[4]))
+            wPar[4] = LJZ_EDCWB_ClampFinitePositive(wPar[4], LJZ_EDCWB_MinWidth(), LJZ_EDCWB_MinWidth())
             changed = 1
         endif
         // eta in [0,1]
@@ -644,7 +655,7 @@ Function LJZ_EDCWB_SanitizeWorkState()
         endif
         // T >= 0 (held at physical value)
         if (numtype(wPar[6]) != 0 || wPar[6] < 0)
-            wPar[6] = max(0, wPar[6])
+            wPar[6] = LJZ_EDCWB_ClampFiniteNonneg(wPar[6], 10)
             changed = 1
         endif
         // EF: any finite
@@ -654,7 +665,7 @@ Function LJZ_EDCWB_SanitizeWorkState()
         endif
         // res > 0
         if (numtype(wPar[8]) != 0 || wPar[8] <= 0)
-            wPar[8] = max(LJZ_EDCWB_MinRes(), abs(wPar[8]))
+            wPar[8] = LJZ_EDCWB_ClampFinitePositive(wPar[8], LJZ_EDCWB_MinRes(), LJZ_EDCWB_MinRes())
             changed = 1
         endif
 
@@ -666,12 +677,12 @@ Function LJZ_EDCWB_SanitizeWorkState()
         endif
         // Gamma > 0
         if (numtype(wPar[4]) != 0 || wPar[4] <= 0)
-            wPar[4] = max(LJZ_EDCWB_MinGamma(), abs(wPar[4]))
+            wPar[4] = LJZ_EDCWB_ClampFinitePositive(wPar[4], LJZ_EDCWB_MinGamma(), LJZ_EDCWB_MinGamma())
             changed = 1
         endif
         // T >= 0
         if (numtype(wPar[5]) != 0 || wPar[5] < 0)
-            wPar[5] = max(0, wPar[5])
+            wPar[5] = LJZ_EDCWB_ClampFiniteNonneg(wPar[5], 10)
             changed = 1
         endif
         // EF: any finite
@@ -681,7 +692,7 @@ Function LJZ_EDCWB_SanitizeWorkState()
         endif
         // res > 0
         if (numtype(wPar[7]) != 0 || wPar[7] <= 0)
-            wPar[7] = max(LJZ_EDCWB_MinRes(), abs(wPar[7]))
+            wPar[7] = LJZ_EDCWB_ClampFinitePositive(wPar[7], LJZ_EDCWB_MinRes(), LJZ_EDCWB_MinRes())
             changed = 1
         endif
 
@@ -693,7 +704,7 @@ Function LJZ_EDCWB_SanitizeWorkState()
         endif
         // Gamma > 0
         if (numtype(wPar[4]) != 0 || wPar[4] <= 0)
-            wPar[4] = max(LJZ_EDCWB_MinGamma(), abs(wPar[4]))
+            wPar[4] = LJZ_EDCWB_ClampFinitePositive(wPar[4], LJZ_EDCWB_MinGamma(), LJZ_EDCWB_MinGamma())
             changed = 1
         endif
         // x0: any finite
@@ -711,12 +722,12 @@ Function LJZ_EDCWB_SanitizeWorkState()
 
     // T >= 0
     if (numtype(wEI[LJZ_EDCWB_EI_T()]) != 0 || wEI[LJZ_EDCWB_EI_T()] < 0)
-        wEI[LJZ_EDCWB_EI_T()] = max(0, wEI[LJZ_EDCWB_EI_T()])
+        wEI[LJZ_EDCWB_EI_T()] = LJZ_EDCWB_ClampFiniteNonneg(wEI[LJZ_EDCWB_EI_T()], 10)
         changed = 1
     endif
     // res > 0
     if (numtype(wEI[LJZ_EDCWB_EI_Res()]) != 0 || wEI[LJZ_EDCWB_EI_Res()] <= 0)
-        wEI[LJZ_EDCWB_EI_Res()] = max(LJZ_EDCWB_MinRes(), abs(wEI[LJZ_EDCWB_EI_Res()]))
+        wEI[LJZ_EDCWB_EI_Res()] = LJZ_EDCWB_ClampFinitePositive(wEI[LJZ_EDCWB_EI_Res()], LJZ_EDCWB_MinRes(), LJZ_EDCWB_MinRes())
         changed = 1
     endif
     // EF: any finite; replace NaN with 0
@@ -795,6 +806,12 @@ Function LJZ_EDCWB_DistributeFitResult(flatCoef, flatSigma)
         wPar[i] = flatCoef[i]
     endfor
 
+    if (m == LJZ_EDCWB_Model_SinglePeakFD())
+        LJZ_EDCWB_WorkSetT(wPar[6]); LJZ_EDCWB_WorkSetEF(wPar[7]); LJZ_EDCWB_WorkSetRes(wPar[8])
+    elseif (m == LJZ_EDCWB_Model_EffectiveGap())
+        LJZ_EDCWB_WorkSetT(wPar[5]); LJZ_EDCWB_WorkSetEF(wPar[6]); LJZ_EDCWB_WorkSetRes(wPar[7])
+    endif
+
     LJZ_EDCWB_SanitizeWorkState()
 
     if (WaveExists(flatSigma))
@@ -820,6 +837,24 @@ Function LJZ_EDCWB_SetPar(idx, val)
         return -1
     endif
     LJZ_EDCWB_SanitizeWorkState()
+    Variable m = LJZ_EDCWB_WorkGetModelID()
+    if (m == LJZ_EDCWB_Model_SinglePeakFD())
+        if (idx == 6)
+            LJZ_EDCWB_WorkSetT(val)
+        elseif (idx == 7)
+            LJZ_EDCWB_WorkSetEF(val)
+        elseif (idx == 8)
+            LJZ_EDCWB_WorkSetRes(val)
+        endif
+    elseif (m == LJZ_EDCWB_Model_EffectiveGap())
+        if (idx == 5)
+            LJZ_EDCWB_WorkSetT(val)
+        elseif (idx == 6)
+            LJZ_EDCWB_WorkSetEF(val)
+        elseif (idx == 7)
+            LJZ_EDCWB_WorkSetRes(val)
+        endif
+    endif
     LJZ_EDCWB_MarkDirty(1)
     LJZ_EDCWB_ClearLastError()
     return 0
@@ -914,6 +949,8 @@ Function LJZ_EDCWB_SetModel(m)
     Variable res = LJZ_EDCWB_WorkGetRes()
 
     LJZ_EDCWB_WorkSetModelID(m)    // resizes Work_par / Work_hold
+    Wave wHold = $(LJZ_EDCWB_BaseDF() + ":Work_hold")
+    wHold = 0
     LJZ_EDCWB_SanitizeWorkState()
 
     // Re-inject T/EF/res into the new model's par slots
@@ -1416,7 +1453,9 @@ Function LJZ_EDCWB_RunFit(wData)
 
     if (fitCaughtError || runtimeErrCode != 0)
         fitFailed = 1
-        LJZ_EDCWB_SetLastError("FuncFit runtime failure.")
+        String emsg
+        sprintf emsg, "FuncFit runtime failure (RTE=%d).", runtimeErrCode
+        LJZ_EDCWB_SetLastError(emsg)
     else
         NVAR/Z fitErrRef   = V_FitError
         NVAR/Z fitQRRef    = V_FitQuitReason
@@ -1440,6 +1479,7 @@ Function LJZ_EDCWB_RunFit(wData)
     endif
 
     if (fitFailed)
+        LJZ_EDCWB_ResetFitCacheState()
         LJZ_EDCWB_MarkDirty(1)
         return -1
     endif
@@ -1482,6 +1522,7 @@ Function LJZ_EDCWB_RunFit(wData)
     endif
 
     LJZ_EDCWB_MarkDirty(0)
+    LJZ_EDCWB_ResetFitCacheState()
     LJZ_EDCWB_ClearLastError()
     return 0
 End
