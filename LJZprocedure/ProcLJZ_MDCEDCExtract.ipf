@@ -174,13 +174,14 @@ Function/S LJZ_Extract_List3DWaves(dfStr, recursive)
 End
 
 // ---- Smoothing kernel ----
-// method: 0=none, 1=Smooth(binomial), 2=Smooth/S(Savitzky-Golay)
+// method: 0=none, 1=Smooth(binomial), 2=Smooth/S(Savitzky-Golay), 3=Smooth/BLPF(NLPF low-pass)
 // n1/n2: first and second smoothing pass point count (n2=0 skips second pass)
 // poly:  polynomial order for Savitzky-Golay
+// cutoff: low-pass cutoff for Smooth/BLPF in (0, 0.5)
 
-Function LJZ_Extract_ApplySmoothToWave(sh, method, n1, n2, poly)
+Function LJZ_Extract_ApplySmoothToWave(sh, method, n1, n2, poly, cutoff)
     Wave sh
-    Variable method, n1, n2, poly
+    Variable method, n1, n2, poly, cutoff
 
     if (method == 0)
         return 0
@@ -204,6 +205,9 @@ Function LJZ_Extract_ApplySmoothToWave(sh, method, n1, n2, poly)
         if (n2 >= 3)
             Smooth/S=(poly) n2, sh
         endif
+    elseif (method == 3)
+        Variable fc = min(max(cutoff, 0.001), 0.499)
+        Smooth/BLPF fc, sh
     endif
 
     return 0
@@ -500,6 +504,10 @@ Function LJZ_MDCExtract_EnsureDF()
     NVAR/Z SmPoly = $(LJZ_MDCExtract_BaseDF() + ":SmPoly")
     if (!NVAR_Exists(SmPoly))
         Variable/G $(LJZ_MDCExtract_BaseDF() + ":SmPoly") = 4
+    endif
+    NVAR/Z SmCutoff = $(LJZ_MDCExtract_BaseDF() + ":SmCutoff")
+    if (!NVAR_Exists(SmCutoff))
+        Variable/G $(LJZ_MDCExtract_BaseDF() + ":SmCutoff") = 0.18
     endif
 
     // ---- listbox waves ----
@@ -816,6 +824,7 @@ Function LJZ_MDCExtract_ApplySmoothing(runDF)
     NVAR SmN      = $(LJZ_MDCExtract_BaseDF() + ":SmN")
     NVAR SmN2     = $(LJZ_MDCExtract_BaseDF() + ":SmN2")
     NVAR SmPoly   = $(LJZ_MDCExtract_BaseDF() + ":SmPoly")
+    NVAR SmCutoff = $(LJZ_MDCExtract_BaseDF() + ":SmCutoff")
 
     Variable t = 0
     do
@@ -827,7 +836,7 @@ Function LJZ_MDCExtract_ApplySmoothing(runDF)
         Wave sh = $(runDF + "mdc_show_" + num2str(t))
 
         if (SmEnable)
-            LJZ_Extract_ApplySmoothToWave(sh, SmMethod, SmN, SmN2, SmPoly)
+            LJZ_Extract_ApplySmoothToWave(sh, SmMethod, SmN, SmN2, SmPoly, SmCutoff)
         endif
         t += 1
     while (1)
@@ -856,6 +865,7 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF, useFermi, fermiE, 
     NVAR SmN2 = $(LJZ_MDCExtract_BaseDF() + ":SmN2")
     NVAR SmMethod = $(LJZ_MDCExtract_BaseDF() + ":SmMethod")
     NVAR SmPoly = $(LJZ_MDCExtract_BaseDF() + ":SmPoly")
+    NVAR SmCutoff = $(LJZ_MDCExtract_BaseDF() + ":SmCutoff")
     Variable lowPhys = DimOffset(w,0) + eStart * DimDelta(w,0)
     Variable highPhys = DimOffset(w,0) + eEnd * DimDelta(w,0)
     if (useFermi)
@@ -893,6 +903,7 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF, useFermi, fermiE, 
         Variable/G Run_smoothingN2 = SmN2
         Variable/G Run_smoothingMethod = SmMethod
         Variable/G Run_smoothingPoly = SmPoly
+        Variable/G Run_smoothingCutoff = SmCutoff
         Make/O/N=3 Run_dimSize = {DimSize(w,0), DimSize(w,1), DimSize(w,2)}
         Make/O/N=3 Run_dimOffset = {DimOffset(w,0), DimOffset(w,1), DimOffset(w,2)}
         Make/O/N=3 Run_dimDelta = {DimDelta(w,0), DimDelta(w,1), DimDelta(w,2)}
@@ -1187,7 +1198,7 @@ Function LJZ_MDCExtract_OpenPanel()
     CheckBox cbSmEn, pos={370,324}, size={68,16}, title="Enable"
     CheckBox cbSmEn, variable=root:ARPES_LJZ:MDCExtract:SmEnable, proc=LJZ_MDCExtract_CheckProc
     PopupMenu pmSmMethod, pos={452,322}, size={180,20}, title="Method"
-    PopupMenu pmSmMethod, mode=2, popvalue="Smooth", value="0 None;1 Smooth;2 Savitzky-Golay;"
+    PopupMenu pmSmMethod, mode=2, popvalue="Smooth", value="0 None;1 Smooth;2 Savitzky-Golay;3 NLPF low-pass;"
     PopupMenu pmSmMethod, proc=LJZ_MDCExtract_PopupProc
 
     SetVariable svSmN, pos={370,352}, size={170,20}, title="N1 (points)"
@@ -1196,6 +1207,8 @@ Function LJZ_MDCExtract_OpenPanel()
     SetVariable svSmN2, variable=root:ARPES_LJZ:MDCExtract:SmN2, proc=LJZ_MDCExtract_SetVarProc
     SetVariable svSmPoly, pos={370,380}, size={170,20}, title="Poly order (SG)"
     SetVariable svSmPoly, variable=root:ARPES_LJZ:MDCExtract:SmPoly, proc=LJZ_MDCExtract_SetVarProc
+    SetVariable svSmCutoff, pos={554,380}, size={170,20}, title="Cutoff (BLPF)"
+    SetVariable svSmCutoff, variable=root:ARPES_LJZ:MDCExtract:SmCutoff, proc=LJZ_MDCExtract_SetVarProc
 
     // ---- action buttons ----
     Button btExtract, pos={370,446}, size={120,32}, title="Extract MDC", proc=LJZ_MDCExtract_ButtonProc
@@ -1312,7 +1325,7 @@ Function LJZ_MDCExtract_SetVarProc(sva) : SetVariableControl
         return 0
     endif
 
-    if (CmpStr(c, "svSmN") == 0 || CmpStr(c, "svSmN2") == 0 || CmpStr(c, "svSmPoly") == 0 || CmpStr(c, "svEvary") == 0)
+    if (CmpStr(c, "svSmN") == 0 || CmpStr(c, "svSmN2") == 0 || CmpStr(c, "svSmPoly") == 0 || CmpStr(c, "svSmCutoff") == 0 || CmpStr(c, "svEvary") == 0)
         LJZ_MDCExtract_ReShowCurrentRun()
         LJZ_MDCExtract_RefreshTitleBoxes()
         return 0
@@ -1511,6 +1524,10 @@ Function LJZ_EDCExtract_EnsureDF()
     NVAR/Z SmPoly = $(LJZ_EDCExtract_BaseDF() + ":SmPoly")
     if (!NVAR_Exists(SmPoly))
         Variable/G $(LJZ_EDCExtract_BaseDF() + ":SmPoly") = 4
+    endif
+    NVAR/Z SmCutoff = $(LJZ_EDCExtract_BaseDF() + ":SmCutoff")
+    if (!NVAR_Exists(SmCutoff))
+        Variable/G $(LJZ_EDCExtract_BaseDF() + ":SmCutoff") = 0.18
     endif
 
     // ---- listbox waves ----
@@ -1734,6 +1751,7 @@ Function LJZ_EDCExtract_ApplySmoothing(runDF)
     NVAR SmN      = $(LJZ_EDCExtract_BaseDF() + ":SmN")
     NVAR SmN2     = $(LJZ_EDCExtract_BaseDF() + ":SmN2")
     NVAR SmPoly   = $(LJZ_EDCExtract_BaseDF() + ":SmPoly")
+    NVAR SmCutoff = $(LJZ_EDCExtract_BaseDF() + ":SmCutoff")
 
     Variable t = 0
     do
@@ -1744,7 +1762,7 @@ Function LJZ_EDCExtract_ApplySmoothing(runDF)
         Duplicate/O raw, $(runDF + "edc_show_" + num2str(t))
         Wave sh = $(runDF + "edc_show_" + num2str(t))
         if (SmEnable)
-            LJZ_Extract_ApplySmoothToWave(sh, SmMethod, SmN, SmN2, SmPoly)
+            LJZ_Extract_ApplySmoothToWave(sh, SmMethod, SmN, SmN2, SmPoly, SmCutoff)
         endif
         t += 1
     while (1)
@@ -1771,6 +1789,7 @@ Function LJZ_EDCExtract_RecordRunMeta(w, kStart, kEnd, runDF)
     NVAR SmN2 = $(LJZ_EDCExtract_BaseDF() + ":SmN2")
     NVAR SmMethod = $(LJZ_EDCExtract_BaseDF() + ":SmMethod")
     NVAR SmPoly = $(LJZ_EDCExtract_BaseDF() + ":SmPoly")
+    NVAR SmCutoff = $(LJZ_EDCExtract_BaseDF() + ":SmCutoff")
 
     String/G  $(LJZ_EDCExtract_BaseDF() + ":RunDF")       = runDF
     Variable/G $(LJZ_EDCExtract_BaseDF() + ":Run_kStart") = kStart
@@ -1798,6 +1817,7 @@ Function LJZ_EDCExtract_RecordRunMeta(w, kStart, kEnd, runDF)
         Variable/G Run_smoothingN2 = SmN2
         Variable/G Run_smoothingMethod = SmMethod
         Variable/G Run_smoothingPoly = SmPoly
+        Variable/G Run_smoothingCutoff = SmCutoff
         Make/O/N=3 Run_dimSize = {DimSize(w,0), DimSize(w,1), DimSize(w,2)}
         Make/O/N=3 Run_dimOffset = {DimOffset(w,0), DimOffset(w,1), DimOffset(w,2)}
         Make/O/N=3 Run_dimDelta = {DimDelta(w,0), DimDelta(w,1), DimDelta(w,2)}
@@ -2015,7 +2035,7 @@ Function LJZ_EDCExtract_OpenPanel()
     CheckBox cbSmEn, pos={370,254}, size={68,16}, title="Enable"
     CheckBox cbSmEn, variable=root:ARPES_LJZ:EDCExtract:SmEnable, proc=LJZ_EDCExtract_CheckProc
     PopupMenu pmSmMethod, pos={452,252}, size={180,20}, title="Method"
-    PopupMenu pmSmMethod, mode=2, popvalue="Smooth", value="0 None;1 Smooth;2 Savitzky-Golay;"
+    PopupMenu pmSmMethod, mode=2, popvalue="Smooth", value="0 None;1 Smooth;2 Savitzky-Golay;3 NLPF low-pass;"
     PopupMenu pmSmMethod, proc=LJZ_EDCExtract_PopupProc
 
     SetVariable svSmN, pos={370,282}, size={170,20}, title="N1 (points)"
@@ -2024,6 +2044,8 @@ Function LJZ_EDCExtract_OpenPanel()
     SetVariable svSmN2, variable=root:ARPES_LJZ:EDCExtract:SmN2, proc=LJZ_EDCExtract_SetVarProc
     SetVariable svSmPoly, pos={370,310}, size={170,20}, title="Poly order (SG)"
     SetVariable svSmPoly, variable=root:ARPES_LJZ:EDCExtract:SmPoly, proc=LJZ_EDCExtract_SetVarProc
+    SetVariable svSmCutoff, pos={554,310}, size={170,20}, title="Cutoff (BLPF)"
+    SetVariable svSmCutoff, variable=root:ARPES_LJZ:EDCExtract:SmCutoff, proc=LJZ_EDCExtract_SetVarProc
 
     // ---- action buttons ----
     Button btExtract, pos={370,376}, size={120,32}, title="Extract EDC", proc=LJZ_EDCExtract_ButtonProc
@@ -2129,7 +2151,7 @@ Function LJZ_EDCExtract_SetVarProc(sva) : SetVariableControl
         return 0
     endif
 
-    if (CmpStr(c, "svSmN") == 0 || CmpStr(c, "svSmN2") == 0 || CmpStr(c, "svSmPoly") == 0 || CmpStr(c, "svEvary") == 0)
+    if (CmpStr(c, "svSmN") == 0 || CmpStr(c, "svSmN2") == 0 || CmpStr(c, "svSmPoly") == 0 || CmpStr(c, "svSmCutoff") == 0 || CmpStr(c, "svEvary") == 0)
         LJZ_EDCExtract_ReShowCurrentRun()
         LJZ_EDCExtract_RefreshTitleBoxes()
         return 0
