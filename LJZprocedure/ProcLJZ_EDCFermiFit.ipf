@@ -2162,6 +2162,53 @@ Function LJZ_EDCFermiFit_PlotResults()
     return 0
 End
 
+Function LJZ_EDCFermiFit_PushEFToMDCExtract()
+    LJZ_EDCFermiFit_EnsureDF()
+    SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
+    String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    if (!DataFolderExists(dfStr))
+        DoAlert 0, "EDCFermiFit SourceDF 不存在。"
+        return -1
+    endif
+    Wave/Z efWave = $(dfStr + "edc_ff_ef")
+    Wave/Z okWave = $(dfStr + "edc_ff_ok")
+    if (!WaveExists(efWave))
+        DoAlert 0, "未找到 edc_ff_ef，无法推送到 MDCExtract。"
+        return -1
+    endif
+
+    Variable i, n = numpnts(efWave)
+    Variable nValid = 0
+    Variable efVal, okVal
+    Variable efSum = 0
+    for (i = 0; i < n; i += 1)
+        efVal = efWave[i]
+        if (numtype(efVal) != 0)
+            continue
+        endif
+        if (WaveExists(okWave))
+            okVal = okWave[i]
+            if (numtype(okVal) != 0 || okVal <= 0)
+                continue
+            endif
+        endif
+        nValid += 1
+        efSum += efVal
+    endfor
+    if (nValid <= 0)
+        DoAlert 0, "没有可用的逐层 EF（有限值且通过 ok 条件）。"
+        return -1
+    endif
+
+    NewDataFolder/O root:ARPES_LJZ
+    NewDataFolder/O root:ARPES_LJZ:MDCExtract
+    String/G root:ARPES_LJZ:MDCExtract:FermiFitSourceDF = dfStr
+    Variable/G root:ARPES_LJZ:MDCExtract:UseFermiFitEF = 1
+    Variable/G root:ARPES_LJZ:MDCExtract:FermiE = efSum / nValid
+    Print "EDCFermiFit->MDCExtract per-layer EF: " + dfStr + " valid=" + num2str(nValid)
+    return 0
+End
+
 
 // ============================================================================
 //  Section 7. panel
@@ -2281,6 +2328,7 @@ Function LJZ_EDCFermiFit_OpenPanel()
     SetVariable svLastOccSlope,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope"),noedit=1
 
     Button btPlotResult,pos={875,618},size={80,24},title="Plot",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btPushMDCPerLayer,pos={962,618},size={130,24},title="→MDCExtract(per layer)",proc=LJZ_EDCFermiFit_ButtonProc
 
     SetVariable svSelWave,pos={10,678},size={945,20},title="Selected Wave:"
     SetVariable svSelWave,value=_STR:$sWaveSelRef,noedit=1
@@ -2384,6 +2432,10 @@ Function LJZ_EDCFermiFit_ButtonProc(ba) : ButtonControl
 
     if (CmpStr(ctrlName, "btPlotResult") == 0)
         LJZ_EDCFermiFit_PlotResults()
+        return 0
+    endif
+    if (CmpStr(ctrlName, "btPushMDCPerLayer") == 0)
+        LJZ_EDCFermiFit_PushEFToMDCExtract()
         return 0
     endif
 
