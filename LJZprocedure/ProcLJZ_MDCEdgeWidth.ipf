@@ -1404,6 +1404,8 @@ End
 
 Function LJZ_MDCEdgeWidth_OpenPanel()
     LJZ_MDCEdgeWidth_EnsureDF()
+    String sSourceDFRef = LJZ_MDCEdgeWidth_BaseDF() + ":SourceDF"
+    String sWaveSelRef  = LJZ_MDCEdgeWidth_BaseDF() + ":WaveSel"
 
     String p = LJZ_MDCEdgeWidth_PanelName()
     DoWindow/F $p
@@ -1418,7 +1420,7 @@ Function LJZ_MDCEdgeWidth_OpenPanel()
     endif
 
     SetVariable svSourceDF,pos={10,10},size={455,20},title="Source DF"
-    SetVariable svSourceDF,value=_STR:LJZ_MDCEdgeWidth_BaseDF() + ":SourceDF",proc=LJZ_MDCEdgeWidth_SetVarProc
+    SetVariable svSourceDF,value=_STR:$sSourceDFRef,proc=LJZ_MDCEdgeWidth_SetVarProc
 
     Button btUseCurrent,pos={480,8},size={80,24},title="Current",proc=LJZ_MDCEdgeWidth_ButtonProc
     Button btScan,pos={575,8},size={70,24},title="Scan",proc=LJZ_MDCEdgeWidth_ButtonProc
@@ -1477,10 +1479,10 @@ Function LJZ_MDCEdgeWidth_OpenPanel()
     // Bottom info
     // ------------------------------------------------------------
     SetVariable svSelWave,pos={10,542},size={985,20},title="Selected Wave:"
-    SetVariable svSelWave,value=_STR:LJZ_MDCEdgeWidth_BaseDF() + ":WaveSel",noedit=1
+    SetVariable svSelWave,value=_STR:$sWaveSelRef,noedit=1
 
     SetVariable svSrcDF,pos={10,566},size={985,20},title="Source DF:"
-    SetVariable svSrcDF,value=_STR:LJZ_MDCEdgeWidth_BaseDF() + ":SourceDF",noedit=1
+    SetVariable svSrcDF,value=_STR:$sSourceDFRef,noedit=1
 
     TitleBox tbMsg,pos={10,592},size={985,18},frame=0,title="Definition: edge width = XFall - XRise, using Frac-level crossings in each window (default 50%)."
     LJZ_MDCEdgeWidth_CreateGraphSubwindow()

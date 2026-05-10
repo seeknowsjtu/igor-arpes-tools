@@ -194,8 +194,11 @@ Function LJZ_EDCEdgeWidth_EnsureDF()
         Make/O/N=0 $(LJZ_EDCEdgeWidth_BaseDF() + ":LB_Sel") = 0
     endif
 
-    Make/O/N=2 $(LJZ_EDCEdgeWidth_BaseDF() + ":GraphStub") = NaN
-    SetScale/P x, 0, 1, "", $(LJZ_EDCEdgeWidth_BaseDF() + ":GraphStub")
+    Wave/Z _stub_ = $(LJZ_EDCEdgeWidth_BaseDF() + ":GraphStub")
+    if (!WaveExists(_stub_))
+        Make/O/N=2 $(LJZ_EDCEdgeWidth_BaseDF() + ":GraphStub") = NaN
+        SetScale/P x, 0, 1, "", $(LJZ_EDCEdgeWidth_BaseDF() + ":GraphStub")
+    endif
 
     return 0
 End
