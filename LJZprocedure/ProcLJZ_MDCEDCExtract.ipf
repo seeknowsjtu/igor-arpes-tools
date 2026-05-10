@@ -874,9 +874,9 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF, useFermi, fermiE, 
     Variable/G $(LJZ_MDCExtract_BaseDF() + ":Run_nT")     = DimSize(w, 2)
 
     // Local copy in RunDF
-    String _oldDF2_ = GetDataFolder(1)
+    String oldDF2 = GetDataFolder(1)
     SetDataFolder $(RemoveEnding(runDF, ":"))
-    Variable _rme_err_ = 0
+    Variable rmeErr = 0
     try
         Variable/G Run_eStart = eStart
         Variable/G Run_eEnd   = eEnd
@@ -912,10 +912,10 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF, useFermi, fermiE, 
         Variable/G Run_energyIndexHigh = eEnd
         String/G Run_createdAt = Secs2Date(DateTime, 0) + " " + Secs2Time(DateTime, 3)
     catch
-        _rme_err_ = 1
+        rmeErr = 1
     endtry
-    SetDataFolder $_oldDF2_
-    if (_rme_err_ || GetRTError(1) != 0)
+    SetDataFolder $oldDF2
+    if (rmeErr || GetRTError(1) != 0)
         Print "RecordRunMeta: failed to write metadata to " + runDF
     endif
 
@@ -1779,9 +1779,9 @@ Function LJZ_EDCExtract_RecordRunMeta(w, kStart, kEnd, runDF)
     Variable/G $(LJZ_EDCExtract_BaseDF() + ":Run_dt")     = DimDelta(w, 2)
     Variable/G $(LJZ_EDCExtract_BaseDF() + ":Run_nT")     = DimSize(w, 2)
 
-    String _oldDF2_ = GetDataFolder(1)
+    String oldDF2 = GetDataFolder(1)
     SetDataFolder $(RemoveEnding(runDF, ":"))
-    Variable _rme_err_ = 0
+    Variable rmeErr = 0
     try
         Variable/G Run_kStart = kStart
         Variable/G Run_kEnd   = kEnd
@@ -1808,10 +1808,10 @@ Function LJZ_EDCExtract_RecordRunMeta(w, kStart, kEnd, runDF)
         Make/O/N=(DimSize(w,2)) Run_indexHigh = kEnd
         String/G Run_createdAt = Secs2Date(DateTime, 0) + " " + Secs2Time(DateTime, 3)
     catch
-        _rme_err_ = 1
+        rmeErr = 1
     endtry
-    SetDataFolder $_oldDF2_
-    if (_rme_err_ || GetRTError(1) != 0)
+    SetDataFolder $oldDF2
+    if (rmeErr || GetRTError(1) != 0)
         Print "RecordRunMeta: failed to write metadata to " + runDF
     endif
 
