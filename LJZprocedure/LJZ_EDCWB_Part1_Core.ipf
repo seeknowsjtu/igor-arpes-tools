@@ -446,6 +446,7 @@ Function/S LJZ_EDCWB_ListEDCWaves(dfPath)
         endif
     endfor
 
+    out = SortList(out, ";", 16)
     return out
 End
 
@@ -978,7 +979,6 @@ Function LJZ_EDCWB_SaveFitRecord(wData, coefW, sigmaW, infoW, fitW, resW)
         return -1
     endif
 
-    SetDataFolder $dfWNoColon
     KillWaves/Z $(nm + "_fitcoef__tmp"),  $(nm + "_fitsigma__tmp"), $(nm + "_fitinfo__tmp")
     KillWaves/Z $(nm + "_fit__tmp"),      $(nm + "_res__tmp")
     KillWaves/Z $(nm + "_fitcoef__bak"),  $(nm + "_fitsigma__bak"), $(nm + "_fitinfo__bak")
@@ -1020,7 +1020,11 @@ Function LJZ_EDCWB_HasFitRecord(wData)
     endif
 
     // modelID must be valid
-    if (!LJZ_EDCWB_IsValidModelID(round(info[LJZ_EDCWB_FI_ModelID()])))
+    Variable modelID = round(info[LJZ_EDCWB_FI_ModelID()])
+    if (!LJZ_EDCWB_IsValidModelID(modelID))
+        return 0
+    endif
+    if (numpnts(coef) != LJZ_EDCWB_ModelNPar(modelID))
         return 0
     endif
     // fitOK must be present

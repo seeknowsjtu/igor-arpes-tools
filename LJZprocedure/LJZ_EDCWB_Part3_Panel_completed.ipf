@@ -623,13 +623,14 @@ End
 Function LJZ_EDCWB_BuildPreviewGuess(wData)
     Wave wData
 
-    LJZ_EDCWB_EnsureFitEngineState()
-    LJZ_EDCWB_SanitizeWorkState()
-
-    Wave wPar = $(LJZ_EDCWB_BaseDF() + ":Work_par")
-    Duplicate/O wData, $LJZ_EDCWB_PreviewGuessPath()
-    Wave gw = $LJZ_EDCWB_PreviewGuessPath()
-    LJZ_EDCWB_EvalModelFull(wData, wPar, gw)
+    if (LJZ_EDCWB_BuildGuess(wData) != 0)
+        return -1
+    endif
+    Wave/Z gw = $(LJZ_EDCWB_PathGuess(wData))
+    if (!WaveExists(gw))
+        return -1
+    endif
+    Duplicate/O gw, $LJZ_EDCWB_PreviewGuessPath()
     return 0
 End
 
@@ -663,9 +664,14 @@ Function LJZ_EDCWB_RefreshPreviewGraph()
         return -1
     endif
 
+    NVAR autoPreview = $(LJZ_EDCWB_BaseDF() + ":UI_autoPreview")
     Variable previewOK = 0
-    if (LJZ_EDCWB_BuildPreviewGuess(wData) == 0)
-        previewOK = 1
+    if (autoPreview)
+        if (LJZ_EDCWB_BuildPreviewGuess(wData) == 0)
+            previewOK = 1
+        endif
+    else
+        KillWaves/Z $LJZ_EDCWB_PreviewGuessPath()
     endif
     if (!previewOK)
         KillWaves/Z $LJZ_EDCWB_PreviewGuessPath()
@@ -1423,24 +1429,26 @@ Function LJZ_EDCWB_ExportSummary()
     String oldDF = GetDataFolder(1)
     String exDF = RemoveEnding(df, ":") + ":FIT_EDC"
     NewDataFolder/O $exDF
-    SetDataFolder $exDF
-
-    Make/O/N=(n) EDCIndex = NaN
-    Make/O/N=(n) ModelID = NaN, FitOK = NaN
-    Make/O/T/N=(n) ModelName = ""
-    Make/O/N=(n) XLo = NaN, XHi = NaN, GuessRMSE = NaN, FitRMSE = NaN, RSS_ROI = NaN, MaxAbsRes = NaN, N_ROI = NaN
-    Make/O/N=(n) FitQuitReason = NaN, FitNumIters = NaN
-    Make/O/N=(n) BG_c0 = NaN, BG_c1 = NaN, Amp = NaN
-    Make/O/N=(n) PeakX0 = NaN, PeakWidth = NaN, Eta = NaN
-    Make/O/N=(n) Delta = NaN, Gamma = NaN, T_fit = NaN, EF_fit = NaN, Res_fit = NaN, X0_sym = NaN
-    Make/O/N=(n) SigmaPeakX0 = NaN, SigmaDelta = NaN
-
-    Make/O/N=(n) Par0 = NaN, Par1 = NaN, Par2 = NaN, Par3 = NaN, Par4 = NaN, Par5 = NaN, Par6 = NaN, Par7 = NaN, Par8 = NaN
-    Make/O/N=(n) Sigma0 = NaN, Sigma1 = NaN, Sigma2 = NaN, Sigma3 = NaN, Sigma4 = NaN, Sigma5 = NaN, Sigma6 = NaN, Sigma7 = NaN, Sigma8 = NaN
-
+    Variable hadExportErr = 0
     Variable skipped = 0
     Variable i
-    for (i = 0; i < n; i += 1)
+    try
+        SetDataFolder $exDF
+
+        Make/O/N=(n) EDCIndex = NaN
+        Make/O/N=(n) ModelID = NaN, FitOK = NaN
+        Make/O/T/N=(n) ModelName = ""
+        Make/O/N=(n) XLo = NaN, XHi = NaN, GuessRMSE = NaN, FitRMSE = NaN, RSS_ROI = NaN, MaxAbsRes = NaN, N_ROI = NaN
+        Make/O/N=(n) FitQuitReason = NaN, FitNumIters = NaN
+        Make/O/N=(n) BG_c0 = NaN, BG_c1 = NaN, Amp = NaN
+        Make/O/N=(n) PeakX0 = NaN, PeakWidth = NaN, Eta = NaN
+        Make/O/N=(n) Delta = NaN, Gamma = NaN, T_fit = NaN, EF_fit = NaN, Res_fit = NaN, X0_sym = NaN
+        Make/O/N=(n) SigmaPeakX0 = NaN, SigmaDelta = NaN
+
+        Make/O/N=(n) Par0 = NaN, Par1 = NaN, Par2 = NaN, Par3 = NaN, Par4 = NaN, Par5 = NaN, Par6 = NaN, Par7 = NaN, Par8 = NaN
+        Make/O/N=(n) Sigma0 = NaN, Sigma1 = NaN, Sigma2 = NaN, Sigma3 = NaN, Sigma4 = NaN, Sigma5 = NaN, Sigma6 = NaN, Sigma7 = NaN, Sigma8 = NaN
+
+        for (i = 0; i < n; i += 1)
         String full = StringFromList(i, lst, ";")
         Wave/Z w = $full
         if (!WaveExists(w))
@@ -1505,9 +1513,16 @@ Function LJZ_EDCWB_ExportSummary()
         endfor
 
         LJZ_EDCWB_WriteConvenienceColumns(i, m, coefW, sigmaW)
-    endfor
+        endfor
+    catch
+        hadExportErr = 1
+    endtry
 
     SetDataFolder $oldDF
+    if (hadExportErr || GetRTError(1) != 0)
+        DoAlert 0, "Export failed; CDF restored."
+        return -1
+    endif
     DoAlert 0, "FIT_EDC exported under: " + exDF + ":\rSkipped (no clean fit): " + num2str(skipped)
     return 0
 End
