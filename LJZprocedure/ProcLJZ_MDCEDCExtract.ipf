@@ -874,42 +874,50 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF, useFermi, fermiE, 
     Variable/G $(LJZ_MDCExtract_BaseDF() + ":Run_nT")     = DimSize(w, 2)
 
     // Local copy in RunDF
-    String oldDF = GetDataFolder(1)
+    String _oldDF2_ = GetDataFolder(1)
     SetDataFolder $(RemoveEnding(runDF, ":"))
-    Variable/G Run_eStart = eStart
-    Variable/G Run_eEnd   = eEnd
-    Variable/G Run_t0     = DimOffset(w, 2)
-    Variable/G Run_dt     = DimDelta(w, 2)
-    Variable/G Run_nT     = DimSize(w, 2)
-    String/G   SourceWave = GetWavesDataFolder(w, 2)
-    String/G   Run_sourceWavePath = GetWavesDataFolder(w, 2)
-    String/G   Run_sourceWaveName = NameOfWave(w)
-    String/G   Run_mode = "MDC"
-    Variable/G Run_nTraces = DimSize(w, 2)
-    Variable/G Run_smoothingEnabled = SmEnable
-    Variable/G Run_smoothingN = SmN
-    Variable/G Run_smoothingN2 = SmN2
-    Variable/G Run_smoothingMethod = SmMethod
-    Variable/G Run_smoothingPoly = SmPoly
-    Make/O/N=3 Run_dimSize = {DimSize(w,0), DimSize(w,1), DimSize(w,2)}
-    Make/O/N=3 Run_dimOffset = {DimOffset(w,0), DimOffset(w,1), DimOffset(w,2)}
-    Make/O/N=3 Run_dimDelta = {DimDelta(w,0), DimDelta(w,1), DimDelta(w,2)}
-    Make/O/T/N=3 Run_dimUnits = {WaveUnits(w,0), WaveUnits(w,1), WaveUnits(w,2)}
-    Make/O/N=(DimSize(w,2)) Run_windowLow = eStart
-    Make/O/N=(DimSize(w,2)) Run_windowHigh = eEnd
-    Make/O/N=(DimSize(w,2)) Run_indexLow = eStart
-    Make/O/N=(DimSize(w,2)) Run_indexHigh = eEnd
-    Variable/G Run_useFermiWeightedMDC = useFermi != 0
-    Variable/G Run_FermiE = fermiE
-    Variable/G Run_FermiHalfWidth = fermiHalfWidth
-    Variable/G Run_FermiSigma = fermiSigma
-    Variable/G Run_FermiWeightMethod = fermiMethod
-    Variable/G Run_energyWindowLowPhys = lowPhys
-    Variable/G Run_energyWindowHighPhys = highPhys
-    Variable/G Run_energyIndexLow = eStart
-    Variable/G Run_energyIndexHigh = eEnd
-    String/G Run_createdAt = Secs2Date(DateTime, 0) + " " + Secs2Time(DateTime, 3)
-    SetDataFolder $oldDF
+    Variable _rme_err_ = 0
+    try
+        Variable/G Run_eStart = eStart
+        Variable/G Run_eEnd   = eEnd
+        Variable/G Run_t0     = DimOffset(w, 2)
+        Variable/G Run_dt     = DimDelta(w, 2)
+        Variable/G Run_nT     = DimSize(w, 2)
+        String/G   SourceWave = GetWavesDataFolder(w, 2)
+        String/G   Run_sourceWavePath = GetWavesDataFolder(w, 2)
+        String/G   Run_sourceWaveName = NameOfWave(w)
+        String/G   Run_mode = "MDC"
+        Variable/G Run_nTraces = DimSize(w, 2)
+        Variable/G Run_smoothingEnabled = SmEnable
+        Variable/G Run_smoothingN = SmN
+        Variable/G Run_smoothingN2 = SmN2
+        Variable/G Run_smoothingMethod = SmMethod
+        Variable/G Run_smoothingPoly = SmPoly
+        Make/O/N=3 Run_dimSize = {DimSize(w,0), DimSize(w,1), DimSize(w,2)}
+        Make/O/N=3 Run_dimOffset = {DimOffset(w,0), DimOffset(w,1), DimOffset(w,2)}
+        Make/O/N=3 Run_dimDelta = {DimDelta(w,0), DimDelta(w,1), DimDelta(w,2)}
+        Make/O/T/N=3 Run_dimUnits = {WaveUnits(w,0), WaveUnits(w,1), WaveUnits(w,2)}
+        Make/O/N=(DimSize(w,2)) Run_windowLow = eStart
+        Make/O/N=(DimSize(w,2)) Run_windowHigh = eEnd
+        Make/O/N=(DimSize(w,2)) Run_indexLow = eStart
+        Make/O/N=(DimSize(w,2)) Run_indexHigh = eEnd
+        Variable/G Run_useFermiWeightedMDC = useFermi != 0
+        Variable/G Run_FermiE = fermiE
+        Variable/G Run_FermiHalfWidth = fermiHalfWidth
+        Variable/G Run_FermiSigma = fermiSigma
+        Variable/G Run_FermiWeightMethod = fermiMethod
+        Variable/G Run_energyWindowLowPhys = lowPhys
+        Variable/G Run_energyWindowHighPhys = highPhys
+        Variable/G Run_energyIndexLow = eStart
+        Variable/G Run_energyIndexHigh = eEnd
+        String/G Run_createdAt = Secs2Date(DateTime, 0) + " " + Secs2Time(DateTime, 3)
+    catch
+        _rme_err_ = 1
+    endtry
+    SetDataFolder $_oldDF2_
+    if (_rme_err_ || GetRTError(1) != 0)
+        Print "RecordRunMeta: failed to write metadata to " + runDF
+    endif
 
     return 0
 End
@@ -1771,33 +1779,41 @@ Function LJZ_EDCExtract_RecordRunMeta(w, kStart, kEnd, runDF)
     Variable/G $(LJZ_EDCExtract_BaseDF() + ":Run_dt")     = DimDelta(w, 2)
     Variable/G $(LJZ_EDCExtract_BaseDF() + ":Run_nT")     = DimSize(w, 2)
 
-    String oldDF = GetDataFolder(1)
+    String _oldDF2_ = GetDataFolder(1)
     SetDataFolder $(RemoveEnding(runDF, ":"))
-    Variable/G Run_kStart = kStart
-    Variable/G Run_kEnd   = kEnd
-    Variable/G Run_t0     = DimOffset(w, 2)
-    Variable/G Run_dt     = DimDelta(w, 2)
-    Variable/G Run_nT     = DimSize(w, 2)
-    String/G   SourceWave = GetWavesDataFolder(w, 2)
-    String/G   Run_sourceWavePath = GetWavesDataFolder(w, 2)
-    String/G   Run_sourceWaveName = NameOfWave(w)
-    String/G   Run_mode = "EDC"
-    Variable/G Run_nTraces = DimSize(w, 2)
-    Variable/G Run_smoothingEnabled = SmEnable
-    Variable/G Run_smoothingN = SmN
-    Variable/G Run_smoothingN2 = SmN2
-    Variable/G Run_smoothingMethod = SmMethod
-    Variable/G Run_smoothingPoly = SmPoly
-    Make/O/N=3 Run_dimSize = {DimSize(w,0), DimSize(w,1), DimSize(w,2)}
-    Make/O/N=3 Run_dimOffset = {DimOffset(w,0), DimOffset(w,1), DimOffset(w,2)}
-    Make/O/N=3 Run_dimDelta = {DimDelta(w,0), DimDelta(w,1), DimDelta(w,2)}
-    Make/O/T/N=3 Run_dimUnits = {WaveUnits(w,0), WaveUnits(w,1), WaveUnits(w,2)}
-    Make/O/N=(DimSize(w,2)) Run_windowLow = kStart
-    Make/O/N=(DimSize(w,2)) Run_windowHigh = kEnd
-    Make/O/N=(DimSize(w,2)) Run_indexLow = kStart
-    Make/O/N=(DimSize(w,2)) Run_indexHigh = kEnd
-    String/G Run_createdAt = Secs2Date(DateTime, 0) + " " + Secs2Time(DateTime, 3)
-    SetDataFolder $oldDF
+    Variable _rme_err_ = 0
+    try
+        Variable/G Run_kStart = kStart
+        Variable/G Run_kEnd   = kEnd
+        Variable/G Run_t0     = DimOffset(w, 2)
+        Variable/G Run_dt     = DimDelta(w, 2)
+        Variable/G Run_nT     = DimSize(w, 2)
+        String/G   SourceWave = GetWavesDataFolder(w, 2)
+        String/G   Run_sourceWavePath = GetWavesDataFolder(w, 2)
+        String/G   Run_sourceWaveName = NameOfWave(w)
+        String/G   Run_mode = "EDC"
+        Variable/G Run_nTraces = DimSize(w, 2)
+        Variable/G Run_smoothingEnabled = SmEnable
+        Variable/G Run_smoothingN = SmN
+        Variable/G Run_smoothingN2 = SmN2
+        Variable/G Run_smoothingMethod = SmMethod
+        Variable/G Run_smoothingPoly = SmPoly
+        Make/O/N=3 Run_dimSize = {DimSize(w,0), DimSize(w,1), DimSize(w,2)}
+        Make/O/N=3 Run_dimOffset = {DimOffset(w,0), DimOffset(w,1), DimOffset(w,2)}
+        Make/O/N=3 Run_dimDelta = {DimDelta(w,0), DimDelta(w,1), DimDelta(w,2)}
+        Make/O/T/N=3 Run_dimUnits = {WaveUnits(w,0), WaveUnits(w,1), WaveUnits(w,2)}
+        Make/O/N=(DimSize(w,2)) Run_windowLow = kStart
+        Make/O/N=(DimSize(w,2)) Run_windowHigh = kEnd
+        Make/O/N=(DimSize(w,2)) Run_indexLow = kStart
+        Make/O/N=(DimSize(w,2)) Run_indexHigh = kEnd
+        String/G Run_createdAt = Secs2Date(DateTime, 0) + " " + Secs2Time(DateTime, 3)
+    catch
+        _rme_err_ = 1
+    endtry
+    SetDataFolder $_oldDF2_
+    if (_rme_err_ || GetRTError(1) != 0)
+        Print "RecordRunMeta: failed to write metadata to " + runDF
+    endif
 
     return 0
 End

@@ -379,6 +379,11 @@ Function LJZ_EDCFermiFit_ParseWaveIndex(nm)
     if (V_flag != 1)
         return NaN
     endif
+    String _exact_
+    sprintf _exact_, "edc_show_%d", idx
+    if (CmpStr(nm, _exact_) != 0)
+        return NaN
+    endif
 
     return idx
 End
