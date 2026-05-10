@@ -358,7 +358,7 @@ Function LJZ_EKKMap_EnsureDF()
     endif
     SVAR sSourceDFLastGoodRef = $(LJZ_EKKMap_BaseDF() + ":SourceDFLastGood")
     SVAR sSourceDFRef = $(LJZ_EKKMap_BaseDF() + ":SourceDF")
-    if (!DataFolderExists(sSourceDFLastGoodRef))
+    if (!DataFolderExists(sSourceDFLastGoodRef) && DataFolderExists(sSourceDFRef))
         sSourceDFLastGoodRef = sSourceDFRef
     endif
 
@@ -485,13 +485,12 @@ Function LJZ_EKKMap_EnsureDF()
         Make/O/N=0 $(LJZ_EKKMap_BaseDF() + ":LB_Sel") = 0
     endif
 
-    Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":GraphStub") = NaN
-    SetScale/P x, 0, 1, "", $(LJZ_EKKMap_BaseDF() + ":GraphStub")
-    SetScale/P y, 0, 1, "", $(LJZ_EKKMap_BaseDF() + ":GraphStub")
-
-    Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":Preview2D") = NaN
-    SetScale/P x, 0, 1, "", $(LJZ_EKKMap_BaseDF() + ":Preview2D")
-    SetScale/P y, 0, 1, "", $(LJZ_EKKMap_BaseDF() + ":Preview2D")
+    Wave/Z graphStub = $(LJZ_EKKMap_BaseDF() + ":GraphStub")
+    if (!WaveExists(graphStub))
+        Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":GraphStub") = NaN
+        SetScale/P x, 0, 1, "", $(LJZ_EKKMap_BaseDF() + ":GraphStub")
+        SetScale/P y, 0, 1, "", $(LJZ_EKKMap_BaseDF() + ":GraphStub")
+    endif
 
     return 0
 End
@@ -510,8 +509,12 @@ Function/S LJZ_EKKMap_ListImageWaves_OneDF(df)
     endif
 
     String oldDF = GetDataFolder(1)
-    SetDataFolder $dfc
-    String wl = WaveList("*", ";", "")
+    String wl = ""
+    try
+        SetDataFolder $dfc
+        wl = WaveList("*", ";", "")
+    catch
+    endtry
     SetDataFolder $oldDF
 
     String out = ""
@@ -1221,7 +1224,11 @@ Function LJZ_EKKMap_Resample2DToCommonGrid(src, xMin, xMax, yMin, yMax, nx, ny, 
     Redimension/N=(nx,ny) dest
     SetScale/I x, xMin, xMax, WaveUnits(src,0), dest
     SetScale/I y, yMin, yMax, WaveUnits(src,1), dest
-    dest = LJZ_EKKMap_ClipToWave2D(src, x, y)
+    Variable srcXMin = LJZ_EKKMap_DimMin(src,0)
+    Variable srcXMax = LJZ_EKKMap_DimMax(src,0)
+    Variable srcYMin = LJZ_EKKMap_DimMin(src,1)
+    Variable srcYMax = LJZ_EKKMap_DimMax(src,1)
+    dest = (x >= srcXMin && x <= srcXMax && y >= srcYMin && y <= srcYMax) ? src(x)(y) : NaN
     return 0
 End
 
@@ -1340,7 +1347,7 @@ Function/WAVE LJZ_EKKMap_CalcKxKy2D(srcIn, energyRel, hv, workFunc, tilt, azimut
     Variable kyMin = WaveMin(LJZ_EKKMap_tmpKy2)
     Variable kyMax = WaveMax(LJZ_EKKMap_tmpKy2)
 
-    if (!LJZ_EKKMap_IsFinite(kxMin) || !LJZ_EKKMap_IsFinite(kxMax) || kxMin == kxMax)
+    if (!LJZ_EKKMap_IsFinite(kxMin) || !LJZ_EKKMap_IsFinite(kxMax) || kxMin == kxMax || !LJZ_EKKMap_IsFinite(kyMin) || !LJZ_EKKMap_IsFinite(kyMax) || kyMin == kyMax)
         Make/O/N=(2,2) LJZ_EKKMap_tmpKxKy = NaN
         return LJZ_EKKMap_tmpKxKy
     endif
@@ -1417,7 +1424,7 @@ Function/WAVE LJZ_EKKMap_CalcKxKz2D(srcIn, energyRel, workFunc, tilt, V0, degPix
     Variable kzMin = WaveMin(LJZ_EKKMap_tmpKz2D)
     Variable kzMax = WaveMax(LJZ_EKKMap_tmpKz2D)
 
-    if (!LJZ_EKKMap_IsFinite(kxMin) || !LJZ_EKKMap_IsFinite(kxMax) || kxMin == kxMax)
+    if (!LJZ_EKKMap_IsFinite(kxMin) || !LJZ_EKKMap_IsFinite(kxMax) || kxMin == kxMax || !LJZ_EKKMap_IsFinite(kzMin) || !LJZ_EKKMap_IsFinite(kzMax) || kzMin == kzMax)
         Make/O/N=(2,2) LJZ_EKKMap_tmpKxKz = NaN
         return LJZ_EKKMap_tmpKxKz
     endif
@@ -1714,6 +1721,12 @@ Function LJZ_EKKMap_RunEK()
             Variable nz = DimSize(w,2)
             Variable iz
             Variable didAlloc = 0
+            Variable baseNX = NaN
+            Variable baseNY = NaN
+            Variable baseX0 = NaN
+            Variable baseDX = NaN
+            Variable baseY0 = NaN
+            Variable baseDY = NaN
             for (iz=0; iz<nz; iz+=1)
                 // 物理计算固定按 angle × energy × stack 取 slice；Transpose 只用于 preview。
                 LJZ_EKKMap_MakeSliceFrom3D_EK(w, iz, 0, tmpSlice)
@@ -1724,7 +1737,17 @@ Function LJZ_EKKMap_RunEK()
                     SetScale/P x, DimOffset(map2D,0), DimDelta(map2D,0), WaveUnits(map2D,0), $(outDF + outName)
                     SetScale/P y, DimOffset(map2D,1), DimDelta(map2D,1), WaveUnits(map2D,1), $(outDF + outName)
                     SetScale/P z, DimOffset(w,2), DimDelta(w,2), WaveUnits(w,2), $(outDF + outName)
+                    baseNX = DimSize(map2D,0)
+                    baseNY = DimSize(map2D,1)
+                    baseX0 = DimOffset(map2D,0)
+                    baseDX = DimDelta(map2D,0)
+                    baseY0 = DimOffset(map2D,1)
+                    baseDY = DimDelta(map2D,1)
                     didAlloc = 1
+                else
+                    if (DimSize(map2D,0) != baseNX || DimSize(map2D,1) != baseNY || abs(DimOffset(map2D,0)-baseX0) > 1e-9 || abs(DimDelta(map2D,0)-baseDX) > 1e-9 || abs(DimOffset(map2D,1)-baseY0) > 1e-9 || abs(DimDelta(map2D,1)-baseDY) > 1e-9)
+                        Print "LJZ_EKKMap_RunEK warning: slice " + num2str(iz) + " k-grid differs from slice 0 for wave " + NameOfWave(w) + "."
+                    endif
                 endif
                 Wave out3D = $(outDF + outName)
                 out3D[][][iz] = map2D[p][q]
@@ -1983,17 +2006,14 @@ End
 Function LJZ_EKKMap_ListBoxProc(lba) : ListBoxControl
     STRUCT WMListboxAction &lba
 
-    switch(lba.eventCode)
-        case 1:
-        case 4:
-        case 5:
-            LJZ_EKKMap_SelectRow(lba.row)
-            break
-    endswitch
+    if (lba.eventCode != 4)
+        return 0
+    endif
+    LJZ_EKKMap_SelectRow(lba.row)
     return 0
 End
 
-Proc LJZ_EKKMap_CheckProc(ctrlName, checked) : CheckBoxControl
+Function LJZ_EKKMap_CheckProc(ctrlName, checked) : CheckBoxControl
     String ctrlName
     Variable checked
 
