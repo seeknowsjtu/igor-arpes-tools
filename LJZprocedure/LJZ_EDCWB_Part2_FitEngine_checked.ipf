@@ -237,17 +237,8 @@ Function LJZ_EDCWB_ConvolveWithGauss(inWave, res, outWave)
         kern /= norm
     endif
 
-    Variable i, j, acc
-    for (i = 0; i < n; i += 1)
-        acc = 0
-        for (k = 0; k < nKern; k += 1)
-            j = i - (k - center)
-            if (j >= 0 && j < n)
-                acc += inWave[j] * kern[k]
-            endif
-        endfor
-        outWave[i] = acc
-    endfor
+    outWave = inWave
+    Convolve/A kern, outWave
 
     return 0
 End
@@ -336,7 +327,7 @@ Function LJZ_EDCWB_EvalSpectrumNoConv_ModelID(wData, coef, specWave, modelID)
 
     Variable i, E, val
     Variable bg0, bg1, A, T, EF, res
-    Variable x0, w, eta, Delta, Gamma
+    Variable x0, w, eta, Delta, Gamma, Ep, aw, Ep2, wPlus, wMinus
 
     if (m == LJZ_EDCWB_Model_SinglePeakFD())
         bg0  = coef[0]
@@ -365,8 +356,8 @@ Function LJZ_EDCWB_EvalSpectrumNoConv_ModelID(wData, coef, specWave, modelID)
 
         for (i = 0; i < nPts; i += 1)
             E = DimOffset(wData, 0) + i * DimDelta(wData, 0)
-            Variable Ep = E - EF
-            Variable aw = A * LJZ_EDCWB_EffGapWeight(Ep, Delta, Gamma)
+            Ep = E - EF
+            aw = A * LJZ_EDCWB_EffGapWeight(Ep, Delta, Gamma)
             val = (bg0 + bg1 * Ep + aw) * LJZ_EDCWB_FD(E, T, EF)
             specWave[i] = val
         endfor
@@ -381,9 +372,9 @@ Function LJZ_EDCWB_EvalSpectrumNoConv_ModelID(wData, coef, specWave, modelID)
 
         for (i = 0; i < nPts; i += 1)
             E = DimOffset(wData, 0) + i * DimDelta(wData, 0)
-            Variable Ep2 = E - x0
-            Variable wPlus  = LJZ_EDCWB_EffGapWeight( Ep2, Delta, Gamma)
-            Variable wMinus = LJZ_EDCWB_EffGapWeight(-Ep2, Delta, Gamma)
+            Ep2 = E - x0
+            wPlus  = LJZ_EDCWB_EffGapWeight( Ep2, Delta, Gamma)
+            wMinus = LJZ_EDCWB_EffGapWeight(-Ep2, Delta, Gamma)
             val = bg0 + bg1 * E + A * (wPlus + wMinus)
             specWave[i] = val
         endfor
@@ -527,7 +518,7 @@ End
 
 // FitFunc for SinglePeakFD and EffectiveGap (both use the same cache approach).
 // Igor passes the coef wave and a single x value; we return cache[index(x)].
-Function LJZ_EDCWB_FitFunc_FDModels(coef, x) : FitFunc
+Function LJZ_EDCWB_FitFunc_Impl(coef, x)
     Wave coef
     Variable x
 
@@ -553,30 +544,17 @@ Function LJZ_EDCWB_FitFunc_FDModels(coef, x) : FitFunc
     return cache[idx]
 End
 
+Function LJZ_EDCWB_FitFunc_FDModels(coef, x) : FitFunc
+    Wave coef
+    Variable x
+    return LJZ_EDCWB_FitFunc_Impl(coef, x)
+End
+
 // FitFunc for SymGap (no FD, just spectral function).
 Function LJZ_EDCWB_FitFunc_SymGap(coef, x) : FitFunc
     Wave coef
     Variable x
-
-    Wave/Z cache = $(LJZ_EDCWB_BaseDF() + ":TMP_FitCache")
-    if (!WaveExists(cache))
-        return NaN
-    endif
-
-    if (LJZ_EDCWB_CoefChanged(coef))
-        NVAR activeMID = $(LJZ_EDCWB_BaseDF() + ":Active_modelID")
-        LJZ_EDCWB_EvalModelFull_ModelID(cache, coef, cache, activeMID)
-        LJZ_EDCWB_SaveLastCoef(coef)
-    endif
-
-    Variable dx = DimDelta(cache, 0)
-    Variable x0ax = DimOffset(cache, 0)
-    if (numtype(dx) != 0 || dx == 0)
-        return NaN
-    endif
-    Variable idx = round((x - x0ax) / dx)
-    idx = max(0, min(numpnts(cache) - 1, idx))
-    return cache[idx]
+    return LJZ_EDCWB_FitFunc_Impl(coef, x)
 End
 
 
@@ -1457,20 +1435,12 @@ Function LJZ_EDCWB_RunFit(wData)
         sprintf emsg, "FuncFit runtime failure (RTE=%d).", runtimeErrCode
         LJZ_EDCWB_SetLastError(emsg)
     else
-        NVAR/Z fitErrRef   = V_FitError
-        NVAR/Z fitQRRef    = V_FitQuitReason
-        NVAR/Z fitNIRef    = V_FitNumIters
-
-        if (NVAR_Exists(fitErrRef) && numtype(fitErrRef) == 0 && fitErrRef != 0)
+        if (V_FitError != 0)
             fitFailed = 1
             LJZ_EDCWB_SetLastError("FuncFit reported fit error.")
         endif
-        if (NVAR_Exists(fitQRRef) && numtype(fitQRRef) == 0)
-            fitQuitReason = fitQRRef
-        endif
-        if (NVAR_Exists(fitNIRef) && numtype(fitNIRef) == 0)
-            fitNumIters = fitNIRef
-        endif
+        fitQuitReason = V_FitQuitReason
+        fitNumIters = V_FitNumIters
     endif
 
     if (!LJZ_EDCWB_ValidateFlatCoef(coefActive))
