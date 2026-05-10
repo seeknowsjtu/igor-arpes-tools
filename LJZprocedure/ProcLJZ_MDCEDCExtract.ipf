@@ -438,6 +438,22 @@ Function LJZ_MDCExtract_EnsureDF()
     if (!NVAR_Exists(FermiWeightMethod))
         Variable/G $(LJZ_MDCExtract_BaseDF() + ":FermiWeightMethod") = 1
     endif
+    NVAR/Z UseFermiFitEF = $(LJZ_MDCExtract_BaseDF() + ":UseFermiFitEF")
+    if (!NVAR_Exists(UseFermiFitEF))
+        Variable/G $(LJZ_MDCExtract_BaseDF() + ":UseFermiFitEF") = 0
+    endif
+    SVAR/Z FermiFitSourceDF = $(LJZ_MDCExtract_BaseDF() + ":FermiFitSourceDF")
+    if (!SVAR_Exists(FermiFitSourceDF))
+        String/G $(LJZ_MDCExtract_BaseDF() + ":FermiFitSourceDF") = ""
+    endif
+    NVAR/Z FermiFitEFOKThresh = $(LJZ_MDCExtract_BaseDF() + ":FermiFitEFOKThresh")
+    if (!NVAR_Exists(FermiFitEFOKThresh))
+        Variable/G $(LJZ_MDCExtract_BaseDF() + ":FermiFitEFOKThresh") = 0.5
+    endif
+    NVAR/Z PerLayerEFValidCount = $(LJZ_MDCExtract_BaseDF() + ":PerLayerEFValidCount")
+    if (!NVAR_Exists(PerLayerEFValidCount))
+        Variable/G $(LJZ_MDCExtract_BaseDF() + ":PerLayerEFValidCount") = 0
+    endif
 
     NVAR/Z evary = $(LJZ_MDCExtract_BaseDF() + ":evary")
     if (!NVAR_Exists(evary))
@@ -529,6 +545,61 @@ Function LJZ_MDCExtract_EnsureDF()
     return 0
 End
 
+Function/WAVE LJZ_MDCExtract_GetPerLayerEFWave()
+    LJZ_MDCExtract_EnsureDF()
+    SVAR srcDF = $(LJZ_MDCExtract_BaseDF() + ":FermiFitSourceDF")
+    String dfStr = LJZ_Extract_df_with_colon(srcDF)
+    if (!DataFolderExists(dfStr))
+        return $""
+    endif
+    Wave/Z efWave = $(dfStr + "edc_ff_ef")
+    return efWave
+End
+
+Function/WAVE LJZ_MDCExtract_GetPerLayerEFOKWave()
+    LJZ_MDCExtract_EnsureDF()
+    SVAR srcDF = $(LJZ_MDCExtract_BaseDF() + ":FermiFitSourceDF")
+    String dfStr = LJZ_Extract_df_with_colon(srcDF)
+    if (!DataFolderExists(dfStr))
+        return $""
+    endif
+    Wave/Z okWave = $(dfStr + "edc_ff_ok")
+    return okWave
+End
+
+Function LJZ_MDCExtract_ValidatePerLayerEFWave(w, efWave, okWave, okThresh, nOKOut)
+    Wave w
+    Wave/Z efWave, okWave
+    Variable okThresh, &nOKOut
+
+    nOKOut = 0
+    if (!WaveExists(efWave))
+        return -1
+    endif
+    Variable nT = DimSize(w, 2)
+    if (numpnts(efWave) < nT)
+        return -1
+    endif
+    Variable t, efVal, okVal
+    for (t = 0; t < nT; t += 1)
+        efVal = efWave[t]
+        if (numtype(efVal) != 0)
+            continue
+        endif
+        if (WaveExists(okWave))
+            okVal = okWave[t]
+            if (numtype(okVal) != 0 || okVal < okThresh)
+                continue
+            endif
+        endif
+        nOKOut += 1
+    endfor
+    if (nOKOut > 0)
+        return 0
+    endif
+    return -1
+End
+
 Function LJZ_MDCExtract_EnergyWeight(ePhys, eCenter, halfWidth, sigma, method)
     Variable ePhys, eCenter, halfWidth, sigma, method
 
@@ -554,6 +625,83 @@ Function LJZ_MDCExtract_EnergyWeight(ePhys, eCenter, halfWidth, sigma, method)
         w = 1
     endif
     return w
+End
+
+Function LJZ_MDCExtract_BuildRawMDCsWeightedFermiPerLayer(w, efWave, efOKWave, okThresh, efFallback, halfWidthPhys, sigmaPhys, weightMethod, runDF)
+    Wave w
+    Wave efWave
+    Wave/Z efOKWave
+    Variable okThresh, efFallback, halfWidthPhys, sigmaPhys, weightMethod
+    String runDF
+
+    Variable nE = DimSize(w, 0), nK = DimSize(w, 1), nT = DimSize(w, 2)
+    if (nE <= 0 || nK <= 0 || nT <= 0)
+        return -1
+    endif
+    Variable halfWidth = abs(halfWidthPhys)
+    Variable k0 = DimOffset(w, 1), dk = DimDelta(w, 1)
+    NewDataFolder/O $(RemoveEnding(runDF, ":"))
+    String oldDF = GetDataFolder(1)
+    Variable hadError = 0
+    try
+        SetDataFolder $(RemoveEnding(runDF, ":"))
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "mdc_raw_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "mdc_show_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "edc_raw_*")
+        LJZ_Extract_KillWavesByPatternInRunDF(runDF, "edc_show_*")
+
+        Variable t, k, e, wt, v, wsum, acc, ePhys, okVal, eCenterThis
+        Variable eStart, eEnd
+        for (t = 0; t < nT; t += 1)
+            eCenterThis = efWave[t]
+            if (WaveExists(efOKWave))
+                okVal = efOKWave[t]
+                if (numtype(eCenterThis) != 0 || numtype(okVal) != 0 || okVal < okThresh)
+                    eCenterThis = efFallback
+                endif
+            else
+                if (numtype(eCenterThis) != 0)
+                    eCenterThis = efFallback
+                endif
+            endif
+
+            Make/O/N=(nK) $("mdc_raw_" + num2str(t)) = NaN
+            Wave mdc = $("mdc_raw_" + num2str(t))
+            SetScale/P x, k0, dk, WaveUnits(w, 1), mdc
+            if (numtype(eCenterThis) != 0)
+                continue
+            endif
+            if (LJZ_Extract_WindowPhysToIndex(DimOffset(w,0), DimDelta(w,0), nE, eCenterThis - halfWidth, eCenterThis + halfWidth, eStart, eEnd) != 0)
+                continue
+            endif
+
+            for (k = 0; k < nK; k += 1)
+                acc = 0
+                wsum = 0
+                for (e = eStart; e <= eEnd; e += 1)
+                    ePhys = DimOffset(w,0) + e * DimDelta(w,0)
+                    wt = LJZ_MDCExtract_EnergyWeight(ePhys, eCenterThis, halfWidth, sigmaPhys, weightMethod)
+                    v = w[e][k][t]
+                    if (numtype(v) == 0 && numtype(wt) == 0 && wt > 0)
+                        acc += wt * v
+                        wsum += wt
+                    endif
+                endfor
+                if (wsum > 0)
+                    mdc[k] = acc / wsum
+                else
+                    mdc[k] = NaN
+                endif
+            endfor
+        endfor
+    catch
+        hadError = 1
+    endtry
+    SetDataFolder $oldDF
+    if (hadError || GetRTError(1) != 0)
+        return -1
+    endif
+    return 0
 End
 
 
@@ -866,6 +1014,14 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF, useFermi, fermiE, 
     NVAR SmMethod = $(LJZ_MDCExtract_BaseDF() + ":SmMethod")
     NVAR SmPoly = $(LJZ_MDCExtract_BaseDF() + ":SmPoly")
     NVAR SmCutoff = $(LJZ_MDCExtract_BaseDF() + ":SmCutoff")
+    NVAR UseFermiFitEF = $(LJZ_MDCExtract_BaseDF() + ":UseFermiFitEF")
+    SVAR FermiFitSourceDF = $(LJZ_MDCExtract_BaseDF() + ":FermiFitSourceDF")
+    NVAR FermiFitEFOKThresh = $(LJZ_MDCExtract_BaseDF() + ":FermiFitEFOKThresh")
+    NVAR/Z PerLayerEFValidCount = $(LJZ_MDCExtract_BaseDF() + ":PerLayerEFValidCount")
+    Variable perLayerCount = 0
+    if (NVAR_Exists(PerLayerEFValidCount))
+        perLayerCount = PerLayerEFValidCount
+    endif
     Variable lowPhys = DimOffset(w,0) + eStart * DimDelta(w,0)
     Variable highPhys = DimOffset(w,0) + eEnd * DimDelta(w,0)
     if (useFermi)
@@ -917,6 +1073,10 @@ Function LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF, useFermi, fermiE, 
         Variable/G Run_FermiHalfWidth = fermiHalfWidth
         Variable/G Run_FermiSigma = fermiSigma
         Variable/G Run_FermiWeightMethod = fermiMethod
+        Variable/G Run_useFermiFitEF = UseFermiFitEF != 0
+        String/G Run_FermiFitSourceDF = FermiFitSourceDF
+        Variable/G Run_FermiFitEFOKThresh = FermiFitEFOKThresh
+        Variable/G Run_perLayerEFValidCount = perLayerCount
         Variable/G Run_energyWindowLowPhys = lowPhys
         Variable/G Run_energyWindowHighPhys = highPhys
         Variable/G Run_energyIndexLow = eStart
@@ -1000,6 +1160,7 @@ Function/S LJZ_MDCExtract_RunFrom3DWave(w, e0, e1, baseName)
     NVAR UseFermiWeightedMDC = $(LJZ_MDCExtract_BaseDF() + ":UseFermiWeightedMDC")
     Variable fermiUse = UseFermiWeightedMDC != 0
     Variable fermiE = NaN, fermiHalfWidth = NaN, fermiSigmaUsed = NaN, fermiMethod = 0
+    Variable perLayerValidCount = 0
 
     String nm = CleanupName(NameOfWave(w), 0)
     if (strlen(nm) > 20)
@@ -1023,6 +1184,8 @@ Function/S LJZ_MDCExtract_RunFrom3DWave(w, e0, e1, baseName)
         NVAR gFermiHalfWidth = $(LJZ_MDCExtract_BaseDF() + ":FermiHalfWidth")
         NVAR gFermiSigma = $(LJZ_MDCExtract_BaseDF() + ":FermiSigma")
         NVAR gFermiWeightMethod = $(LJZ_MDCExtract_BaseDF() + ":FermiWeightMethod")
+        NVAR gUseFermiFitEF = $(LJZ_MDCExtract_BaseDF() + ":UseFermiFitEF")
+        NVAR gFermiFitEFOKThresh = $(LJZ_MDCExtract_BaseDF() + ":FermiFitEFOKThresh")
         Variable eLow = gFermiE - abs(gFermiHalfWidth)
         Variable eHigh = gFermiE + abs(gFermiHalfWidth)
         if (LJZ_Extract_WindowPhysToIndex(DimOffset(w,0), DimDelta(w,0), nE, eLow, eHigh, eStart, eEnd) != 0)
@@ -1036,12 +1199,31 @@ Function/S LJZ_MDCExtract_RunFrom3DWave(w, e0, e1, baseName)
         if (fermiSigmaUsed <= 0)
             fermiSigmaUsed = abs(fermiHalfWidth) / 2
         endif
-        runDF = LJZ_MDCExtract_RunRoot() + ":" + nm + "_" + tag + "_EFw_EF" + CleanupName(num2str(fermiE),0) + "_hw" + CleanupName(num2str(abs(fermiHalfWidth)),0) + "_e" + num2str(eStart) + "_" + num2str(eEnd) + ":"
-        if (LJZ_MDCExtract_BuildRawMDCsWeightedFermi(w, fermiE, fermiHalfWidth, gFermiSigma, fermiMethod, runDF) != 0)
-            DoAlert 0, "MDC 提取失败：无法构建 EF 加权原始 MDC。"
-            return ""
+        Wave/Z efWave = LJZ_MDCExtract_GetPerLayerEFWave()
+        Wave/Z efOKWave = LJZ_MDCExtract_GetPerLayerEFOKWave()
+        Variable usePerLayer = 0
+        if (gUseFermiFitEF != 0)
+            if (LJZ_MDCExtract_ValidatePerLayerEFWave(w, efWave, efOKWave, gFermiFitEFOKThresh, perLayerValidCount) == 0)
+                usePerLayer = 1
+            else
+                Print "WARNING: per-layer EF is enabled but invalid for current wave. Fallback to global FermiE."
+            endif
+        endif
+        if (usePerLayer)
+            runDF = LJZ_MDCExtract_RunRoot() + ":" + nm + "_" + tag + "_EFw_perLayerEF_hw" + CleanupName(num2str(abs(fermiHalfWidth)),0) + "_e" + num2str(eStart) + "_" + num2str(eEnd) + ":"
+            if (LJZ_MDCExtract_BuildRawMDCsWeightedFermiPerLayer(w, efWave, efOKWave, gFermiFitEFOKThresh, gFermiE, fermiHalfWidth, gFermiSigma, fermiMethod, runDF) != 0)
+                DoAlert 0, "MDC 提取失败：无法构建 per-layer EF 加权原始 MDC。"
+                return ""
+            endif
+        else
+            runDF = LJZ_MDCExtract_RunRoot() + ":" + nm + "_" + tag + "_EFw_EF" + CleanupName(num2str(fermiE),0) + "_hw" + CleanupName(num2str(abs(fermiHalfWidth)),0) + "_e" + num2str(eStart) + "_" + num2str(eEnd) + ":"
+            if (LJZ_MDCExtract_BuildRawMDCsWeightedFermi(w, fermiE, fermiHalfWidth, gFermiSigma, fermiMethod, runDF) != 0)
+                DoAlert 0, "MDC 提取失败：无法构建 EF 加权原始 MDC。"
+                return ""
+            endif
         endif
     endif
+    Variable/G $(LJZ_MDCExtract_BaseDF() + ":PerLayerEFValidCount") = perLayerValidCount
 
     LJZ_MDCExtract_ApplySmoothing(runDF)
     LJZ_MDCExtract_RecordRunMeta(w, eStart, eEnd, runDF, fermiUse, fermiE, fermiHalfWidth, fermiSigmaUsed, fermiMethod)
@@ -1181,7 +1363,7 @@ Function LJZ_MDCExtract_OpenPanel()
     SetVariable svEvary, variable=root:ARPES_LJZ:MDCExtract:evary, proc=LJZ_MDCExtract_SetVarProc
     SetVariable svBaseName, pos={564,168}, size={180,20}, title="Base name"
     SetVariable svBaseName, value=root:ARPES_LJZ:MDCExtract:BaseName, proc=LJZ_MDCExtract_SetVarProc
-    GroupBox gbFermi, pos={358,198}, size={396,96}, title="Fermi-weighted MDC"
+    GroupBox gbFermi, pos={358,198}, size={396,126}, title="Fermi-weighted MDC"
     CheckBox cbFermiWeightedMDC, pos={370,220}, size={130,16}, title="Weighted EF MDC"
     CheckBox cbFermiWeightedMDC, variable=root:ARPES_LJZ:MDCExtract:UseFermiWeightedMDC, proc=LJZ_MDCExtract_CheckProc
     SetVariable svFermiE, pos={370,242}, size={120,20}, title="EF"
@@ -1192,9 +1374,14 @@ Function LJZ_MDCExtract_OpenPanel()
     SetVariable svFermiSigma, variable=root:ARPES_LJZ:MDCExtract:FermiSigma, proc=LJZ_MDCExtract_SetVarProc
     PopupMenu pmFermiWeightMethod, pos={370,266}, size={220,20}, title="Weight"
     PopupMenu pmFermiWeightMethod, value="0 Uniform;1 Gaussian;2 Triangular;", proc=LJZ_MDCExtract_PopupProc
+    CheckBox cbUsePerLayerEF, pos={370,290}, size={110,16}, title="Use per-layer EF"
+    CheckBox cbUsePerLayerEF, variable=root:ARPES_LJZ:MDCExtract:UseFermiFitEF, proc=LJZ_MDCExtract_CheckProc
+    SetVariable svFermiFitDF, pos={486,288}, size={178,20}, title="FermiFit DF"
+    SetVariable svFermiFitDF, value=root:ARPES_LJZ:MDCExtract:FermiFitSourceDF, proc=LJZ_MDCExtract_SetVarProc
+    Button btFermiFitAutoLink, pos={670,288}, size={74,20}, title="Auto-link", proc=LJZ_MDCExtract_ButtonProc
 
     // ---- right: smoothing ----
-    GroupBox gbSm, pos={358,302}, size={396,130}, title="Smoothing"
+    GroupBox gbSm, pos={358,332}, size={396,130}, title="Smoothing"
     CheckBox cbSmEn, pos={370,324}, size={68,16}, title="Enable"
     CheckBox cbSmEn, variable=root:ARPES_LJZ:MDCExtract:SmEnable, proc=LJZ_MDCExtract_CheckProc
     PopupMenu pmSmMethod, pos={452,322}, size={180,20}, title="Method"
@@ -1211,9 +1398,9 @@ Function LJZ_MDCExtract_OpenPanel()
     SetVariable svSmCutoff, variable=root:ARPES_LJZ:MDCExtract:SmCutoff, proc=LJZ_MDCExtract_SetVarProc
 
     // ---- action buttons ----
-    Button btExtract, pos={370,446}, size={120,32}, title="Extract MDC", proc=LJZ_MDCExtract_ButtonProc
-    Button btReShow,  pos={504,446}, size={120,32}, title="Re-smooth",   proc=LJZ_MDCExtract_ButtonProc
-    Button btFocusG,  pos={638,446}, size={110,32}, title="Focus Graph", proc=LJZ_MDCExtract_ButtonProc
+    Button btExtract, pos={370,476}, size={120,32}, title="Extract MDC", proc=LJZ_MDCExtract_ButtonProc
+    Button btReShow,  pos={504,476}, size={120,32}, title="Re-smooth",   proc=LJZ_MDCExtract_ButtonProc
+    Button btFocusG,  pos={638,476}, size={110,32}, title="Focus Graph", proc=LJZ_MDCExtract_ButtonProc
 
     // ---- info boxes ----
     GroupBox gbInfo, pos={6,524}, size={748,80}, title="Status"
@@ -1279,6 +1466,31 @@ Function LJZ_MDCExtract_ButtonProc(ba) : ButtonControl
         DoWindow/F $(LJZ_MDCExtract_GraphName())
         return 0
     endif
+    if (CmpStr(c, "btFermiFitAutoLink") == 0)
+        SVAR/Z edcSrc = $("root:ARPES_LJZ:EDCFermiFit:SourceDF")
+        if (!SVAR_Exists(edcSrc))
+            DoAlert 0, "EDCFermiFit SourceDF 未初始化。请先打开 EDCFermiFit。"
+            return 0
+        endif
+        String dfStr = LJZ_Extract_df_with_colon(edcSrc)
+        if (!DataFolderExists(dfStr))
+            DoAlert 0, "EDCFermiFit SourceDF 不存在。"
+            return 0
+        endif
+        Wave/Z efWave = $(dfStr + "edc_ff_ef")
+        if (!WaveExists(efWave))
+            DoAlert 0, "EDCFermiFit SourceDF 下未找到 edc_ff_ef。"
+            return 0
+        endif
+        SVAR ffSrc = $(LJZ_MDCExtract_BaseDF() + ":FermiFitSourceDF")
+        NVAR usePL = $(LJZ_MDCExtract_BaseDF() + ":UseFermiFitEF")
+        ffSrc = dfStr
+        usePL = 1
+        ControlUpdate/W=$(LJZ_MDCExtract_PanelName()) svFermiFitDF
+        ControlUpdate/W=$(LJZ_MDCExtract_PanelName()) cbUsePerLayerEF
+        LJZ_MDCExtract_RefreshTitleBoxes()
+        return 0
+    endif
 
     return 0
 End
@@ -1335,6 +1547,12 @@ Function LJZ_MDCExtract_SetVarProc(sva) : SetVariableControl
         LJZ_MDCExtract_RefreshTitleBoxes()
         return 0
     endif
+    if (CmpStr(c, "svFermiFitDF") == 0)
+        SVAR ffSrc = $(LJZ_MDCExtract_BaseDF() + ":FermiFitSourceDF")
+        ffSrc = LJZ_Extract_df_with_colon(sva.sval)
+        LJZ_MDCExtract_RefreshTitleBoxes()
+        return 0
+    endif
 
     LJZ_MDCExtract_RefreshTitleBoxes()
     return 0
@@ -1366,6 +1584,10 @@ Function LJZ_MDCExtract_CheckProc(cba) : CheckBoxControl
         return 0
     endif
     if (CmpStr(c, "cbFermiWeightedMDC") == 0)
+        LJZ_MDCExtract_RefreshTitleBoxes()
+        return 0
+    endif
+    if (CmpStr(c, "cbUsePerLayerEF") == 0)
         LJZ_MDCExtract_RefreshTitleBoxes()
         return 0
     endif
