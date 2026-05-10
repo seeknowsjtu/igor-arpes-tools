@@ -1008,25 +1008,25 @@ Function/S LJZ_MDCExtract_RunFrom3DWave(w, e0, e1, baseName)
             return ""
         endif
     else
-        NVAR FermiE = $(LJZ_MDCExtract_BaseDF() + ":FermiE")
-        NVAR FermiHalfWidth = $(LJZ_MDCExtract_BaseDF() + ":FermiHalfWidth")
-        NVAR FermiSigma = $(LJZ_MDCExtract_BaseDF() + ":FermiSigma")
-        NVAR FermiWeightMethod = $(LJZ_MDCExtract_BaseDF() + ":FermiWeightMethod")
-        Variable eLow = FermiE - abs(FermiHalfWidth)
-        Variable eHigh = FermiE + abs(FermiHalfWidth)
+        NVAR gFermiE = $(LJZ_MDCExtract_BaseDF() + ":FermiE")
+        NVAR gFermiHalfWidth = $(LJZ_MDCExtract_BaseDF() + ":FermiHalfWidth")
+        NVAR gFermiSigma = $(LJZ_MDCExtract_BaseDF() + ":FermiSigma")
+        NVAR gFermiWeightMethod = $(LJZ_MDCExtract_BaseDF() + ":FermiWeightMethod")
+        Variable eLow = gFermiE - abs(gFermiHalfWidth)
+        Variable eHigh = gFermiE + abs(gFermiHalfWidth)
         if (LJZ_Extract_WindowPhysToIndex(DimOffset(w,0), DimDelta(w,0), nE, eLow, eHigh, eStart, eEnd) != 0)
             DoAlert 0, "MDC 提取失败：EF 加权窗口在当前能量轴上为空。"
             return ""
         endif
-        fermiE = FermiE
-        fermiHalfWidth = FermiHalfWidth
-        fermiMethod = FermiWeightMethod
-        fermiSigmaUsed = FermiSigma
+        fermiE = gFermiE
+        fermiHalfWidth = gFermiHalfWidth
+        fermiMethod = gFermiWeightMethod
+        fermiSigmaUsed = gFermiSigma
         if (fermiSigmaUsed <= 0)
             fermiSigmaUsed = abs(fermiHalfWidth) / 2
         endif
         runDF = LJZ_MDCExtract_RunRoot() + ":" + nm + "_" + tag + "_EFw_EF" + CleanupName(num2str(fermiE),0) + "_hw" + CleanupName(num2str(abs(fermiHalfWidth)),0) + "_e" + num2str(eStart) + "_" + num2str(eEnd) + ":"
-        if (LJZ_MDCExtract_BuildRawMDCsWeightedFermi(w, fermiE, fermiHalfWidth, FermiSigma, fermiMethod, runDF) != 0)
+        if (LJZ_MDCExtract_BuildRawMDCsWeightedFermi(w, fermiE, fermiHalfWidth, gFermiSigma, fermiMethod, runDF) != 0)
             DoAlert 0, "MDC 提取失败：无法构建 EF 加权原始 MDC。"
             return ""
         endif
