@@ -812,7 +812,7 @@ Function LJZ_EKKMap_CreateGraphSubwindow()
     endif
 
     ModifyGraph/W=$graphPath margin(left)=52,margin(bottom)=36,margin(right)=16,margin(top)=12,mirror=2
-    ModifyGraph/W=$graphPath width={Plan,1,bottom,left}
+    ModifyGraph/W=$graphPath width=0,height=0
     Label/W=$graphPath left "Y"
     Label/W=$graphPath bottom "X"
     return 0
@@ -1218,12 +1218,12 @@ Function LJZ_EKKMap_ShowResultWave(w, graphName)
         LJZ_EKKMap_MakeDisplaySliceFrom3D(w, PreviewZ, dispSlice)
         String imName3D = NameOfWave(dispSlice)
         AppendImage/W=$graphName dispSlice
-        ModifyGraph/W=$graphName width={Plan,1,bottom,left}
+        ModifyGraph/W=$graphName width=0,height=0
         ModifyGraph/W=$graphName mirror=2
     else
         String imName2D = NameOfWave(w)
         AppendImage/W=$graphName w
-        ModifyGraph/W=$graphName width={Plan,1,bottom,left}
+        ModifyGraph/W=$graphName width=0,height=0
         ModifyGraph/W=$graphName mirror=2
     endif
     return 0
