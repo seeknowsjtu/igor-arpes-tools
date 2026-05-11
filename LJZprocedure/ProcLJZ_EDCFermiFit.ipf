@@ -224,6 +224,12 @@ Function LJZ_EDCFermiFit_EnsureDF()
         Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope") = 1
     endif
 
+    NVAR/Z KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
+    if (!NVAR_Exists(KernelMode))
+        Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode") = 0
+        Print "Using ZWT6 legacy kernel: Height, EF, Te, BG, Res, SB."
+    endif
+
     SVAR/Z sWorkSrc = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource")
     if (!SVAR_Exists(sWorkSrc))
         String/G $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource") = ""
@@ -1036,6 +1042,49 @@ Function/S LJZ_EDCFermiFit_HoldString()
     return num2str(HHeight) + num2str(HEF) + num2str(HTe) + num2str(HBG) + num2str(HRes) + num2str(HSB) + num2str(HOccSlope)
 End
 
+Function/S LJZ_EDCFermiFit_HoldString_ZWT6()
+    NVAR HHeight = $(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
+    NVAR HEF = $(LJZ_EDCFermiFit_BaseDF() + ":HEF")
+    NVAR HTe = $(LJZ_EDCFermiFit_BaseDF() + ":HTe")
+    NVAR HBG = $(LJZ_EDCFermiFit_BaseDF() + ":HBG")
+    NVAR HRes = $(LJZ_EDCFermiFit_BaseDF() + ":HRes")
+    NVAR HSB = $(LJZ_EDCFermiFit_BaseDF() + ":HSB")
+
+    return num2str(HHeight) + num2str(HEF) + num2str(HTe) + num2str(HBG) + num2str(HRes) + num2str(HSB)
+End
+
+Function LJZ_EDCFermiFit_UseZWTLegacyKernel()
+    LJZ_EDCFermiFit_EnsureDF()
+    NVAR KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
+    NVAR HHeight = $(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
+    NVAR HEF = $(LJZ_EDCFermiFit_BaseDF() + ":HEF")
+    NVAR HTe = $(LJZ_EDCFermiFit_BaseDF() + ":HTe")
+    NVAR HBG = $(LJZ_EDCFermiFit_BaseDF() + ":HBG")
+    NVAR HRes = $(LJZ_EDCFermiFit_BaseDF() + ":HRes")
+    NVAR HSB = $(LJZ_EDCFermiFit_BaseDF() + ":HSB")
+    NVAR HOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
+    KernelMode = 0
+    HHeight = 0; HEF = 0; HTe = 1; HBG = 0; HRes = 1; HSB = 0; HOccSlope = 1
+    Print "EDCFermiFit: using strict ZWT-compatible 6-parameter kernel."
+    Print "Using ZWT6 legacy kernel: Height, EF, Te, BG, Res, SB."
+End
+
+Function LJZ_EDCFermiFit_UseZWTWithOccSlopeKernel()
+    LJZ_EDCFermiFit_EnsureDF()
+    NVAR KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
+    NVAR HHeight = $(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
+    NVAR HEF = $(LJZ_EDCFermiFit_BaseDF() + ":HEF")
+    NVAR HTe = $(LJZ_EDCFermiFit_BaseDF() + ":HTe")
+    NVAR HBG = $(LJZ_EDCFermiFit_BaseDF() + ":HBG")
+    NVAR HRes = $(LJZ_EDCFermiFit_BaseDF() + ":HRes")
+    NVAR HSB = $(LJZ_EDCFermiFit_BaseDF() + ":HSB")
+    NVAR HOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
+    KernelMode = 1
+    HHeight = 0; HEF = 0; HTe = 1; HBG = 0; HRes = 1; HSB = 1; HOccSlope = 0
+    Print "EDCFermiFit: using ZWT+OccSlope 7-parameter test kernel."
+    Print "Using ZWT7 OccSlope test kernel."
+End
+
 Function LJZ_EDCFermiFit_ClearCurrentWorkWave()
     SVAR sWorkSrc = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource")
     SVAR sWorkLabel = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveLabel")
@@ -1240,6 +1289,39 @@ Function LJZ_EDCFermiFit_PostFitLooksReasonable(w, x1, x2, pw, residRMS, dataRMS
     endif
 
     return 1
+End
+
+Function LJZ_EDCFermiFit_UIToCoefWave_ZWT6(pw6)
+    Wave pw6
+
+    NVAR Height = $(LJZ_EDCFermiFit_BaseDF() + ":Height")
+    NVAR EF = $(LJZ_EDCFermiFit_BaseDF() + ":EF")
+    NVAR Te = $(LJZ_EDCFermiFit_BaseDF() + ":Te")
+    NVAR BG = $(LJZ_EDCFermiFit_BaseDF() + ":BG")
+    NVAR Res = $(LJZ_EDCFermiFit_BaseDF() + ":Res")
+    NVAR SB = $(LJZ_EDCFermiFit_BaseDF() + ":SB")
+
+    pw6[0] = Height
+    pw6[1] = EF
+    pw6[2] = Te
+    pw6[3] = BG
+    pw6[4] = Res / (2 * sqrt(2 * ln(2)) * 1000)
+    pw6[5] = SB
+    return 0
+End
+
+Function LJZ_EDCFermiFit_ZWT6ToStorePW(pw6, pwStore7)
+    Wave pw6, pwStore7
+    pwStore7[0] = pw6[0]; pwStore7[1] = pw6[1]; pwStore7[2] = abs(pw6[2]); pwStore7[3] = pw6[3]
+    pwStore7[4] = pw6[4] * (2 * sqrt(2 * ln(2))) * 1000; pwStore7[5] = pw6[5]; pwStore7[6] = 0
+    return 0
+End
+
+Function LJZ_EDCFermiFit_ZWT6SigToStoreSig(sig6, sigStore7)
+    Wave sig6, sigStore7
+    sigStore7[0] = abs(sig6[0]); sigStore7[1] = abs(sig6[1]); sigStore7[2] = abs(sig6[2]); sigStore7[3] = abs(sig6[3])
+    sigStore7[4] = abs(sig6[4]) * (2 * sqrt(2 * ln(2))) * 1000; sigStore7[5] = abs(sig6[5]); sigStore7[6] = NaN
+    return 0
 End
 
 Function LJZ_EDCFermiFit_UIToCoefWave(pw)
@@ -1574,6 +1656,92 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
     return 0
 End
 
+Function LJZ_EDCFermiFit_Model_ZWT6(pw, yw, xw) : FitFunc
+    Wave pw, yw, xw
+    Variable n = numpnts(xw)
+    if (n <= 0)
+        return -1
+    endif
+    Variable dT
+    if (n > 1)
+        dT = xw[1] - xw[0]
+    else
+        dT = DimDelta(yw, 0)
+    endif
+    if (numtype(dT) != 0 || dT == 0)
+        dT = DimDelta(yw, 0)
+    endif
+    if (numtype(dT) != 0 || dT == 0)
+        dT = 1e-4
+    endif
+    Variable dtAbs = abs(dT)
+    Variable sig = abs(pw[4]); if (sig <= 0 || numtype(sig) != 0); sig = 1e-6; endif
+    Variable rad = max(1, round(sig / dtAbs)); Variable gN = 8 * rad + 1
+    Make/O/D/N=(gN) root:ARPES_LJZ:EDCFermiFit:ZWT_GaussWave
+    Wave GaussWave = root:ARPES_LJZ:EDCFermiFit:ZWT_GaussWave
+    SetScale/P x, -dtAbs * (4 * rad), dtAbs, "", GaussWave
+    GaussWave = 1 / sqrt(2 * pi) / sig * exp(-x^2 / (2 * sig^2))
+    Variable sumexp = sum(GaussWave, -inf, inf); if (numtype(sumexp) != 0 || sumexp <= 0); sumexp = 1; endif
+    GaussWave /= sumexp
+    Variable dimx = xw[0]
+    Redimension/N=(n) yw; SetScale/P x, dimx, dT, "", yw
+    InsertPoints 0, 1000, yw; InsertPoints dimsize(yw,0), 1000, yw
+    SetScale/P x, dimx - dT * 1000, dT, "", yw
+    Variable T = abs(pw[2]); if (T <= 0 || numtype(T) != 0); T = 1; endif
+    yw = pw[0] / (1 + exp(11594.2 * (x - pw[1]) / T))
+    Convolve/A GaussWave, yw
+    DeletePoints dimsize(yw,0)-1000, 1000, yw; DeletePoints 0, 1000, yw; SetScale/P x, dimx, dT, "", yw
+    Duplicate/O yw, root:ARPES_LJZ:EDCFermiFit:ZWT_ttem
+    Wave ttem = root:ARPES_LJZ:EDCFermiFit:ZWT_ttem
+    Reverse ttem; Integrate ttem; Reverse ttem
+    yw = yw + pw[3] + pw[5] * ttem(x)
+    return 0
+End
+
+Function LJZ_EDCFermiFit_Model_ZWT7OccSlope(pw, yw, xw) : FitFunc
+    Wave pw, yw, xw
+    Variable n = numpnts(xw)
+    if (n <= 0)
+        return -1
+    endif
+    Variable dT
+    if (n > 1)
+        dT = xw[1] - xw[0]
+    else
+        dT = DimDelta(yw, 0)
+    endif
+    if (numtype(dT) != 0 || dT == 0)
+        dT = DimDelta(yw, 0)
+    endif
+    if (numtype(dT) != 0 || dT == 0)
+        dT = 1e-4
+    endif
+    Variable dtAbs = abs(dT)
+    Variable sig = abs(pw[4]); if (sig <= 0 || numtype(sig) != 0); sig = 1e-6; endif
+    Variable rad = max(1, round(sig / dtAbs)); Variable gN = 8 * rad + 1
+    Make/O/D/N=(gN) root:ARPES_LJZ:EDCFermiFit:ZWT_GaussWave
+    Wave GaussWave = root:ARPES_LJZ:EDCFermiFit:ZWT_GaussWave
+    SetScale/P x, -dtAbs * (4 * rad), dtAbs, "", GaussWave
+    GaussWave = 1 / sqrt(2 * pi) / sig * exp(-x^2 / (2 * sig^2))
+    Variable sumexp = sum(GaussWave, -inf, inf); if (numtype(sumexp) != 0 || sumexp <= 0); sumexp = 1; endif
+    GaussWave /= sumexp
+    Variable dimx = xw[0]
+    Redimension/N=(n) yw; SetScale/P x, dimx, dT, "", yw
+    InsertPoints 0, 1000, yw; InsertPoints dimsize(yw,0), 1000, yw
+    SetScale/P x, dimx - dT * 1000, dT, "", yw
+    Variable T = abs(pw[2]); if (T <= 0 || numtype(T) != 0); T = 1; endif
+    Variable amp
+    amp = pw[0] + pw[6] * (x - pw[1])
+    yw = amp / (1 + exp(11594.2 * (x - pw[1]) / T))
+    Convolve/A GaussWave, yw
+    DeletePoints dimsize(yw,0)-1000, 1000, yw; DeletePoints 0, 1000, yw; SetScale/P x, dimx, dT, "", yw
+    Duplicate/O yw, root:ARPES_LJZ:EDCFermiFit:ZWT_ttem
+    Wave ttem = root:ARPES_LJZ:EDCFermiFit:ZWT_ttem
+    Reverse ttem; Integrate ttem; Reverse ttem
+    yw = yw + pw[3] + pw[5] * ttem(x)
+    return 0
+End
+
 Function LJZ_EDCFermiFit_ModelAA(pw, yw, xw) : FitFunc
     Wave pw, yw, xw
     return LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
@@ -1905,66 +2073,199 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     return -1
 End
 
+Function LJZ_EDCFermiFit_CreateStoredFitWave_ZWT6(wPath, pw6)
+    String wPath
+    Wave pw6
+    SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
+    String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    Variable idx = LJZ_EDCFermiFit_ParseWaveIndex(NameOfWave($wPath))
+    Wave/Z w = $wPath
+    if (!WaveExists(w) || !LJZ_EDCFermiFit_Is1DWave(w) || numtype(idx) != 0)
+        return -1
+    endif
+    Variable n = numpnts(w)
+    Make/O/N=(n) $(dfStr + LJZ_EDCFermiFit_FitWaveNameByIndex(idx)) = NaN
+    Wave fitW = $(dfStr + LJZ_EDCFermiFit_FitWaveNameByIndex(idx))
+    SetScale/P x, DimOffset(w, 0), DimDelta(w, 0), "", fitW
+    Make/FREE/D/N=(n) xFull
+    xFull = pnt2x(fitW, p)
+    LJZ_EDCFermiFit_Model_ZWT6(pw6, fitW, xFull)
+    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
+    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
+    Variable pLo, pHi
+    LJZ_EDCFermiFit_GetFitPointWindow(w, FitX1, FitX2, pLo, pHi)
+    fitW[p < pLo || p > pHi] = NaN
+    return 0
+End
+
+Function LJZ_EDCFermiFit_FitWaveByPath_ZWT6(wPath, startPW6, holdStr, updateUI, verbose)
+    String wPath, holdStr
+    Wave startPW6
+    Variable updateUI, verbose
+    Wave/Z wFit = LJZ_EDCFermiFit_GetActiveWaveForPath(wPath)
+    if (!WaveExists(wFit) || !LJZ_EDCFermiFit_Is1DWave(wFit) || strlen(holdStr) != 6)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath); return -1
+    endif
+    Variable pLo,pHi; NVAR FitX1=$(LJZ_EDCFermiFit_BaseDF()+":FitX1"); NVAR FitX2=$(LJZ_EDCFermiFit_BaseDF()+":FitX2")
+    LJZ_EDCFermiFit_GetFitPointWindow(wFit, FitX1, FitX2, pLo, pHi)
+    if (pHi-pLo<4)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath); return -1
+    endif
+    Variable i,freeCount=0
+    for(i=0;i<6;i+=1)
+        if (char2num(holdStr[i]) != char2num("1")); freeCount += 1; endif
+    endfor
+    if (freeCount<=0)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath); return -1
+    endif
+    Make/O/D/N=6 root:ARPES_LJZ:EDCFermiFit:pw_zwt6
+    Wave pw6 = root:ARPES_LJZ:EDCFermiFit:pw_zwt6
+    pw6 = startPW6[p]
+    LJZ_EDCFermiFit_KillStoredFitWave(wPath)
+    FuncFit/Q=1/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_Model_ZWT6 pw6 wFit[pLo,pHi] /D
+    Variable fitErr=V_FitError, chiSq=V_chisq
+    if (fitErr != 0)
+        Print "ZWT6 FuncFit failed; no result will be written."
+        LJZ_EDCFermiFit_ClearResultForWave(wPath); return -1
+    endif
+    Variable unchanged=1
+    for(i=0;i<6;i+=1)
+        if (char2num(holdStr[i]) != char2num("1") && abs(pw6[i]-startPW6[i])>1e-12)
+            unchanged=0
+        endif
+    endfor
+    if (unchanged)
+        Print "ZWT6 FuncFit did not change any free parameter; treating as failed."
+        LJZ_EDCFermiFit_ClearResultForWave(wPath); return -1
+    endif
+    Make/FREE/D/N=7 pwStore7,sigStore7
+    LJZ_EDCFermiFit_ZWT6ToStorePW(pw6,pwStore7)
+    Wave/Z wSig=W_sigma
+    if (WaveExists(wSig) && numpnts(wSig)>=6)
+        LJZ_EDCFermiFit_ZWT6SigToStoreSig(wSig,sigStore7)
+    else
+        sigStore7=NaN
+    endif
+    LJZ_EDCFermiFit_WriteResultForWave(wPath,pwStore7,sigStore7,chiSq,1)
+    LJZ_EDCFermiFit_CreateStoredFitWave_ZWT6(wPath,pw6)
+    if(updateUI)
+        NVAR Height=$(LJZ_EDCFermiFit_BaseDF()+":Height"); NVAR EF=$(LJZ_EDCFermiFit_BaseDF()+":EF"); NVAR Te=$(LJZ_EDCFermiFit_BaseDF()+":Te")
+        NVAR BG=$(LJZ_EDCFermiFit_BaseDF()+":BG"); NVAR Res=$(LJZ_EDCFermiFit_BaseDF()+":Res"); NVAR SB=$(LJZ_EDCFermiFit_BaseDF()+":SB"); NVAR OccSlope=$(LJZ_EDCFermiFit_BaseDF()+":OccSlope")
+        Height=pw6[0]; EF=pw6[1]; Te=pw6[2]; BG=pw6[3]; Res=pw6[4]*(2*sqrt(2*ln(2)))*1000; SB=pw6[5]; OccSlope=0
+    endif
+    return 0
+End
+
+Function LJZ_EDCFermiFit_FitWaveByPath_ZWT7OccSlope(wPath, initPW, holdStr, updateUI, doAlertOnFail)
+    String wPath, holdStr
+    Wave initPW
+    Variable updateUI, doAlertOnFail
+    NVAR HSB=$(LJZ_EDCFermiFit_BaseDF()+":HSB")
+    NVAR HRes=$(LJZ_EDCFermiFit_BaseDF()+":HRes")
+    NVAR HOccSlope=$(LJZ_EDCFermiFit_BaseDF()+":HOccSlope")
+    if (HSB==0 && HOccSlope==0)
+        Print "WARNING: Shirley and OccSlope are both free; this may be ill-conditioned."
+    endif
+    if (HRes==0 && HOccSlope==0)
+        Print "WARNING: Resolution and OccSlope are both free; this may be ill-conditioned."
+    endif
+    Wave/Z wFit = LJZ_EDCFermiFit_GetActiveWaveForPath(wPath)
+    if (!WaveExists(wFit) || !LJZ_EDCFermiFit_Is1DWave(wFit) || strlen(holdStr) != 7)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath); return -1
+    endif
+    Variable pLo,pHi; NVAR FitX1=$(LJZ_EDCFermiFit_BaseDF()+":FitX1"); NVAR FitX2=$(LJZ_EDCFermiFit_BaseDF()+":FitX2")
+    LJZ_EDCFermiFit_GetFitPointWindow(wFit, FitX1, FitX2, pLo, pHi)
+    Make/O/D/N=7 root:ARPES_LJZ:EDCFermiFit:pw_zwt7
+    Wave pw7=root:ARPES_LJZ:EDCFermiFit:pw_zwt7
+    pw7=initPW[p]
+    LJZ_EDCFermiFit_KillStoredFitWave(wPath)
+    FuncFit/Q=1/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_Model_ZWT7OccSlope pw7 wFit[pLo,pHi] /D
+    Variable fitErr=V_FitError, chiSq=V_chisq
+    if (fitErr != 0)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath); return -1
+    endif
+    Make/FREE/D/N=7 pwStore,sigStore
+    LJZ_EDCFermiFit_ResultPWToStorePW(pw7,pwStore)
+    Wave/Z wSig=W_sigma
+    if (WaveExists(wSig) && numpnts(wSig)>=7)
+        LJZ_EDCFermiFit_ResultSigToStoreSig(wSig,sigStore)
+    else
+        sigStore=NaN
+    endif
+    LJZ_EDCFermiFit_WriteResultForWave(wPath,pwStore,sigStore,chiSq,1)
+    LJZ_EDCFermiFit_CreateStoredFitWave(wPath,pw7)
+    if (updateUI)
+        LJZ_EDCFermiFit_CoefWaveToUI(pw7)
+    endif
+    return 0
+End
+
 Function LJZ_EDCFermiFit_FitCurrent()
     LJZ_EDCFermiFit_EnsureDF()
-
     SVAR sWave = $(LJZ_EDCFermiFit_BaseDF() + ":WaveSel")
     if (strlen(sWave) == 0)
         DoAlert 0, "请先选择一个 edc_show_* 波形。"
         return -1
     endif
-
-    Make/FREE/D/N=7 initPW
-    LJZ_EDCFermiFit_UIToCoefWave(initPW)
-    String holdStr = LJZ_EDCFermiFit_HoldString()
-
-    Variable ret = LJZ_EDCFermiFit_FitWaveByPath(sWave, initPW, holdStr, 1, 1)
-    LJZ_EDCFermiFit_ShowCurrentWave()
-    LJZ_EDCFermiFit_RefreshTitleBoxes()
-    return ret
+    NVAR KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
+    Variable ret
+    if (KernelMode == 0)
+        Make/FREE/D/N=6 initPW6
+        LJZ_EDCFermiFit_UIToCoefWave_ZWT6(initPW6)
+        ret = LJZ_EDCFermiFit_FitWaveByPath_ZWT6(sWave, initPW6, LJZ_EDCFermiFit_HoldString_ZWT6(), 1, 1)
+    elseif (KernelMode == 1)
+        Make/FREE/D/N=7 initPW7
+        LJZ_EDCFermiFit_UIToCoefWave(initPW7)
+        ret = LJZ_EDCFermiFit_FitWaveByPath_ZWT7OccSlope(sWave, initPW7, LJZ_EDCFermiFit_HoldString(), 1, 1)
+    else
+        Make/FREE/D/N=7 initPW
+        LJZ_EDCFermiFit_UIToCoefWave(initPW)
+        ret = LJZ_EDCFermiFit_FitWaveByPath(sWave, initPW, LJZ_EDCFermiFit_HoldString(), 1, 1)
+    endif
+    LJZ_EDCFermiFit_ShowCurrentWave(); LJZ_EDCFermiFit_RefreshTitleBoxes(); return ret
 End
 
 Function LJZ_EDCFermiFit_FitAll()
     LJZ_EDCFermiFit_EnsureDF()
-
     String listStr = LJZ_EDCFermiFit_CurrentWaveList()
     Variable n = ItemsInList(listStr, ";")
     if (n <= 0)
         DoAlert 0, "当前 SourceDF 下没有 edc_show_* 波形可拟合。"
         return -1
     endif
-
-    Make/FREE/D/N=7 baseInit, workInit
-    LJZ_EDCFermiFit_UIToCoefWave(baseInit)
-    workInit = baseInit[p]
-    String holdStr = LJZ_EDCFermiFit_HoldString()
-
-    LJZ_EDCFermiFit_ClearAllResultWaves()
-
+    NVAR KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
     Variable i, okCount = 0
-    for (i = 0; i < n; i += 1)
-        String wPath = StringFromList(i, listStr, ";")
-        if ((i == 0) || (mod(i, 5) == 0) || (i == n - 1))
-            Print "EDCFermiFit FitAll: fitting " + num2str(i + 1) + " / " + num2str(n) + " : " + NameOfWave($wPath)
-            DoUpdate
-        endif
-        Variable ret = LJZ_EDCFermiFit_FitWaveByPath(wPath, workInit, holdStr, 0, 0)
-        if (ret == 0)
-            okCount += 1
-        else
-            workInit = baseInit[p]
-        endif
-    endfor
-
-    LJZ_EDCFermiFit_LoadStoredResultForSelection()
-    LJZ_EDCFermiFit_ShowCurrentWave()
-    LJZ_EDCFermiFit_RefreshTitleBoxes()
-
+    LJZ_EDCFermiFit_ClearAllResultWaves()
+    if (KernelMode == 0)
+        Make/FREE/D/N=6 base6, work6
+        LJZ_EDCFermiFit_UIToCoefWave_ZWT6(base6); work6 = base6[p]
+        for (i=0; i<n; i+=1)
+            String wPath = StringFromList(i, listStr, ";")
+            Variable ret = LJZ_EDCFermiFit_FitWaveByPath_ZWT6(wPath, work6, LJZ_EDCFermiFit_HoldString_ZWT6(), 0, 0)
+            if (ret==0); okCount+=1; else; work6 = base6[p]; endif
+        endfor
+    elseif (KernelMode == 1)
+        Make/FREE/D/N=7 base7, work7
+        LJZ_EDCFermiFit_UIToCoefWave(base7); work7 = base7[p]
+        for (i=0; i<n; i+=1)
+            String wPath1 = StringFromList(i, listStr, ";")
+            Variable ret1 = LJZ_EDCFermiFit_FitWaveByPath_ZWT7OccSlope(wPath1, work7, LJZ_EDCFermiFit_HoldString(), 0, 0)
+            if (ret1==0); okCount+=1; else; work7 = base7[p]; endif
+        endfor
+    else
+        Make/FREE/D/N=7 baseInit, workInit
+        LJZ_EDCFermiFit_UIToCoefWave(baseInit); workInit = baseInit[p]
+        for (i=0; i<n; i+=1)
+            String wPath2 = StringFromList(i, listStr, ";")
+            Variable ret2 = LJZ_EDCFermiFit_FitWaveByPath(wPath2, workInit, LJZ_EDCFermiFit_HoldString(), 0, 0)
+            if (ret2==0); okCount+=1; else; workInit = baseInit[p]; endif
+        endfor
+    endif
+    LJZ_EDCFermiFit_LoadStoredResultForSelection(); LJZ_EDCFermiFit_ShowCurrentWave(); LJZ_EDCFermiFit_RefreshTitleBoxes()
     if (okCount <= 0)
         DoAlert 0, "批量拟合已完成，但没有成功条目。请先调好当前条的窗口和初值。"
         return -1
     endif
-
     return 0
 End
 
