@@ -1672,6 +1672,118 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
     return 0
 End
 
+// Smooth model used only by FuncFit. Preview still uses LJZ_EDCFermiFit_EvalModel.
+Function LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
+    Wave pw, yw, xw
+
+    Variable n = numpnts(xw)
+    if (n <= 0)
+        return -1
+    endif
+
+    Variable kB = 8.617333262e-5
+    Variable A   = pw[0]
+    Variable EF  = pw[1]
+    Variable T   = pw[2]
+    Variable BG  = pw[3]
+    Variable sig = pw[4]
+    Variable SB  = pw[5]
+    Variable OccSlope = pw[6]
+
+    // Smooth fitting version: do not use abs(T), abs(sig), or max(SB,0).
+    // Those operations make the Jacobian singular/non-smooth for FuncFit.
+    if (numtype(T) != 0)
+        T = 20
+    endif
+    if (T < 0.2)
+        T = 0.2
+    endif
+    if (T > 1000)
+        T = 1000
+    endif
+
+    if (numtype(sig) != 0)
+        sig = 0.005
+    endif
+    if (sig < 1e-8)
+        sig = 1e-8
+    endif
+    if (sig > 0.20)
+        sig = 0.20
+    endif
+
+    if (numtype(SB) != 0)
+        SB = 0
+    endif
+
+    Variable dx
+    if (n > 1)
+        dx = xw[1] - xw[0]
+    else
+        dx = 1e-4
+    endif
+    if (dx == 0 && n > 1)
+        dx = (xw[n - 1] - xw[0]) / max(1, n - 1)
+    endif
+    if (dx == 0)
+        dx = 1e-4
+    endif
+    Variable dxAbs = abs(dx)
+    Variable blurEV = max(sig, 4 * kB * T)
+    Variable padN = max(24, ceil(8 * blurEV / dxAbs))
+    padN = min(padN, 2000)
+    Variable nExt = n + 2 * padN
+
+    Make/FREE/D/N=(nExt) xExt, yBare
+    xExt = xw[0] + (p - padN) * dx
+    Variable i, arg, occAmp
+    for (i = 0; i < nExt; i += 1)
+        arg = (xExt[i] - EF) / (kB * T)
+        occAmp = A + OccSlope * (xExt[i] - EF)
+        if (arg > 60)
+            yBare[i] = 0
+        elseif (arg < -60)
+            yBare[i] = occAmp
+        else
+            yBare[i] = occAmp / (1 + exp(arg))
+        endif
+    endfor
+
+    if (sig > 1e-7 * dxAbs)
+        Variable rad = max(3, ceil(4 * sig / dxAbs))
+        rad = min(rad, 1000)
+        Variable gN = 2 * rad + 1
+        Make/FREE/D/N=(gN) gk
+        gk = exp(-(((p - rad) * dxAbs)^2) / (2 * sig^2))
+        Variable gsum = sum(gk, -inf, inf)
+        if (numtype(gsum) != 0 || gsum <= 0)
+            gsum = 1
+        endif
+        gk /= gsum
+        Convolve/A gk, yBare
+    endif
+
+    Make/FREE/D/N=(n) yCrop, yTail, shirleyShape
+    yCrop = yBare[p + padN]
+
+    Variable rightRef = yCrop[n - 1]
+    yTail = max(yCrop[p] - rightRef, 0)
+    Duplicate/FREE yTail, shirleyShape
+    Reverse shirleyShape
+    Integrate shirleyShape
+    Reverse shirleyShape
+
+    Variable shMax = shirleyShape[0]
+    if (numtype(shMax) != 0 || shMax <= 0)
+        shirleyShape = 0
+    else
+        shirleyShape /= shMax
+    endif
+
+    yw = yCrop[p] + BG + SB * shirleyShape[p]
+    return 0
+End
+
 Function LJZ_EDCFermiFit_Model_Classic6(pw6, yw, xw) : FitFunc
     Wave pw6, yw, xw
 
@@ -1917,7 +2029,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath_Classic6(wPath, startPW6, holdStr, update
     NVAR/Z tChiSq = $(fitDF + ":V_chisq")
     Wave/Z wSig = $(fitDF + ":W_sigma")
 
-    FuncFit/Z/Q/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_Model_Classic6 pw6 wFit[pLo,pHi] /D
+    FuncFit/Q/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_Model_Classic6 pw6 wFit[pLo,pHi] /D
 
     if (NVAR_Exists(tFitErr))
         fitErr = tFitErr
@@ -2017,28 +2129,388 @@ Function LJZ_EDCFermiFit_FitWaveByPath_Classic7Slope(wPath, initPW, holdStr, upd
     return -1
 End
 
+
+Function LJZ_EDCFermiFit_ModelAA(pw, yw, xw) : FitFunc
+    Wave pw, yw, xw
+
+    return LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
+End
+
+Function LJZ_EDCFermiFit_CreateStoredFitWave(wPath, pwFit)
+    String wPath
+    Wave pwFit
+
+    SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
+    String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    Variable idxFit = LJZ_EDCFermiFit_ParseWaveIndex(NameOfWave($wPath))
+    Variable nFit
+    Variable i
+    Variable pLo
+    Variable pHi
+
+    if (numtype(idxFit) != 0)
+        return -1
+    endif
+
+    Wave/Z w = LJZ_EDCFermiFit_GetActiveWaveForPath(wPath)
+    if (!WaveExists(w))
+        return -1
+    endif
+
+    if (!LJZ_EDCFermiFit_Is1DWave(w))
+        return -1
+    endif
+
+    nFit = numpnts(w)
+    if (nFit <= 0)
+        return -1
+    endif
+
+    Make/O/D/N=(nFit) $(dfStr + LJZ_EDCFermiFit_FitWaveNameByIndex(idxFit)) = NaN
+    Wave fitW = $(dfStr + LJZ_EDCFermiFit_FitWaveNameByIndex(idxFit))
+    SetScale/P x, DimOffset(w, 0), DimDelta(w, 0), WaveUnits(w, 0), fitW
+
+    Make/FREE/D/N=(nFit) xFull
+    for (i = 0; i < nFit; i += 1)
+        xFull[i] = pnt2x(w, i)
+    endfor
+
+    LJZ_EDCFermiFit_ModelAA(pwFit, fitW, xFull)
+
+    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
+    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
+    LJZ_EDCFermiFit_GetFitPointWindow(w, FitX1, FitX2, pLo, pHi)
+
+    for (i = 0; i < nFit; i += 1)
+        if (i < pLo || i > pHi)
+            fitW[i] = NaN
+        endif
+    endfor
+
+    return 0
+End
+
+Function LJZ_EDCFermiFit_CountFreeParams(holdStr, nCoef)
+    String holdStr
+    Variable nCoef
+
+    Variable i
+    Variable freeCount
+    Variable holdLen
+    Variable isHeld
+
+    freeCount = 0
+    holdLen = strlen(holdStr)
+
+    for (i = 0; i < nCoef; i += 1)
+        isHeld = 0
+        if (i < holdLen)
+            if (CmpStr(holdStr[i,i], "1") == 0)
+                isHeld = 1
+            endif
+        endif
+
+        if (!isHeld)
+            freeCount += 1
+        endif
+    endfor
+
+    return freeCount
+End
+
+Function LJZ_EDCFermiFit_FreeParamsUnchanged(pwFit, pwStart, holdStr, nCoef)
+    Wave pwFit, pwStart
+    String holdStr
+    Variable nCoef
+
+    Variable i
+    Variable holdLen
+    Variable isHeld
+    Variable diffVal
+    Variable tol
+
+    holdLen = strlen(holdStr)
+    tol = 1e-11
+
+    for (i = 0; i < nCoef; i += 1)
+        isHeld = 0
+        if (i < holdLen)
+            if (CmpStr(holdStr[i,i], "1") == 0)
+                isHeld = 1
+            endif
+        endif
+
+        if (!isHeld)
+            diffVal = abs(pwFit[i] - pwStart[i])
+            if (diffVal > tol * max(1, abs(pwStart[i])))
+                return 0
+            endif
+        endif
+    endfor
+
+    return 1
+End
+
+Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAlertOnFail)
+    String wPath
+    Wave startPW
+    String holdStr
+    Variable updateUI
+    Variable doAlertOnFail
+
+    Variable n
+    Variable i
+    Variable pLo
+    Variable pHi
+    Variable freeCount
+    Variable fitErr
+    Variable chiSq
+    Variable ret
+    Variable startResidRMS
+    Variable fitResidRMS
+    Variable startDataRMS
+    Variable fitDataRMS
+    Variable acceptSoft
+    Variable paramsUnchanged
+    Variable okFlag
+    String oldDF
+    String fitDF
+    String fitHoldStr
+
+    ret = -1
+    fitErr = 999
+    chiSq = NaN
+    startResidRMS = NaN
+    fitResidRMS = NaN
+    startDataRMS = NaN
+    fitDataRMS = NaN
+    acceptSoft = 0
+    paramsUnchanged = 1
+    okFlag = 1
+    fitHoldStr = holdStr
+
+    Wave/Z wFit = LJZ_EDCFermiFit_GetActiveWaveForPath(wPath)
+    if (!WaveExists(wFit))
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "当前选择不是有效 wave，无法拟合。"
+        endif
+        return -1
+    endif
+
+    if (!LJZ_EDCFermiFit_Is1DWave(wFit))
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "当前选择不是有效 1D wave，无法拟合。"
+        endif
+        return -1
+    endif
+
+    if (strlen(holdStr) != 7)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "7-parameter fit 需要 7 位 hold string。"
+        endif
+        return -1
+    endif
+
+    n = numpnts(wFit)
+    if (n < 7)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "当前 wave 点数太少，无法拟合。"
+        endif
+        return -1
+    endif
+
+    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
+    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
+    LJZ_EDCFermiFit_GetFitPointWindow(wFit, FitX1, FitX2, pLo, pHi)
+
+    if (pHi <= pLo)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "拟合窗口无效。"
+        endif
+        return -1
+    endif
+
+    freeCount = LJZ_EDCFermiFit_CountFreeParams(holdStr, 7)
+    if (freeCount <= 0)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "所有参数都被 hold，无法拟合。"
+        endif
+        return -1
+    endif
+
+    if ((pHi - pLo + 1) <= freeCount + 1)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "拟合窗口点数太少，请扩大窗口或减少自由参数。"
+        endif
+        return -1
+    endif
+
+    Make/O/D/N=7 $(LJZ_EDCFermiFit_BaseDF() + ":pw_fit")
+    Wave pwFit = $(LJZ_EDCFermiFit_BaseDF() + ":pw_fit")
+    for (i = 0; i < 7; i += 1)
+        pwFit[i] = startPW[i]
+    endfor
+
+    Make/FREE/D/N=7 pwStore7
+    Make/FREE/D/N=7 sigStore7
+    sigStore7 = NaN
+
+    LJZ_EDCFermiFit_KillStoredFitWave(wPath)
+
+    oldDF = GetDataFolder(1)
+    fitDF = LJZ_EDCFermiFit_BaseDF()
+    SetDataFolder $(fitDF)
+
+    KillWaves/Z W_sigma
+    Variable/G V_FitError = 0
+    Variable/G V_chisq = NaN
+
+    FuncFit/Z/Q/NTHR=0/N/G/H=fitHoldStr LJZ_EDCFermiFit_ModelAA pwFit wFit[pLo,pHi] /D
+
+    NVAR/Z tFitErr = $(fitDF + ":V_FitError")
+    NVAR/Z tChiSq = $(fitDF + ":V_chisq")
+    Wave/Z wSig = $(fitDF + ":W_sigma")
+
+    if (NVAR_Exists(tFitErr))
+        fitErr = tFitErr
+    else
+        fitErr = 999
+    endif
+
+    if (NVAR_Exists(tChiSq))
+        chiSq = tChiSq
+    else
+        chiSq = NaN
+    endif
+
+    // If the user-selected hold set is still numerically singular, retry once
+    // with the most stable Fermi-edge core: Height, EF, BG free only.
+    if (numtype(fitErr) != 0 || fitErr != 0)
+        if (CmpStr(fitHoldStr, "0010111") != 0)
+            Print "EDCFermiFit: first FuncFit failed; retrying with stable holdStr=0010111 (Height, EF, BG free only)."
+            fitHoldStr = "0010111"
+            for (i = 0; i < 7; i += 1)
+                pwFit[i] = startPW[i]
+            endfor
+            KillWaves/Z W_sigma
+            Variable/G V_FitError = 0
+            Variable/G V_chisq = NaN
+            FuncFit/Z/Q/NTHR=0/N/G/H=fitHoldStr LJZ_EDCFermiFit_ModelAA pwFit wFit[pLo,pHi] /D
+
+            if (NVAR_Exists(tFitErr))
+                fitErr = tFitErr
+            else
+                fitErr = 999
+            endif
+
+            if (NVAR_Exists(tChiSq))
+                chiSq = tChiSq
+            else
+                chiSq = NaN
+            endif
+        endif
+    endif
+
+    if (WaveExists(wSig))
+        if (numpnts(wSig) >= 7)
+            LJZ_EDCFermiFit_ResultSigToStoreSig(wSig, sigStore7)
+        else
+            sigStore7 = NaN
+        endif
+    else
+        sigStore7 = NaN
+    endif
+
+    SetDataFolder oldDF
+
+    Print "EDCFermiFit 7p FuncFit: wave=", NameOfWave($wPath), " holdStr=", fitHoldStr, " V_FitError=", fitErr, " V_chisq=", chiSq
+    Print "  startPW=", startPW[0], startPW[1], startPW[2], startPW[3], startPW[4], startPW[5], startPW[6]
+    Print "  pw_fit =", pwFit[0], pwFit[1], pwFit[2], pwFit[3], pwFit[4], pwFit[5], pwFit[6]
+
+    if (numtype(pwFit[2]) == 0)
+        pwFit[2] = abs(pwFit[2])
+    endif
+    if (numtype(pwFit[4]) == 0)
+        pwFit[4] = abs(pwFit[4])
+    endif
+    if (numtype(pwFit[5]) == 0)
+        if (pwFit[5] < 0)
+            pwFit[5] = 0
+        endif
+    endif
+
+    Make/FREE/D/N=(n) xFullRMS
+    Make/FREE/D/N=(n) modelStart
+    Make/FREE/D/N=(n) modelFit
+    for (i = 0; i < n; i += 1)
+        xFullRMS[i] = pnt2x(wFit, i)
+    endfor
+
+    LJZ_EDCFermiFit_ModelAA(startPW, modelStart, xFullRMS)
+    LJZ_EDCFermiFit_ModelAA(pwFit, modelFit, xFullRMS)
+    LJZ_EDCFermiFit_ComputeWindowRMS(wFit, modelStart, pLo, pHi, startResidRMS, startDataRMS)
+    LJZ_EDCFermiFit_ComputeWindowRMS(wFit, modelFit, pLo, pHi, fitResidRMS, fitDataRMS)
+
+    paramsUnchanged = LJZ_EDCFermiFit_FreeParamsUnchanged(pwFit, startPW, fitHoldStr, 7)
+    acceptSoft = 0
+    okFlag = 1
+
+    if (numtype(fitResidRMS) == 0 && numtype(startResidRMS) == 0)
+        if (fitResidRMS <= startResidRMS)
+            if (!paramsUnchanged)
+                acceptSoft = 1
+            endif
+        endif
+    endif
+
+    Print "  RMS start=", startResidRMS, " RMS fit=", fitResidRMS, " paramsUnchanged=", paramsUnchanged
+
+    if (numtype(fitErr) != 0 || fitErr != 0)
+        Print "EDCFermiFit: FuncFit failed even after stable retry; no fit curve will be displayed."
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "FuncFit 失败。请看 History 中的 V_FitError。当前结果没有写入。"
+        endif
+        return -1
+    endif
+
+    if (paramsUnchanged)
+        Print "WARNING: FuncFit returned but all free parameters are unchanged."
+    endif
+
+    LJZ_EDCFermiFit_ResultPWToStorePW(pwFit, pwStore7)
+    LJZ_EDCFermiFit_WriteResultForWave(wPath, pwStore7, sigStore7, chiSq, okFlag)
+    LJZ_EDCFermiFit_CreateStoredFitWave(wPath, pwFit)
+
+    if (updateUI)
+        LJZ_EDCFermiFit_CoefWaveToUI(pwFit)
+    endif
+
+    return 0
+End
+
 Function LJZ_EDCFermiFit_FitCurrent()
     LJZ_EDCFermiFit_EnsureDF()
+
     SVAR sWave = $(LJZ_EDCFermiFit_BaseDF() + ":WaveSel")
     if (strlen(sWave) == 0)
         DoAlert 0, "请先选择一个 edc_show_* 波形。"
         return -1
     endif
 
-    NVAR KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
+    Make/FREE/D/N=7 initPW
+    LJZ_EDCFermiFit_UIToCoefWave(initPW)
+
+    String holdStr = LJZ_EDCFermiFit_HoldString()
     Variable ret
-    if (KernelMode == 0)
-        Make/FREE/D/N=6 initPW6
-        LJZ_EDCFermiFit_UIToCoefWave_Classic6(initPW6)
-        ret = LJZ_EDCFermiFit_FitWaveByPath_Classic6(sWave, initPW6, LJZ_EDCFermiFit_HoldString_Classic6(), 1, 1)
-    elseif (KernelMode == 1)
-        Print "ClassicEdge slope mode is disabled in this patch."
-        return -1
-    else
-        Make/FREE/D/N=7 initPW
-        LJZ_EDCFermiFit_UIToCoefWave(initPW)
-        ret = LJZ_EDCFermiFit_FitWaveByPath(sWave, initPW, LJZ_EDCFermiFit_HoldString(), 1, 1)
-    endif
+    ret = LJZ_EDCFermiFit_FitWaveByPath(sWave, initPW, holdStr, 1, 1)
 
     LJZ_EDCFermiFit_ShowCurrentWave()
     LJZ_EDCFermiFit_RefreshTitleBoxes()
@@ -2047,6 +2519,7 @@ End
 
 Function LJZ_EDCFermiFit_FitAll()
     LJZ_EDCFermiFit_EnsureDF()
+
     String listStr = LJZ_EDCFermiFit_CurrentWaveList()
     Variable n = ItemsInList(listStr, ";")
     if (n <= 0)
@@ -2054,60 +2527,46 @@ Function LJZ_EDCFermiFit_FitAll()
         return -1
     endif
 
-    NVAR KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
     Variable i
     Variable j
-    Variable okCount = 0
+    Variable okCount
+    Variable ret
+    String wPath
+    String holdStr
+
+    okCount = 0
+    holdStr = LJZ_EDCFermiFit_HoldString()
+
+    Make/FREE/D/N=7 baseInit
+    Make/FREE/D/N=7 workInit
+    LJZ_EDCFermiFit_UIToCoefWave(baseInit)
+
+    for (j = 0; j < 7; j += 1)
+        workInit[j] = baseInit[j]
+    endfor
+
     LJZ_EDCFermiFit_ClearAllResultWaves()
 
-    if (KernelMode == 0)
-        Make/FREE/D/N=6 base6
-        Make/FREE/D/N=6 work6
-        LJZ_EDCFermiFit_UIToCoefWave_Classic6(base6)
-        for (j = 0; j < 6; j += 1)
-            work6[j] = base6[j]
-        endfor
+    for (i = 0; i < n; i += 1)
+        wPath = StringFromList(i, listStr, ";")
+        ret = LJZ_EDCFermiFit_FitWaveByPath(wPath, workInit, holdStr, 0, 0)
 
-        for (i = 0; i < n; i += 1)
-            String wPath = StringFromList(i, listStr, ";")
-            Variable ret = LJZ_EDCFermiFit_FitWaveByPath_Classic6(wPath, work6, LJZ_EDCFermiFit_HoldString_Classic6(), 0, 0)
-            if (ret == 0)
-                okCount += 1
-                Wave/Z pwFit = root:ARPES_LJZ:EDCFermiFit:pw_classic6
-                if (WaveExists(pwFit) && numpnts(pwFit) >= 6)
-                    for (j = 0; j < 6; j += 1)
-                        work6[j] = pwFit[j]
+        if (ret == 0)
+            okCount += 1
+            Wave/Z pwFit = $(LJZ_EDCFermiFit_BaseDF() + ":pw_fit")
+            if (WaveExists(pwFit))
+                if (numpnts(pwFit) >= 7)
+                    for (j = 0; j < 7; j += 1)
+                        workInit[j] = pwFit[j]
                     endfor
                 endif
-            else
-                for (j = 0; j < 6; j += 1)
-                    work6[j] = base6[j]
-                endfor
             endif
-        endfor
-    elseif (KernelMode == 1)
-        Print "ClassicEdge slope mode is disabled in this patch."
-        return -1
-    else
-        Make/FREE/D/N=7 baseInit
-        Make/FREE/D/N=7 workInit
-        LJZ_EDCFermiFit_UIToCoefWave(baseInit)
-        for (j = 0; j < 7; j += 1)
-            workInit[j] = baseInit[j]
-        endfor
-
-        for (i = 0; i < n; i += 1)
-            String wPath2 = StringFromList(i, listStr, ";")
-            Variable ret2 = LJZ_EDCFermiFit_FitWaveByPath(wPath2, workInit, LJZ_EDCFermiFit_HoldString(), 0, 0)
-            if (ret2 == 0)
-                okCount += 1
-            else
-                for (j = 0; j < 7; j += 1)
-                    workInit[j] = baseInit[j]
-                endfor
-            endif
-        endfor
-    endif
+        else
+            for (j = 0; j < 7; j += 1)
+                workInit[j] = baseInit[j]
+            endfor
+        endif
+    endfor
 
     LJZ_EDCFermiFit_LoadStoredResultForSelection()
     LJZ_EDCFermiFit_ShowCurrentWave()
@@ -2214,7 +2673,159 @@ Function LJZ_EDCFermiFit_RmBGCurrent()
     return 0
 End
 
+Function LJZ_EDCFermiFit_AutoFillWindow()
+    LJZ_EDCFermiFit_EnsureDF()
 
+    SVAR sWave = $(LJZ_EDCFermiFit_BaseDF() + ":WaveSel")
+    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
+    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
+
+    Variable n
+    Variable i
+    Variable bestP
+    Variable bestSlope
+    Variable xA
+    Variable xB
+    Variable yA
+    Variable yB
+    Variable slope
+    Variable x0
+    Variable xMin
+    Variable xMax
+    Variable span
+    Variable halfWidth
+    Variable dxAbs
+    Variable minHalfWidth
+
+    if (strlen(sWave) == 0)
+        DoAlert 0, "请先选择一个 edc_show_* 波形。"
+        return -1
+    endif
+
+    Wave/Z w = LJZ_EDCFermiFit_GetActiveWaveForPath(sWave)
+    if (!WaveExists(w))
+        DoAlert 0, "当前选择不是有效的 wave。"
+        return -1
+    endif
+
+    if (!LJZ_EDCFermiFit_Is1DWave(w))
+        DoAlert 0, "当前选择不是有效的 1D wave。"
+        return -1
+    endif
+
+    n = numpnts(w)
+    if (n < 4)
+        DoAlert 0, "当前 wave 点数太少，无法自动设定拟合窗口。"
+        return -1
+    endif
+
+    bestP = 0
+    bestSlope = -Inf
+
+    for (i = 0; i < n - 1; i += 1)
+        xA = pnt2x(w, i)
+        xB = pnt2x(w, i + 1)
+        yA = w[i]
+        yB = w[i + 1]
+
+        if (numtype(xA) != 0)
+            continue
+        endif
+
+        if (numtype(xB) != 0)
+            continue
+        endif
+
+        if (numtype(yA) != 0)
+            continue
+        endif
+
+        if (numtype(yB) != 0)
+            continue
+        endif
+
+        if (xA == xB)
+            continue
+        endif
+
+        slope = abs((yB - yA) / (xB - xA))
+
+        if (numtype(slope) == 0)
+            if (slope > bestSlope)
+                bestSlope = slope
+                bestP = i
+            endif
+        endif
+    endfor
+
+    if (numtype(bestSlope) != 0)
+        DoAlert 0, "无法自动找到明显的 Fermi edge 斜率位置。"
+        return -1
+    endif
+
+    if (bestSlope <= 0)
+        DoAlert 0, "无法自动找到明显的 Fermi edge 斜率位置。"
+        return -1
+    endif
+
+    x0 = 0.5 * (pnt2x(w, bestP) + pnt2x(w, bestP + 1))
+    xMin = min(pnt2x(w, 0), pnt2x(w, n - 1))
+    xMax = max(pnt2x(w, 0), pnt2x(w, n - 1))
+
+    if (numtype(x0) != 0)
+        DoAlert 0, "自动窗口失败：Fermi edge 位置无效。"
+        return -1
+    endif
+
+    if (numtype(xMin) != 0)
+        DoAlert 0, "自动窗口失败：x scale 无效。"
+        return -1
+    endif
+
+    if (numtype(xMax) != 0)
+        DoAlert 0, "自动窗口失败：x scale 无效。"
+        return -1
+    endif
+
+    span = xMax - xMin
+    if (numtype(span) != 0)
+        DoAlert 0, "自动窗口失败：x scale 范围无效。"
+        return -1
+    endif
+
+    if (span <= 0)
+        DoAlert 0, "自动窗口失败：x scale 范围无效。"
+        return -1
+    endif
+
+    dxAbs = abs(DimDelta(w, 0))
+    if (numtype(dxAbs) != 0)
+        dxAbs = span / max(n - 1, 1)
+    endif
+
+    if (dxAbs <= 0)
+        dxAbs = span / max(n - 1, 1)
+    endif
+
+    halfWidth = 0.18 * span
+    minHalfWidth = 6 * dxAbs
+
+    if (halfWidth < minHalfWidth)
+        halfWidth = minHalfWidth
+    endif
+
+    if (halfWidth > 0.5 * span)
+        halfWidth = 0.5 * span
+    endif
+
+    FitX1 = max(xMin, x0 - halfWidth)
+    FitX2 = min(xMax, x0 + halfWidth)
+
+    LJZ_EDCFermiFit_UpdateGraphMarks()
+    LJZ_EDCFermiFit_RefreshTitleBoxes()
+
+    return 0
+End
 // ============================================================================
 //  Section 5. graph / current selection
 // ============================================================================
@@ -2267,7 +2878,7 @@ Function LJZ_EDCFermiFit_CreateGraphSubwindow()
         SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
         String fitPath = LJZ_EDCFermiFit_df_with_colon(sDF) + LJZ_EDCFermiFit_FitWaveNameByIndex(idx)
         Wave/Z fitW = $fitPath
-        Wave/Z wOK = $(LJZ_EDCFermiFit_BaseDF() + ":edc_ff_ok")
+        Wave/Z wOK = $(LJZ_EDCFermiFit_df_with_colon(sDF) + "edc_ff_ok")
         Variable canShowFit = 0
         if (WaveExists(wOK) && idx >= 0 && idx < numpnts(wOK))
             if (numtype(wOK[idx]) == 0 && wOK[idx] > 0)
@@ -2514,7 +3125,8 @@ Function LJZ_EDCFermiFit_OpenPanel()
     Button btFit,pos={790,364},size={72,28},title="Fit",proc=LJZ_EDCFermiFit_ButtonProc
     Button btFitAll,pos={870,364},size={82,28},title="Fit All",proc=LJZ_EDCFermiFit_ButtonProc
     Button btFitNext,pos={958,364},size={88,28},title="Fit+Next",proc=LJZ_EDCFermiFit_ButtonProc
-
+    Button btPreviewInit,pos={430,364},size={92,28},title="PreviewInit",proc=LJZ_EDCFermiFit_ButtonProc
+    
     TitleBox tbWin,pos={250,404},size={160,18},frame=0,title="Fit window"
     SetVariable svFitX1,pos={250,428},size={150,20},title="Fit x1"
     SetVariable svFitX1,variable=$(LJZ_EDCFermiFit_BaseDF() + ":FitX1"),proc=LJZ_EDCFermiFit_SetVarProc
@@ -2623,7 +3235,12 @@ Function LJZ_EDCFermiFit_ButtonProc(ba) : ButtonControl
         LJZ_EDCFermiFit_UseCurrentRunDF()
         return 0
     endif
-
+    
+    if (CmpStr(ba.ctrlName, "btPreviewInit") == 0)
+        LJZ_EDCFermiFit_PreviewInitialParams()
+        return 0
+    endif
+    
     if (CmpStr(ctrlName, "btScan") == 0)
         LJZ_EDCFermiFit_RebuildWaveList()
         LJZ_EDCFermiFit_RefreshCurrentSelection()
@@ -2732,6 +3349,248 @@ Function LJZ_EDCFermiFit_ListBoxProc(lba) : ListBoxControl
             LJZ_EDCFermiFit_RefreshTitleBoxes()
         endif
     endif
+
+    return 0
+End
+Function LJZ_EDCFermiFit_GuessCurrent()
+    LJZ_EDCFermiFit_EnsureDF()
+
+    SVAR sWave = $(LJZ_EDCFermiFit_BaseDF() + ":WaveSel")
+    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
+    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
+
+    Variable n
+    Variable ret
+    Variable xLo
+    Variable xHi
+    Variable x1
+    Variable x2
+    Variable tryFullRange
+
+    if (strlen(sWave) == 0)
+        DoAlert 0, "请先选择一个 edc_show_* 波形。"
+        return -1
+    endif
+
+    Wave/Z w = LJZ_EDCFermiFit_GetActiveWaveForPath(sWave)
+    if (!WaveExists(w))
+        DoAlert 0, "当前选择不是有效的 wave。"
+        return -1
+    endif
+
+    if (!LJZ_EDCFermiFit_Is1DWave(w))
+        DoAlert 0, "当前选择不是有效的 1D wave。"
+        return -1
+    endif
+
+    n = numpnts(w)
+    if (n < 7)
+        DoAlert 0, "当前 wave 点数太少，无法自动估计拟合参数。"
+        return -1
+    endif
+
+    xLo = min(pnt2x(w, 0), pnt2x(w, n - 1))
+    xHi = max(pnt2x(w, 0), pnt2x(w, n - 1))
+
+    if (numtype(xLo) != 0)
+        DoAlert 0, "当前 wave 的 x scale 无效。"
+        return -1
+    endif
+
+    if (numtype(xHi) != 0)
+        DoAlert 0, "当前 wave 的 x scale 无效。"
+        return -1
+    endif
+
+    if (xHi <= xLo)
+        DoAlert 0, "当前 wave 的 x scale 范围无效。"
+        return -1
+    endif
+
+    tryFullRange = 0
+
+    if (numtype(FitX1) != 0)
+        tryFullRange = 1
+    endif
+
+    if (numtype(FitX2) != 0)
+        tryFullRange = 1
+    endif
+
+    if (FitX1 == FitX2)
+        tryFullRange = 1
+    endif
+
+    if (tryFullRange)
+        FitX1 = xLo
+        FitX2 = xHi
+    endif
+
+    x1 = FitX1
+    x2 = FitX2
+
+    Make/FREE/D/N=7 guessPW
+    ret = LJZ_EDCFermiFit_GuessParamsFromWave(w, x1, x2, guessPW)
+
+    if (ret != 0)
+        ret = LJZ_EDCFermiFit_GuessParamsFromWave(w, xLo, xHi, guessPW)
+
+        if (ret == 0)
+            FitX1 = xLo
+            FitX2 = xHi
+        endif
+    endif
+
+    if (ret != 0)
+        DoAlert 0, "参数自动估计失败。请检查拟合窗口是否覆盖 Fermi edge。"
+        return -1
+    endif
+
+    LJZ_EDCFermiFit_CoefWaveToUI(guessPW)
+    LJZ_EDCFermiFit_UpdateGraphMarks()
+    LJZ_EDCFermiFit_RefreshTitleBoxes()
+    LJZ_EDCFermiFit_ShowCurrentWave()
+
+    return 0
+End
+
+Function/S LJZ_EDCFermiFit_InitPreviewWaveNameByIndex(idx)
+    Variable idx
+
+    return "edc_init_preview_" + num2str(idx)
+End
+
+
+Function/S LJZ_EDCFermiFit_InitPreviewXWaveNameByIndex(idx)
+    Variable idx
+
+    return "edc_init_preview_x_" + num2str(idx)
+End
+
+
+Function LJZ_EDCFermiFit_PreviewInitialParams()
+    LJZ_EDCFermiFit_EnsureDF()
+
+    SVAR sWave = $(LJZ_EDCFermiFit_BaseDF() + ":WaveSel")
+    SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
+    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
+    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
+
+    Variable n
+    Variable i
+    Variable idx
+    Variable pLo
+    Variable pHi
+    Variable ret
+    Variable xVal
+
+    String dfStr
+    String yName
+    String xName
+    String yPath
+    String xPath
+    String graphPath
+    String panelName
+    String graphName
+
+    if (strlen(sWave) == 0)
+        DoAlert 0, "请先选择一个 edc_show_* 波形。"
+        return -1
+    endif
+
+    Wave/Z w = LJZ_EDCFermiFit_GetActiveWaveForPath(sWave)
+    if (!WaveExists(w))
+        DoAlert 0, "当前选择不是有效的 wave。"
+        return -1
+    endif
+
+    if (!LJZ_EDCFermiFit_Is1DWave(w))
+        DoAlert 0, "当前选择不是有效的 1D wave。"
+        return -1
+    endif
+
+    n = numpnts(w)
+    if (n < 2)
+        DoAlert 0, "当前 wave 点数太少，无法画 initial preview。"
+        return -1
+    endif
+
+    idx = LJZ_EDCFermiFit_ParseWaveIndex(NameOfWave($sWave))
+    if (numtype(idx) != 0)
+        DoAlert 0, "当前 wave 名字不是 edc_show_i 格式，无法创建 preview wave。"
+        return -1
+    endif
+
+    dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    if (!DataFolderExists(dfStr))
+        DoAlert 0, "SourceDF 无效，无法创建 preview wave。"
+        return -1
+    endif
+
+    yName = LJZ_EDCFermiFit_InitPreviewWaveNameByIndex(idx)
+    xName = LJZ_EDCFermiFit_InitPreviewXWaveNameByIndex(idx)
+    yPath = dfStr + yName
+    xPath = dfStr + xName
+
+    Make/O/D/N=(n) $yPath
+    Make/O/D/N=(n) $xPath
+
+    Wave yPrev = $yPath
+    Wave xPrev = $xPath
+
+    SetScale/P x, DimOffset(w, 0), DimDelta(w, 0), WaveUnits(w, 0), yPrev
+    SetScale/P x, DimOffset(w, 0), DimDelta(w, 0), WaveUnits(w, 0), xPrev
+
+    for (i = 0; i < n; i += 1)
+        xVal = pnt2x(w, i)
+        xPrev[i] = xVal
+        yPrev[i] = NaN
+    endfor
+
+    Make/FREE/D/N=7 initPW
+    ret = LJZ_EDCFermiFit_UIToCoefWave(initPW)
+    if (ret != 0)
+        DoAlert 0, "无法从面板读取 initial parameters。"
+        return -1
+    endif
+
+    ret = LJZ_EDCFermiFit_EvalModel(initPW, yPrev, xPrev)
+    if (ret != 0)
+        DoAlert 0, "用 initial parameters 计算模型曲线失败。"
+        return -1
+    endif
+
+    LJZ_EDCFermiFit_GetFitPointWindow(w, FitX1, FitX2, pLo, pHi)
+
+    if (pHi > pLo)
+        for (i = 0; i < n; i += 1)
+            if (i < pLo)
+                yPrev[i] = NaN
+            endif
+
+            if (i > pHi)
+                yPrev[i] = NaN
+            endif
+        endfor
+    endif
+
+    panelName = LJZ_EDCFermiFit_PanelName()
+    graphName = LJZ_EDCFermiFit_GraphName()
+    graphPath = LJZ_EDCFermiFit_GraphPath()
+
+    if (!LJZ_EDCFermiFit_HasChildSubwindow(panelName, graphName))
+        LJZ_EDCFermiFit_ShowCurrentWave()
+    endif
+
+    RemoveFromGraph/Z/W=$graphPath $yName
+    AppendToGraph/W=$graphPath yPrev vs xPrev
+
+    ModifyGraph/W=$graphPath rgb($yName)=(65535,32768,0)
+    ModifyGraph/W=$graphPath lsize($yName)=2
+    ModifyGraph/W=$graphPath lstyle($yName)=3
+
+    TextBox/W=$graphPath/K/N=tbInitPreview
+    TextBox/W=$graphPath/C/N=tbInitPreview/F=0/A=LT/X=2/Y=8 "\\Z10orange dashed = initial parameters"
 
     return 0
 End
