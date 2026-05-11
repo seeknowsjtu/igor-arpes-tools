@@ -224,10 +224,6 @@ Function LJZ_EDCFermiFit_EnsureDF()
         Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope") = 1
     endif
 
-    NVAR/Z KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
-    if (!NVAR_Exists(KernelMode))
-        Variable/G $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode") = 0
-    endif
 
     SVAR/Z sWorkSrc = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource")
     if (!SVAR_Exists(sWorkSrc))
@@ -1041,55 +1037,8 @@ Function/S LJZ_EDCFermiFit_HoldString()
     return num2str(HHeight) + num2str(HEF) + num2str(HTe) + num2str(HBG) + num2str(HRes) + num2str(HSB) + num2str(HOccSlope)
 End
 
-Function/S LJZ_EDCFermiFit_HoldString_Classic6()
-    NVAR HHeight = $(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
-    NVAR HEF = $(LJZ_EDCFermiFit_BaseDF() + ":HEF")
-    NVAR HTe = $(LJZ_EDCFermiFit_BaseDF() + ":HTe")
-    NVAR HBG = $(LJZ_EDCFermiFit_BaseDF() + ":HBG")
-    NVAR HRes = $(LJZ_EDCFermiFit_BaseDF() + ":HRes")
-    NVAR HSB = $(LJZ_EDCFermiFit_BaseDF() + ":HSB")
 
-    String holdStr = ""
-    holdStr += num2str(HHeight)
-    holdStr += num2str(HEF)
-    holdStr += num2str(HTe)
-    holdStr += num2str(HBG)
-    holdStr += num2str(HRes)
-    holdStr += num2str(HSB)
 
-    return holdStr
-End
-
-Function LJZ_EDCFermiFit_UseClassicKernel()
-    LJZ_EDCFermiFit_EnsureDF()
-
-    NVAR KernelMode = $(LJZ_EDCFermiFit_BaseDF() + ":KernelMode")
-    NVAR HHeight = $(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
-    NVAR HEF = $(LJZ_EDCFermiFit_BaseDF() + ":HEF")
-    NVAR HTe = $(LJZ_EDCFermiFit_BaseDF() + ":HTe")
-    NVAR HBG = $(LJZ_EDCFermiFit_BaseDF() + ":HBG")
-    NVAR HRes = $(LJZ_EDCFermiFit_BaseDF() + ":HRes")
-    NVAR HSB = $(LJZ_EDCFermiFit_BaseDF() + ":HSB")
-    NVAR HOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
-
-    KernelMode = 0
-    HHeight = 0
-    HEF = 0
-    HTe = 1
-    HBG = 0
-    HRes = 1
-    HSB = 0
-    HOccSlope = 1
-
-    Print "EDCFermiFit: using ClassicEdge 6-parameter kernel."
-    return 0
-End
-
-Function LJZ_EDCFermiFit_UseClassicSlopeKernel()
-    LJZ_EDCFermiFit_EnsureDF()
-    Print "ClassicEdge slope mode is disabled until ClassicEdge 6-parameter fitting is verified."
-    return -1
-End
 
 Function LJZ_EDCFermiFit_ClearCurrentWorkWave()
     SVAR sWorkSrc = $(LJZ_EDCFermiFit_BaseDF() + ":WorkWaveSource")
@@ -1297,48 +1246,8 @@ Function LJZ_EDCFermiFit_PostFitLooksReasonable(w, x1, x2, pw, residRMS, dataRMS
     return 1
 End
 
-Function LJZ_EDCFermiFit_UIToCoefWave_Classic6(pw6)
-    Wave pw6
 
-    NVAR Height = $(LJZ_EDCFermiFit_BaseDF() + ":Height")
-    NVAR EF = $(LJZ_EDCFermiFit_BaseDF() + ":EF")
-    NVAR Te = $(LJZ_EDCFermiFit_BaseDF() + ":Te")
-    NVAR BG = $(LJZ_EDCFermiFit_BaseDF() + ":BG")
-    NVAR Res = $(LJZ_EDCFermiFit_BaseDF() + ":Res")
-    NVAR SB = $(LJZ_EDCFermiFit_BaseDF() + ":SB")
 
-    pw6[0] = Height
-    pw6[1] = EF
-    pw6[2] = Te
-    pw6[3] = BG
-    pw6[4] = Res / (2 * sqrt(2 * ln(2)) * 1000)
-    pw6[5] = SB
-    return 0
-End
-
-Function LJZ_EDCFermiFit_Classic6ToStorePW(pw6, pwStore7)
-    Wave pw6, pwStore7
-    pwStore7[0] = pw6[0]
-    pwStore7[1] = pw6[1]
-    pwStore7[2] = abs(pw6[2])
-    pwStore7[3] = pw6[3]
-    pwStore7[4] = pw6[4] * (2 * sqrt(2 * ln(2))) * 1000
-    pwStore7[5] = pw6[5]
-    pwStore7[6] = 0
-    return 0
-End
-
-Function LJZ_EDCFermiFit_Classic6SigToStoreSig(sig6, sigStore7)
-    Wave sig6, sigStore7
-    sigStore7[0] = abs(sig6[0])
-    sigStore7[1] = abs(sig6[1])
-    sigStore7[2] = abs(sig6[2])
-    sigStore7[3] = abs(sig6[3])
-    sigStore7[4] = abs(sig6[4]) * (2 * sqrt(2 * ln(2))) * 1000
-    sigStore7[5] = abs(sig6[5])
-    sigStore7[6] = NaN
-    return 0
-End
 
 Function LJZ_EDCFermiFit_UIToCoefWave(pw)
     Wave pw
@@ -1784,356 +1693,24 @@ Function LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
     return 0
 End
 
-Function LJZ_EDCFermiFit_Model_Classic6(pw6, yw, xw) : FitFunc
-    Wave pw6, yw, xw
 
-    Variable n = numpnts(xw)
-    Variable i
-    Variable j
-    if (n <= 0)
-        return -1
-    endif
 
-    Variable dx
-    if (n > 1)
-        dx = xw[1] - xw[0]
-    else
-        dx = DimDelta(yw, 0)
-    endif
-    if (numtype(dx) != 0 || dx == 0)
-        dx = DimDelta(yw, 0)
-    endif
-    if (numtype(dx) != 0 || dx == 0)
-        dx = 1e-4
-    endif
 
-    Variable dxAbs = abs(dx)
-    Variable te = abs(pw6[2])
-    if (numtype(te) != 0 || te < 0.2)
-        te = 0.2
-    endif
 
-    Variable sig = abs(pw6[4])
-    if (numtype(sig) != 0 || sig < 1e-8)
-        sig = 1e-8
-    endif
-
-    Variable rad = max(3, ceil(4 * sig / dxAbs))
-    rad = min(rad, 1000)
-    Variable gN = 2 * rad + 1
-
-    Make/FREE/D/N=(n) yBare
-    Make/FREE/D/N=(n) yConv
-    Make/FREE/D/N=(n) yShirley
-    Make/FREE/D/N=(gN) gk
-
-    Variable eVal
-    Variable arg
-    Variable fermi
-    for (i = 0; i < n; i += 1)
-        eVal = xw[i]
-        arg = 11594.2 * (eVal - pw6[1]) / te
-        if (arg > 60)
-            fermi = 0
-        elseif (arg < -60)
-            fermi = pw6[0]
-        else
-            fermi = pw6[0] / (1 + exp(arg))
-        endif
-        yBare[i] = fermi
-    endfor
-
-    Variable dxg
-    Variable gsum = 0
-    for (j = 0; j < gN; j += 1)
-        dxg = (j - rad) * dxAbs
-        gk[j] = exp(-(dxg * dxg) / (2 * sig * sig))
-        gsum += gk[j]
-    endfor
-    if (numtype(gsum) != 0 || gsum <= 0)
-        gsum = 1
-    endif
-    for (j = 0; j < gN; j += 1)
-        gk[j] = gk[j] / gsum
-    endfor
-
-    Variable jj
-    Variable idx
-    Variable accum
-    for (i = 0; i < n; i += 1)
-        accum = 0
-        for (j = 0; j < gN; j += 1)
-            jj = j - rad
-            idx = i + jj
-            if (idx >= 0 && idx < n)
-                accum += gk[j] * yBare[idx]
-            endif
-        endfor
-        yConv[i] = accum
-    endfor
-
-    yShirley[n - 1] = 0
-    for (i = n - 2; i >= 0; i -= 1)
-        yShirley[i] = yShirley[i + 1] + yConv[i + 1] * dxAbs
-    endfor
-
-    for (i = 0; i < n; i += 1)
-        yw[i] = yConv[i] + pw6[3] + pw6[5] * yShirley[i]
-    endfor
-
-    return 0
-End
-
-Function LJZ_EDCFermiFit_Model_Classic7Slope(pw, yw, xw) : FitFunc
-    Wave pw, yw, xw
-    return -1
-End
-
-Function LJZ_EDCFermiFit_CreateStoredFitWave_Classic6(wPath, pw6)
-    String wPath
-    Wave pw6
-
-    SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
-    String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
-    Variable idxFit = LJZ_EDCFermiFit_ParseWaveIndex(NameOfWave($wPath))
-    Wave/Z w = $wPath
-    if (!WaveExists(w) || !LJZ_EDCFermiFit_Is1DWave(w) || numtype(idxFit) != 0)
-        return -1
-    endif
-
-    Variable nFit = numpnts(w)
-    Make/O/N=(nFit) $(dfStr + LJZ_EDCFermiFit_FitWaveNameByIndex(idxFit)) = NaN
-    Wave fitW = $(dfStr + LJZ_EDCFermiFit_FitWaveNameByIndex(idxFit))
-    SetScale/P x, DimOffset(w, 0), DimDelta(w, 0), "", fitW
-
-    Make/FREE/D/N=(nFit) xFull
-    Variable i
-    for (i = 0; i < nFit; i += 1)
-        xFull[i] = pnt2x(w, i)
-    endfor
-
-    LJZ_EDCFermiFit_Model_Classic6(pw6, fitW, xFull)
-
-    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
-    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
-    Variable pLo
-    Variable pHi
-    LJZ_EDCFermiFit_GetFitPointWindow(w, FitX1, FitX2, pLo, pHi)
-
-    for (i = 0; i < nFit; i += 1)
-        if (i < pLo || i > pHi)
-            fitW[i] = NaN
-        endif
-    endfor
-
-    return 0
-End
-
-Function LJZ_EDCFermiFit_FitWaveByPath_Classic6(wPath, startPW6, holdStr, updateUI, doAlertOnFail)
-    String wPath
-    Wave startPW6
-    String holdStr
-    Variable updateUI
-    Variable doAlertOnFail
-
-    Variable ret
-    Variable n
-    Variable pLo
-    Variable pHi
-    Variable i
-    Variable freeCount
-    Variable holdLen
-    Variable isHeld
-    Variable fitErr
-    Variable chiSq
-    Variable unchanged
-    Variable diffVal
-    Variable tol
-    String oldDF
-    String fitDF
-
-    ret = -1
-    fitErr = 999
-    chiSq = NaN
-    unchanged = 1
-    tol = 1e-12
-
-    Wave/Z wFit = LJZ_EDCFermiFit_GetActiveWaveForPath(wPath)
-
-    if (!WaveExists(wFit))
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-
-    if (!LJZ_EDCFermiFit_Is1DWave(wFit))
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-
-    if (strlen(holdStr) != 6)
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-
-    n = numpnts(wFit)
-    if (n <= 0)
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-
-    NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
-    NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
-    LJZ_EDCFermiFit_GetFitPointWindow(wFit, FitX1, FitX2, pLo, pHi)
-
-    if (pHi <= pLo)
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-
-    freeCount = 0
-    holdLen = strlen(holdStr)
-
-    for (i = 0; i < 6; i += 1)
-        isHeld = 0
-        if (i < holdLen)
-            if (CmpStr(holdStr[i,i], "1") == 0)
-                isHeld = 1
-            endif
-        endif
-
-        if (!isHeld)
-            freeCount += 1
-        endif
-    endfor
-
-    if (freeCount <= 0)
-        Print "ClassicEdge: all parameters are held."
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-
-    Make/O/D/N=6 $(LJZ_EDCFermiFit_BaseDF() + ":pw_classic6")
-    Wave pw6 = $(LJZ_EDCFermiFit_BaseDF() + ":pw_classic6")
-
-    for (i = 0; i < 6; i += 1)
-        pw6[i] = startPW6[i]
-    endfor
-
-    LJZ_EDCFermiFit_KillStoredFitWave(wPath)
-
-    oldDF = GetDataFolder(1)
-    fitDF = LJZ_EDCFermiFit_BaseDF()
-    SetDataFolder $(fitDF)
-
-    NVAR/Z tFitErr = $(fitDF + ":V_FitError")
-    NVAR/Z tChiSq = $(fitDF + ":V_chisq")
-    Wave/Z wSig = $(fitDF + ":W_sigma")
-
-    FuncFit/Q/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_Model_Classic6 pw6 wFit[pLo,pHi] /D
-
-    if (NVAR_Exists(tFitErr))
-        fitErr = tFitErr
-    else
-        fitErr = 999
-    endif
-
-    if (NVAR_Exists(tChiSq))
-        chiSq = tChiSq
-    else
-        chiSq = NaN
-    endif
-
-    SetDataFolder oldDF
-
-    if (numtype(fitErr) != 0 || fitErr != 0)
-        Print "ClassicEdge FuncFit failed. V_FitError=", fitErr
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-
-    unchanged = 1
-    holdLen = strlen(holdStr)
-
-    for (i = 0; i < 6; i += 1)
-        isHeld = 0
-        if (i < holdLen)
-            if (CmpStr(holdStr[i,i], "1") == 0)
-                isHeld = 1
-            endif
-        endif
-
-        if (!isHeld)
-            diffVal = abs(pw6[i] - startPW6[i])
-            if (diffVal > tol * max(1, abs(startPW6[i])))
-                unchanged = 0
-            endif
-        endif
-    endfor
-
-    if (unchanged)
-        Print "ClassicEdge FuncFit did not change any free parameter."
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-
-    Make/FREE/D/N=7 pwStore7
-    Make/FREE/D/N=7 sigStore7
-
-    LJZ_EDCFermiFit_Classic6ToStorePW(pw6, pwStore7)
-
-    Wave/Z wSig2 = $(fitDF + ":W_sigma")
-
-    if (WaveExists(wSig2))
-        if (numpnts(wSig2) >= 6)
-            LJZ_EDCFermiFit_Classic6SigToStoreSig(wSig2, sigStore7)
-        else
-            sigStore7 = NaN
-        endif
-    else
-        sigStore7 = NaN
-    endif
-
-    LJZ_EDCFermiFit_WriteResultForWave(wPath, pwStore7, sigStore7, chiSq, 1)
-
-    LJZ_EDCFermiFit_CreateStoredFitWave_Classic6(wPath, pw6)
-
-    if (updateUI)
-        NVAR Height = $(LJZ_EDCFermiFit_BaseDF() + ":Height")
-        NVAR EF = $(LJZ_EDCFermiFit_BaseDF() + ":EF")
-        NVAR Te = $(LJZ_EDCFermiFit_BaseDF() + ":Te")
-        NVAR BG = $(LJZ_EDCFermiFit_BaseDF() + ":BG")
-        NVAR Res = $(LJZ_EDCFermiFit_BaseDF() + ":Res")
-        NVAR SB = $(LJZ_EDCFermiFit_BaseDF() + ":SB")
-        NVAR OccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":OccSlope")
-
-        Height = pw6[0]
-        EF = pw6[1]
-        Te = pw6[2]
-        BG = pw6[3]
-        Res = LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pw6[4])
-        SB = pw6[5]
-        OccSlope = 0
-    endif
-
-    return 0
-End
-
-Function LJZ_EDCFermiFit_FitWaveByPath_Classic7Slope(wPath, initPW, holdStr, updateUI, doAlertOnFail)
-    String wPath
-    Wave initPW
-    String holdStr
-    Variable updateUI
-    Variable doAlertOnFail
-
-    Print "ClassicEdge slope mode is disabled in this compile-clean patch."
-    return -1
-End
 
 
 Function LJZ_EDCFermiFit_ModelAA(pw, yw, xw) : FitFunc
-    Wave pw, yw, xw
+    Wave pw
+    Wave yw
+    Wave xw
 
-    return LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
+    Variable ret
+
+    ret = LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
+
+    if (ret != 0)
+        yw = NaN
+    endif
 End
 
 Function LJZ_EDCFermiFit_CreateStoredFitWave(wPath, pwFit)
@@ -2260,34 +1837,42 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
 
     Variable n
     Variable i
+    Variable ii
     Variable pLo
     Variable pHi
+    Variable srcP
+    Variable nFit
     Variable freeCount
     Variable fitErr
     Variable chiSq
-    Variable ret
     Variable startResidRMS
     Variable fitResidRMS
     Variable startDataRMS
     Variable fitDataRMS
-    Variable acceptSoft
     Variable paramsUnchanged
     Variable okFlag
+    Variable rmsImproved
+    Variable softAccept
+    Variable holdLen
+    Variable V_FitError
+    Variable V_chisq
     String oldDF
     String fitDF
     String fitHoldStr
 
-    ret = -1
     fitErr = 999
     chiSq = NaN
     startResidRMS = NaN
     fitResidRMS = NaN
     startDataRMS = NaN
     fitDataRMS = NaN
-    acceptSoft = 0
     paramsUnchanged = 1
     okFlag = 1
+    rmsImproved = 0
+    softAccept = 0
     fitHoldStr = holdStr
+    V_FitError = 0
+    V_chisq = NaN
 
     Wave/Z wFit = LJZ_EDCFermiFit_GetActiveWaveForPath(wPath)
     if (!WaveExists(wFit))
@@ -2344,7 +1929,8 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
         return -1
     endif
 
-    if ((pHi - pLo + 1) <= freeCount + 1)
+    nFit = pHi - pLo + 1
+    if (nFit <= freeCount + 1)
         LJZ_EDCFermiFit_ClearResultForWave(wPath)
         if (doAlertOnFail)
             DoAlert 0, "拟合窗口点数太少，请扩大窗口或减少自由参数。"
@@ -2358,66 +1944,85 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
         pwFit[i] = startPW[i]
     endfor
 
+    // Important: if OccSlope is held, force it to the intended baseline 0.
+    // Otherwise a bad automatic OccSlope guess can poison the fit even though it is held fixed.
+    holdLen = strlen(fitHoldStr)
+    if (holdLen >= 7)
+        if (CmpStr(fitHoldStr[6,6], "1") == 0)
+            pwFit[6] = 0
+        endif
+    endif
+
+    Make/FREE/D/N=7 pwStartUsed
+    for (i = 0; i < 7; i += 1)
+        pwStartUsed[i] = pwFit[i]
+    endfor
+
     Make/FREE/D/N=7 pwStore7
     Make/FREE/D/N=7 sigStore7
     sigStore7 = NaN
 
     LJZ_EDCFermiFit_KillStoredFitWave(wPath)
 
+    Make/O/D/N=(nFit) $(LJZ_EDCFermiFit_BaseDF() + ":fitY_tmp")
+    Make/O/D/N=(nFit) $(LJZ_EDCFermiFit_BaseDF() + ":fitX_tmp")
+    Make/O/D/N=(nFit) $(LJZ_EDCFermiFit_BaseDF() + ":fitDest_tmp")
+
+    Wave fitY = $(LJZ_EDCFermiFit_BaseDF() + ":fitY_tmp")
+    Wave fitX = $(LJZ_EDCFermiFit_BaseDF() + ":fitX_tmp")
+    Wave fitDest = $(LJZ_EDCFermiFit_BaseDF() + ":fitDest_tmp")
+
+    for (ii = 0; ii < nFit; ii += 1)
+        srcP = pLo + ii
+        fitY[ii] = wFit[srcP]
+        fitX[ii] = pnt2x(wFit, srcP)
+        fitDest[ii] = NaN
+    endfor
+
     oldDF = GetDataFolder(1)
     fitDF = LJZ_EDCFermiFit_BaseDF()
     SetDataFolder $(fitDF)
 
     KillWaves/Z W_sigma
-    Variable/G V_FitError = 0
-    Variable/G V_chisq = NaN
+    V_FitError = 0
+    V_chisq = NaN
 
-    FuncFit/Z/Q/NTHR=0/N/G/H=fitHoldStr LJZ_EDCFermiFit_ModelAA pwFit wFit[pLo,pHi] /D
+    FuncFit/Q/NTHR=0/N/G/H=fitHoldStr LJZ_EDCFermiFit_ModelAA, pwFit, fitY /X=fitX /D=fitDest
 
-    NVAR/Z tFitErr = $(fitDF + ":V_FitError")
-    NVAR/Z tChiSq = $(fitDF + ":V_chisq")
-    Wave/Z wSig = $(fitDF + ":W_sigma")
+    fitErr = V_FitError
+    chiSq = V_chisq
 
-    if (NVAR_Exists(tFitErr))
-        fitErr = tFitErr
-    else
-        fitErr = 999
-    endif
-
-    if (NVAR_Exists(tChiSq))
-        chiSq = tChiSq
-    else
-        chiSq = NaN
-    endif
-
-    // If the user-selected hold set is still numerically singular, retry once
-    // with the most stable Fermi-edge core: Height, EF, BG free only.
     if (numtype(fitErr) != 0 || fitErr != 0)
         if (CmpStr(fitHoldStr, "0010111") != 0)
-            Print "EDCFermiFit: first FuncFit failed; retrying with stable holdStr=0010111 (Height, EF, BG free only)."
+            Print "EDCFermiFit: first FuncFit failed; retrying with stable holdStr=0010111 (Height, EF, BG free only; SB=0, OccSlope=0)."
             fitHoldStr = "0010111"
             for (i = 0; i < 7; i += 1)
                 pwFit[i] = startPW[i]
             endfor
+
+            pwFit[5] = 0
+            pwFit[6] = 0
+
+            for (i = 0; i < 7; i += 1)
+                pwStartUsed[i] = pwFit[i]
+            endfor
+
+            for (ii = 0; ii < nFit; ii += 1)
+                fitDest[ii] = NaN
+            endfor
+
             KillWaves/Z W_sigma
-            Variable/G V_FitError = 0
-            Variable/G V_chisq = NaN
-            FuncFit/Z/Q/NTHR=0/N/G/H=fitHoldStr LJZ_EDCFermiFit_ModelAA pwFit wFit[pLo,pHi] /D
+            V_FitError = 0
+            V_chisq = NaN
 
-            if (NVAR_Exists(tFitErr))
-                fitErr = tFitErr
-            else
-                fitErr = 999
-            endif
+            FuncFit/Q/NTHR=0/N/G/H=fitHoldStr LJZ_EDCFermiFit_ModelAA, pwFit, fitY /X=fitX /D=fitDest
 
-            if (NVAR_Exists(tChiSq))
-                chiSq = tChiSq
-            else
-                chiSq = NaN
-            endif
+            fitErr = V_FitError
+            chiSq = V_chisq
         endif
     endif
 
+    Wave/Z wSig = $(fitDF + ":W_sigma")
     if (WaveExists(wSig))
         if (numpnts(wSig) >= 7)
             LJZ_EDCFermiFit_ResultSigToStoreSig(wSig, sigStore7)
@@ -2432,6 +2037,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
 
     Print "EDCFermiFit 7p FuncFit: wave=", NameOfWave($wPath), " holdStr=", fitHoldStr, " V_FitError=", fitErr, " V_chisq=", chiSq
     Print "  startPW=", startPW[0], startPW[1], startPW[2], startPW[3], startPW[4], startPW[5], startPW[6]
+    Print "  usedStart=", pwStartUsed[0], pwStartUsed[1], pwStartUsed[2], pwStartUsed[3], pwStartUsed[4], pwStartUsed[5], pwStartUsed[6]
     Print "  pw_fit =", pwFit[0], pwFit[1], pwFit[2], pwFit[3], pwFit[4], pwFit[5], pwFit[6]
 
     if (numtype(pwFit[2]) == 0)
@@ -2453,35 +2059,41 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
         xFullRMS[i] = pnt2x(wFit, i)
     endfor
 
-    LJZ_EDCFermiFit_ModelAA(startPW, modelStart, xFullRMS)
+    LJZ_EDCFermiFit_ModelAA(pwStartUsed, modelStart, xFullRMS)
     LJZ_EDCFermiFit_ModelAA(pwFit, modelFit, xFullRMS)
     LJZ_EDCFermiFit_ComputeWindowRMS(wFit, modelStart, pLo, pHi, startResidRMS, startDataRMS)
     LJZ_EDCFermiFit_ComputeWindowRMS(wFit, modelFit, pLo, pHi, fitResidRMS, fitDataRMS)
 
-    paramsUnchanged = LJZ_EDCFermiFit_FreeParamsUnchanged(pwFit, startPW, fitHoldStr, 7)
-    acceptSoft = 0
-    okFlag = 1
+    paramsUnchanged = LJZ_EDCFermiFit_FreeParamsUnchanged(pwFit, pwStartUsed, fitHoldStr, 7)
 
-    if (numtype(fitResidRMS) == 0 && numtype(startResidRMS) == 0)
-        if (fitResidRMS <= startResidRMS)
-            if (!paramsUnchanged)
-                acceptSoft = 1
-            endif
+    if (numtype(startResidRMS) == 0 && numtype(fitResidRMS) == 0)
+        if (fitResidRMS < 0.995 * startResidRMS)
+            rmsImproved = 1
         endif
     endif
 
-    Print "  RMS start=", startResidRMS, " RMS fit=", fitResidRMS, " paramsUnchanged=", paramsUnchanged
+    Print "  RMS start=", startResidRMS, " RMS fit=", fitResidRMS, " paramsUnchanged=", paramsUnchanged, " rmsImproved=", rmsImproved
 
+    // FuncFit can report singular matrix after reaching a visually useful minimum.
+    // If the model improved and free parameters moved, keep it as a soft result.
     if (numtype(fitErr) != 0 || fitErr != 0)
-        Print "EDCFermiFit: FuncFit failed even after stable retry; no fit curve will be displayed."
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        if (doAlertOnFail)
-            DoAlert 0, "FuncFit 失败。请看 History 中的 V_FitError。当前结果没有写入。"
+        if (rmsImproved && !paramsUnchanged)
+            softAccept = 1
+            okFlag = 0.5
+            sigStore7 = NaN
+            chiSq = fitResidRMS * fitResidRMS
+            Print "EDCFermiFit: FuncFit reported an error, but RMS improved; accepting as soft result with ok=0.5."
+        else
+            Print "EDCFermiFit: FuncFit failed even after stable retry; no fit curve will be displayed."
+            LJZ_EDCFermiFit_ClearResultForWave(wPath)
+            if (doAlertOnFail)
+                DoAlert 0, "FuncFit 失败，且 RMS 没有改善。当前结果没有写入。"
+            endif
+            return -1
         endif
-        return -1
     endif
 
-    if (paramsUnchanged)
+    if (paramsUnchanged && !softAccept)
         Print "WARNING: FuncFit returned but all free parameters are unchanged."
     endif
 
@@ -2848,14 +2460,14 @@ Function LJZ_EDCFermiFit_CreateGraphSubwindow()
     Wave/Z w = LJZ_EDCFermiFit_GetActiveWaveForPath(sWave)
     if (!WaveExists(w) || !LJZ_EDCFermiFit_Is1DWave(w))
         Wave stub = $(LJZ_EDCFermiFit_BaseDF() + ":GraphStub")
-        Display/HOST=$panelName/N=$graphName/W=(250,40,960,350) stub
+        Display/HOST=$panelName/N=$graphName/W=(200,40,910,340) stub
         ModifyGraph/W=$graphPath margin(left)=48,margin(bottom)=32,margin(right)=16,margin(top)=12,mirror=2
         Label/W=$graphPath left "Intensity (a.u.)"
         Label/W=$graphPath bottom "Energy (eV)"
         return 0
     endif
 
-    Display/HOST=$panelName/N=$graphName/W=(250,40,960,350) w
+    Display/HOST=$panelName/N=$graphName/W=(200,40,910,340) w
     ModifyGraph/W=$graphPath margin(left)=48,margin(bottom)=32,margin(right)=16,margin(top)=12,mirror=2
     Label/W=$graphPath left "Intensity (a.u.)"
     Label/W=$graphPath bottom "Energy (eV)"
@@ -3101,101 +2713,102 @@ Function LJZ_EDCFermiFit_OpenPanel()
     String p = LJZ_EDCFermiFit_PanelName()
     DoWindow/F $p
     if (V_flag == 0)
-        NewPanel/N=$p /W=(80,80,1105,760)
+        NewPanel/N=$p /W=(80,80,1010,745)
     else
         DoWindow/F $p
         LJZ_EDCFermiFit_CreateGraphSubwindow()
         return 0
     endif
 
-    SetVariable svSourceDF,pos={10,10},size={455,20},title="Source DF"
+    // Compact layout: left list + right graph + two compact parameter/result columns.
+    SetVariable svSourceDF,pos={8,8},size={585,20},title="Source DF"
     SetVariable svSourceDF,value=_STR:sSourceDF,proc=LJZ_EDCFermiFit_SetVarProc
 
-    Button btUseCurrent,pos={480,8},size={80,24},title="Current",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btScan,pos={575,8},size={70,24},title="Scan",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btUseCurrent,pos={605,7},size={72,24},title="Current",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btScan,pos={684,7},size={58,24},title="Scan",proc=LJZ_EDCFermiFit_ButtonProc
 
-    ListBox lbWave,pos={10,42},size={225,335},listWave=$(LJZ_EDCFermiFit_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EDCFermiFit_BaseDF() + ":LB_Sel"),proc=LJZ_EDCFermiFit_ListBoxProc
+    ListBox lbWave,pos={8,40},size={180,470},listWave=$(LJZ_EDCFermiFit_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EDCFermiFit_BaseDF() + ":LB_Sel"),proc=LJZ_EDCFermiFit_ListBoxProc
 
-    Button btRefresh,pos={250,364},size={82,28},title="Refresh",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btAutoWin,pos={340,364},size={82,28},title="AutoWin",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btCursor,pos={430,364},size={82,28},title="Cursors",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btRmBG,pos={520,364},size={82,28},title="RmBG",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btResetWork,pos={610,364},size={82,28},title="Reset",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btGuess,pos={700,364},size={82,28},title="Guess",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btFit,pos={790,364},size={72,28},title="Fit",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btFitAll,pos={870,364},size={82,28},title="Fit All",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btFitNext,pos={958,364},size={88,28},title="Fit+Next",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btPreviewInit,pos={430,364},size={92,28},title="PreviewInit",proc=LJZ_EDCFermiFit_ButtonProc
-    
-    TitleBox tbWin,pos={250,404},size={160,18},frame=0,title="Fit window"
-    SetVariable svFitX1,pos={250,428},size={150,20},title="Fit x1"
+    Button btRefresh,pos={200,352},size={58,24},title="Refresh",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btAutoWin,pos={264,352},size={62,24},title="AutoWin",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btPreviewInit,pos={332,352},size={76,24},title="Preview",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btCursor,pos={414,352},size={58,24},title="Cursor",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btRmBG,pos={478,352},size={54,24},title="RmBG",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btResetWork,pos={538,352},size={54,24},title="Reset",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btGuess,pos={598,352},size={58,24},title="Guess",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btFit,pos={662,352},size={46,24},title="Fit",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btFitAll,pos={714,352},size={58,24},title="FitAll",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btFitNext,pos={778,352},size={68,24},title="Fit+Next",proc=LJZ_EDCFermiFit_ButtonProc
+
+    TitleBox tbWin,pos={200,386},size={145,18},frame=0,title="Fit window"
+    SetVariable svFitX1,pos={200,408},size={145,20},title="x1"
     SetVariable svFitX1,variable=$(LJZ_EDCFermiFit_BaseDF() + ":FitX1"),proc=LJZ_EDCFermiFit_SetVarProc
 
-    SetVariable svFitX2,pos={415,428},size={150,20},title="Fit x2"
+    SetVariable svFitX2,pos={355,408},size={145,20},title="x2"
     SetVariable svFitX2,variable=$(LJZ_EDCFermiFit_BaseDF() + ":FitX2"),proc=LJZ_EDCFermiFit_SetVarProc
 
-    TitleBox tbPar,pos={250,466},size={180,18},frame=0,title="Initial / hold parameters"
-    TitleBox tbHold,pos={620,466},size={70,18},frame=0,title="Hold?"
+    TitleBox tbPar,pos={200,442},size={180,18},frame=0,title="Initial / hold parameters"
+    TitleBox tbHold,pos={392,442},size={60,18},frame=0,title="Hold?"
 
-    SetVariable svHeight,pos={250,492},size={175,20},title="Height"
+    SetVariable svHeight,pos={200,464},size={165,20},title="Height"
     SetVariable svHeight,variable=$(LJZ_EDCFermiFit_BaseDF() + ":Height"),proc=LJZ_EDCFermiFit_SetVarProc
-    CheckBox cbHHeight,pos={635,494},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
+    CheckBox cbHHeight,pos={398,466},size={18,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
 
-    SetVariable svEF,pos={250,518},size={175,20},title="EF"
+    SetVariable svEF,pos={200,486},size={165,20},title="EF"
     SetVariable svEF,variable=$(LJZ_EDCFermiFit_BaseDF() + ":EF"),proc=LJZ_EDCFermiFit_SetVarProc
-    CheckBox cbHEF,pos={635,520},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HEF")
+    CheckBox cbHEF,pos={398,488},size={18,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HEF")
 
-    SetVariable svTe,pos={250,544},size={175,20},title="Te (K)"
+    SetVariable svTe,pos={200,508},size={165,20},title="Te (K)"
     SetVariable svTe,variable=$(LJZ_EDCFermiFit_BaseDF() + ":Te"),proc=LJZ_EDCFermiFit_SetVarProc
-    CheckBox cbHTe,pos={635,546},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HTe")
+    CheckBox cbHTe,pos={398,510},size={18,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HTe")
 
-    SetVariable svBG,pos={250,570},size={175,20},title="BG"
+    SetVariable svBG,pos={200,530},size={165,20},title="BG"
     SetVariable svBG,variable=$(LJZ_EDCFermiFit_BaseDF() + ":BG"),proc=LJZ_EDCFermiFit_SetVarProc
-    CheckBox cbHBG,pos={635,572},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HBG")
+    CheckBox cbHBG,pos={398,532},size={18,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HBG")
 
-    SetVariable svRes,pos={250,596},size={175,20},title="Res (meV)"
+    SetVariable svRes,pos={200,552},size={165,20},title="Res (meV)"
     SetVariable svRes,variable=$(LJZ_EDCFermiFit_BaseDF() + ":Res"),proc=LJZ_EDCFermiFit_SetVarProc
-    CheckBox cbHRes,pos={635,598},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HRes")
+    CheckBox cbHRes,pos={398,554},size={18,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HRes")
 
-    SetVariable svSB,pos={250,622},size={175,20},title="Shirley"
+    SetVariable svSB,pos={200,574},size={165,20},title="Shirley"
     SetVariable svSB,variable=$(LJZ_EDCFermiFit_BaseDF() + ":SB"),proc=LJZ_EDCFermiFit_SetVarProc
-    CheckBox cbHSB,pos={635,624},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HSB")
+    CheckBox cbHSB,pos={398,576},size={18,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HSB")
 
-    SetVariable svOccSlope,pos={250,648},size={175,20},title="OccSlope"
+    SetVariable svOccSlope,pos={200,596},size={165,20},title="OccSlope"
     SetVariable svOccSlope,variable=$(LJZ_EDCFermiFit_BaseDF() + ":OccSlope"),proc=LJZ_EDCFermiFit_SetVarProc
-    CheckBox cbHOccSlope,pos={635,650},size={20,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
+    CheckBox cbHOccSlope,pos={398,598},size={18,15},title="",mode=0,variable=$(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
 
-    TitleBox tbLast,pos={690,466},size={180,18},frame=0,title="Stored result for selection"
+    TitleBox tbLast,pos={470,442},size={180,18},frame=0,title="Stored result"
 
-    SetVariable svLastEF,pos={690,492},size={170,20},title="Last EF"
+    SetVariable svLastEF,pos={470,464},size={165,20},title="Last EF"
     SetVariable svLastEF,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastEF"),noedit=1
 
-    SetVariable svLastTe,pos={690,518},size={170,20},title="Last Te"
+    SetVariable svLastTe,pos={470,486},size={165,20},title="Last Te"
     SetVariable svLastTe,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastTe"),noedit=1
 
-    SetVariable svLastRes,pos={690,544},size={170,20},title="Last Res"
+    SetVariable svLastRes,pos={470,508},size={165,20},title="Last Res"
     SetVariable svLastRes,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastRes"),noedit=1
 
-    SetVariable svLastBG,pos={690,570},size={170,20},title="Last BG"
+    SetVariable svLastBG,pos={470,530},size={165,20},title="Last BG"
     SetVariable svLastBG,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastBG"),noedit=1
 
-    SetVariable svLastChiSq,pos={690,596},size={170,20},title="Last ChiSq"
+    SetVariable svLastChiSq,pos={470,552},size={165,20},title="Last ChiSq"
     SetVariable svLastChiSq,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastChiSq"),noedit=1
 
-    SetVariable svLastOK,pos={690,622},size={170,20},title="Last OK"
+    SetVariable svLastOK,pos={470,574},size={165,20},title="Last OK"
     SetVariable svLastOK,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastOK"),noedit=1
 
-    SetVariable svLastOccSlope,pos={690,648},size={170,20},title="Last OccSlope"
+    SetVariable svLastOccSlope,pos={470,596},size={165,20},title="Last OccSlope"
     SetVariable svLastOccSlope,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope"),noedit=1
 
-    Button btPlotResult,pos={875,618},size={80,24},title="Plot",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btPushMDCPerLayer,pos={962,618},size={130,24},title="→MDCExtract(per layer)",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btPlotResult,pos={665,552},size={70,24},title="Plot",proc=LJZ_EDCFermiFit_ButtonProc
+    Button btPushMDCPerLayer,pos={665,580},size={150,24},title="→MDCExtract",proc=LJZ_EDCFermiFit_ButtonProc
 
-    SetVariable svSelWave,pos={10,678},size={945,20},title="Selected Wave:"
+    SetVariable svSelWave,pos={8,624},size={900,20},title="Selected Wave:"
     SetVariable svSelWave,value=_STR:sWaveSel,noedit=1
 
-    TitleBox tbWorkMode,pos={10,700},size={945,18},frame=0,title="Showing source wave"
-    TitleBox tbMsg,pos={10,720},size={945,18},frame=0,title="Model: [(Height + OccSlope*(E-EF)) * FD] convolved with Gaussian + BG + normalized Shirley"
+    TitleBox tbWorkMode,pos={8,648},size={900,18},frame=0,title="Showing source wave"
+    TitleBox tbMsg,pos={8,668},size={900,18},frame=0,title="Model: [(Height + OccSlope*(E-EF)) * FD] convolved with Gaussian + BG + normalized Shirley"
 
     LJZ_EDCFermiFit_CreateGraphSubwindow()
     return 0
