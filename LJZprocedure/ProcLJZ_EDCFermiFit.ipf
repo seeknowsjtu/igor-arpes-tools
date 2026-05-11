@@ -1818,28 +1818,51 @@ Function LJZ_EDCFermiFit_CreateStoredFitWave_Classic6(wPath, pw6)
 End
 
 Function LJZ_EDCFermiFit_FitWaveByPath_Classic6(wPath, startPW6, holdStr, updateUI, doAlertOnFail)
-    String wPath, holdStr
+    String wPath
     Wave startPW6
-    Variable updateUI, doAlertOnFail
+    String holdStr
+    Variable updateUI
+    Variable doAlertOnFail
+
+    Variable ret
     Variable n
     Variable pLo
     Variable pHi
     Variable i
-    Variable fitErr
-    Variable chiSq
     Variable freeCount
-    Variable unchanged
     Variable holdLen
     Variable isHeld
+    Variable fitErr
+    Variable chiSq
+    Variable unchanged
     Variable diffVal
-    Variable ret
-    Wave/Z wSig
+    Variable tol
+    String oldDF
+    String fitDF
+
+    ret = -1
+    fitErr = 999
+    chiSq = NaN
+    unchanged = 1
+    tol = 1e-12
 
     Wave/Z wFit = LJZ_EDCFermiFit_GetActiveWaveForPath(wPath)
-    if (!WaveExists(wFit) || !LJZ_EDCFermiFit_Is1DWave(wFit) || strlen(holdStr) != 6)
+
+    if (!WaveExists(wFit))
         LJZ_EDCFermiFit_ClearResultForWave(wPath)
         return -1
     endif
+
+    if (!LJZ_EDCFermiFit_Is1DWave(wFit))
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        return -1
+    endif
+
+    if (strlen(holdStr) != 6)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        return -1
+    endif
+
     n = numpnts(wFit)
     if (n <= 0)
         LJZ_EDCFermiFit_ClearResultForWave(wPath)
@@ -1848,83 +1871,118 @@ Function LJZ_EDCFermiFit_FitWaveByPath_Classic6(wPath, startPW6, holdStr, update
 
     NVAR FitX1 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX1")
     NVAR FitX2 = $(LJZ_EDCFermiFit_BaseDF() + ":FitX2")
-    ret = LJZ_EDCFermiFit_GetFitPointWindow(wFit, FitX1, FitX2, pLo, pHi)
-    if (ret != 0)
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-    if (pHi - pLo < 4)
-        LJZ_EDCFermiFit_ClearResultForWave(wPath)
-        return -1
-    endif
-    freeCount = 0
-    holdLen = strlen(holdStr)
-    for (i = 0; i < 6; i += 1)
-        isHeld = 0
-        if (i < holdLen)
-            if (char2num(holdStr[i]) == char2num("1"))
-                isHeld = 1
-            endif
-        endif
-        if (!isHeld)
-            freeCount += 1
-        endif
-    endfor
-    if (freeCount <= 0)
+    LJZ_EDCFermiFit_GetFitPointWindow(wFit, FitX1, FitX2, pLo, pHi)
+
+    if (pHi <= pLo)
         LJZ_EDCFermiFit_ClearResultForWave(wPath)
         return -1
     endif
 
-    Make/O/D/N=6 root:ARPES_LJZ:EDCFermiFit:pw_classic6
-    Wave pw6 = root:ARPES_LJZ:EDCFermiFit:pw_classic6
+    freeCount = 0
+    holdLen = strlen(holdStr)
+
+    for (i = 0; i < 6; i += 1)
+        isHeld = 0
+        if (i < holdLen)
+            if (CmpStr(holdStr[i,i], "1") == 0)
+                isHeld = 1
+            endif
+        endif
+
+        if (!isHeld)
+            freeCount += 1
+        endif
+    endfor
+
+    if (freeCount <= 0)
+        Print "ClassicEdge: all parameters are held."
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        return -1
+    endif
+
+    Make/O/D/N=6 $(LJZ_EDCFermiFit_BaseDF() + ":pw_classic6")
+    Wave pw6 = $(LJZ_EDCFermiFit_BaseDF() + ":pw_classic6")
+
     for (i = 0; i < 6; i += 1)
         pw6[i] = startPW6[i]
     endfor
 
     LJZ_EDCFermiFit_KillStoredFitWave(wPath)
+
+    oldDF = GetDataFolder(1)
+    fitDF = LJZ_EDCFermiFit_BaseDF()
+    SetDataFolder $(fitDF)
+
+    NVAR/Z tFitErr = $(fitDF + ":V_FitError")
+    NVAR/Z tChiSq = $(fitDF + ":V_chisq")
+    Wave/Z wSig = $(fitDF + ":W_sigma")
+
     FuncFit/Z/Q/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_Model_Classic6 pw6 wFit[pLo,pHi] /D
 
-    fitErr = V_FitError
-    chiSq = V_chisq
+    if (NVAR_Exists(tFitErr))
+        fitErr = tFitErr
+    else
+        fitErr = 999
+    endif
+
+    if (NVAR_Exists(tChiSq))
+        chiSq = tChiSq
+    else
+        chiSq = NaN
+    endif
+
+    SetDataFolder oldDF
+
     if (numtype(fitErr) != 0 || fitErr != 0)
         Print "ClassicEdge FuncFit failed. V_FitError=", fitErr
         LJZ_EDCFermiFit_ClearResultForWave(wPath)
         return -1
     endif
+
     unchanged = 1
+    holdLen = strlen(holdStr)
+
     for (i = 0; i < 6; i += 1)
         isHeld = 0
         if (i < holdLen)
-            if (char2num(holdStr[i]) == char2num("1"))
+            if (CmpStr(holdStr[i,i], "1") == 0)
                 isHeld = 1
             endif
         endif
+
         if (!isHeld)
             diffVal = abs(pw6[i] - startPW6[i])
-            if (numtype(diffVal) == 0)
-                if (diffVal > 1e-12)
-                    unchanged = 0
-                endif
+            if (diffVal > tol * max(1, abs(startPW6[i])))
+                unchanged = 0
             endif
         endif
     endfor
+
     if (unchanged)
+        Print "ClassicEdge FuncFit did not change any free parameter."
         LJZ_EDCFermiFit_ClearResultForWave(wPath)
         return -1
     endif
 
     Make/FREE/D/N=7 pwStore7
     Make/FREE/D/N=7 sigStore7
+
     LJZ_EDCFermiFit_Classic6ToStorePW(pw6, pwStore7)
 
-    wSig = W_sigma
-    if (WaveExists(wSig) && numpnts(wSig) >= 6)
-        LJZ_EDCFermiFit_Classic6SigToStoreSig(wSig, sigStore7)
+    Wave/Z wSig2 = $(fitDF + ":W_sigma")
+
+    if (WaveExists(wSig2))
+        if (numpnts(wSig2) >= 6)
+            LJZ_EDCFermiFit_Classic6SigToStoreSig(wSig2, sigStore7)
+        else
+            sigStore7 = NaN
+        endif
     else
         sigStore7 = NaN
     endif
 
     LJZ_EDCFermiFit_WriteResultForWave(wPath, pwStore7, sigStore7, chiSq, 1)
+
     LJZ_EDCFermiFit_CreateStoredFitWave_Classic6(wPath, pw6)
 
     if (updateUI)
@@ -1940,7 +1998,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath_Classic6(wPath, startPW6, holdStr, update
         EF = pw6[1]
         Te = pw6[2]
         BG = pw6[3]
-        Res = pw6[4] * (2 * sqrt(2 * ln(2))) * 1000
+        Res = LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pw6[4])
         SB = pw6[5]
         OccSlope = 0
     endif
