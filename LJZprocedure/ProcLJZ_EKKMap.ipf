@@ -2196,6 +2196,15 @@ Function LJZ_EKKMap_OpenPanel()
     SetVariable svEnergy,pos={415,450},size={135,20},title="E_rel"
     SetVariable svEnergy,variable=$(LJZ_EKKMap_BaseDF() + ":EnergyRel"),proc=LJZ_EKKMap_SetVarProc
 
+    SetVariable svQuickEF,pos={265,504},size={135,20},title="QuickEF"
+    SetVariable svQuickEF,variable=$(LJZ_EKKMap_BaseDF() + ":QuickEF"),proc=LJZ_EKKMap_SetVarProc
+
+    SetVariable svQuickHalfN,pos={415,504},size={135,20},title="QuickHalfN"
+    SetVariable svQuickHalfN,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickHalfN"),proc=LJZ_EKKMap_SetVarProc
+
+    SetVariable svQuickDS,pos={265,530},size={135,20},title="QuickDownsample"
+    SetVariable svQuickDS,limits={1,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickDownsample"),proc=LJZ_EKKMap_SetVarProc
+
     CheckBox cbGeometry,pos={265,478},size={120,18},title="WTZ geometry"
     CheckBox cbGeometry,variable=$(LJZ_EKKMap_BaseDF() + ":Geometry"),proc=LJZ_EKKMap_CheckProc
 
