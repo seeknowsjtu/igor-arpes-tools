@@ -1331,81 +1331,81 @@ Function LJZ_MDCExtract_OpenPanel()
         return 0
     endif
 
-    NewPanel/N=$p /W=(80, 80, 760, 620) as "MDC Extract (LJZ)"
+    NewPanel/N=$p /W=(80,80,760,560) as "MDC Extract (LJZ)"
 
     // ---- top row: source DF ----
-    GroupBox gbSrc, pos={6,6}, size={748,56}, title="Data Source"
-    TitleBox tbSrcDF, pos={18,28}, size={52,18}, title="Source DF:", frame=0
-    SetVariable svSourceDF, pos={80,26}, size={490,20}, title=" "
+    GroupBox gbSrc, pos={8,6}, size={744,48}, title="Data Source"
+    TitleBox tbSrcDF, pos={20,26}, size={52,18}, title="Source DF:", frame=0
+    SetVariable svSourceDF, pos={84,23}, size={500,20}, title=" "
     SetVariable svSourceDF, value=root:ARPES_LJZ:MDCExtract:SourceDF, proc=LJZ_MDCExtract_SetVarProc
-    CheckBox cbRec, pos={592,29}, size={78,16}, title="Recursive"
+    CheckBox cbRec, pos={596,26}, size={78,16}, title="Recursive"
     CheckBox cbRec, variable=root:ARPES_LJZ:MDCExtract:Recursive, proc=LJZ_MDCExtract_CheckProc
-    Button btScan, pos={686,24}, size={60,24}, title="Scan", proc=LJZ_MDCExtract_ButtonProc
+    Button btScan, pos={684,21}, size={58,24}, title="Scan", proc=LJZ_MDCExtract_ButtonProc
 
     // ---- left: wave list ----
-    GroupBox gbList, pos={6,70}, size={340,386}, title="Available 3D Waves"
-    ListBox lbWave, pos={18,90}, size={318,358}
+    GroupBox gbList, pos={8,62}, size={330,350}, title="3D Waves"
+    ListBox lbWave, pos={18,82}, size={310,320}
     ListBox lbWave, listWave=root:ARPES_LJZ:MDCExtract:LB_Disp
     ListBox lbWave, selWave=root:ARPES_LJZ:MDCExtract:LB_Sel, mode=1, proc=LJZ_MDCExtract_ListBoxProc
 
     // ---- right: extraction parameters ----
-    GroupBox gbParam, pos={358,70}, size={396,154}, title="Energy Window (dim0)"
-    TitleBox tbEMode, pos={370,92}, size={380,16}, title="Mode: 0=index  1=physical value", frame=0
-    CheckBox cbPhysE, pos={370,114}, size={120,16}, title="Use physical E value"
+    GroupBox gbParam, pos={350,62}, size={402,104}, title="Energy Window"
+    TitleBox tbEMode, pos={364,84}, size={380,16}, title="0=index, 1=physical E", frame=0
+    CheckBox cbPhysE, pos={364,106}, size={90,16}, title="Physical E"
     CheckBox cbPhysE, variable=root:ARPES_LJZ:MDCExtract:UsePhysE, proc=LJZ_MDCExtract_CheckProc
 
-    SetVariable svE0, pos={370,138}, size={180,20}, title="E start"
+    SetVariable svE0, pos={364,130}, size={175,20}, title="E start"
     SetVariable svE0, variable=root:ARPES_LJZ:MDCExtract:EIndex, proc=LJZ_MDCExtract_SetVarProc
-    SetVariable svE1, pos={564,138}, size={180,20}, title="E end"
+    SetVariable svE1, pos={554,130}, size={175,20}, title="E end"
     SetVariable svE1, variable=root:ARPES_LJZ:MDCExtract:Exe, proc=LJZ_MDCExtract_SetVarProc
 
-    SetVariable svEvary, pos={370,168}, size={180,20}, title="Vertical offset"
+    SetVariable svEvary, pos={364,154}, size={175,20}, title="Offset"
     SetVariable svEvary, variable=root:ARPES_LJZ:MDCExtract:evary, proc=LJZ_MDCExtract_SetVarProc
-    SetVariable svBaseName, pos={564,168}, size={180,20}, title="Base name"
+    SetVariable svBaseName, pos={554,154}, size={175,20}, title="Name"
     SetVariable svBaseName, value=root:ARPES_LJZ:MDCExtract:BaseName, proc=LJZ_MDCExtract_SetVarProc
-    GroupBox gbFermi, pos={358,198}, size={396,126}, title="Fermi-weighted MDC"
-    CheckBox cbFermiWeightedMDC, pos={370,220}, size={130,16}, title="Weighted EF MDC"
+    GroupBox gbFermi, pos={350,174}, size={402,122}, title="Fermi-weighted MDC"
+    CheckBox cbFermiWeightedMDC, pos={364,196}, size={104,16}, title="Weighted EF"
     CheckBox cbFermiWeightedMDC, variable=root:ARPES_LJZ:MDCExtract:UseFermiWeightedMDC, proc=LJZ_MDCExtract_CheckProc
-    SetVariable svFermiE, pos={370,242}, size={120,20}, title="EF"
+    SetVariable svFermiE, pos={364,220}, size={118,20}, title="EF"
     SetVariable svFermiE, variable=root:ARPES_LJZ:MDCExtract:FermiE, proc=LJZ_MDCExtract_SetVarProc
-    SetVariable svFermiHalfWidth, pos={500,242}, size={120,20}, title="Half width"
+    SetVariable svFermiHalfWidth, pos={490,220}, size={118,20}, title="HalfW"
     SetVariable svFermiHalfWidth, variable=root:ARPES_LJZ:MDCExtract:FermiHalfWidth, proc=LJZ_MDCExtract_SetVarProc
-    SetVariable svFermiSigma, pos={630,242}, size={114,20}, title="Sigma"
+    SetVariable svFermiSigma, pos={616,220}, size={112,20}, title="Sigma"
     SetVariable svFermiSigma, variable=root:ARPES_LJZ:MDCExtract:FermiSigma, proc=LJZ_MDCExtract_SetVarProc
-    PopupMenu pmFermiWeightMethod, pos={370,266}, size={220,20}, title="Weight"
+    PopupMenu pmFermiWeightMethod, pos={364,246}, size={180,20}, title="Weight"
     PopupMenu pmFermiWeightMethod, value="0 Uniform;1 Gaussian;2 Triangular;", proc=LJZ_MDCExtract_PopupProc
-    CheckBox cbUsePerLayerEF, pos={370,290}, size={110,16}, title="Use per-layer EF"
+    CheckBox cbUsePerLayerEF, pos={364,272}, size={100,16}, title="Per-layer EF"
     CheckBox cbUsePerLayerEF, variable=root:ARPES_LJZ:MDCExtract:UseFermiFitEF, proc=LJZ_MDCExtract_CheckProc
-    SetVariable svFermiFitDF, pos={486,288}, size={178,20}, title="FermiFit DF"
+    SetVariable svFermiFitDF, pos={480,270}, size={188,20}, title="FitDF"
     SetVariable svFermiFitDF, value=root:ARPES_LJZ:MDCExtract:FermiFitSourceDF, proc=LJZ_MDCExtract_SetVarProc
-    Button btFermiFitAutoLink, pos={670,288}, size={74,20}, title="Auto-link", proc=LJZ_MDCExtract_ButtonProc
+    Button btFermiFitAutoLink, pos={674,269}, size={58,22}, title="Link", proc=LJZ_MDCExtract_ButtonProc
 
     // ---- right: smoothing ----
-    GroupBox gbSm, pos={358,332}, size={396,130}, title="Smoothing"
-    CheckBox cbSmEn, pos={370,324}, size={68,16}, title="Enable"
+    GroupBox gbSm, pos={350,304}, size={402,100}, title="Smoothing"
+    CheckBox cbSmEn, pos={364,326}, size={68,16}, title="Enable"
     CheckBox cbSmEn, variable=root:ARPES_LJZ:MDCExtract:SmEnable, proc=LJZ_MDCExtract_CheckProc
-    PopupMenu pmSmMethod, pos={452,322}, size={180,20}, title="Method"
+    PopupMenu pmSmMethod, pos={450,324}, size={180,20}, title="Method"
     PopupMenu pmSmMethod, mode=2, popvalue="Smooth", value="0 None;1 Smooth;2 Savitzky-Golay;3 NLPF low-pass;"
     PopupMenu pmSmMethod, proc=LJZ_MDCExtract_PopupProc
 
-    SetVariable svSmN, pos={370,352}, size={170,20}, title="N1 (points)"
+    SetVariable svSmN, pos={364,350}, size={175,20}, title="N1"
     SetVariable svSmN, variable=root:ARPES_LJZ:MDCExtract:SmN, proc=LJZ_MDCExtract_SetVarProc
-    SetVariable svSmN2, pos={554,352}, size={170,20}, title="N2 (2nd pass)"
+    SetVariable svSmN2, pos={554,350}, size={175,20}, title="N2"
     SetVariable svSmN2, variable=root:ARPES_LJZ:MDCExtract:SmN2, proc=LJZ_MDCExtract_SetVarProc
-    SetVariable svSmPoly, pos={370,380}, size={170,20}, title="Poly order (SG)"
+    SetVariable svSmPoly, pos={364,374}, size={175,20}, title="SG poly"
     SetVariable svSmPoly, variable=root:ARPES_LJZ:MDCExtract:SmPoly, proc=LJZ_MDCExtract_SetVarProc
-    SetVariable svSmCutoff, pos={554,380}, size={170,20}, title="Cutoff (BLPF)"
+    SetVariable svSmCutoff, pos={554,374}, size={175,20}, title="BLPF"
     SetVariable svSmCutoff, variable=root:ARPES_LJZ:MDCExtract:SmCutoff, proc=LJZ_MDCExtract_SetVarProc
 
     // ---- action buttons ----
-    Button btExtract, pos={370,476}, size={120,32}, title="Extract MDC", proc=LJZ_MDCExtract_ButtonProc
-    Button btReShow,  pos={504,476}, size={120,32}, title="Re-smooth",   proc=LJZ_MDCExtract_ButtonProc
-    Button btFocusG,  pos={638,476}, size={110,32}, title="Focus Graph", proc=LJZ_MDCExtract_ButtonProc
+    Button btExtract, pos={350,420}, size={120,28}, title="Extract MDC", proc=LJZ_MDCExtract_ButtonProc
+    Button btReShow,  pos={490,420}, size={120,28}, title="Re-smooth",   proc=LJZ_MDCExtract_ButtonProc
+    Button btFocusG,  pos={630,420}, size={120,28}, title="Focus Graph", proc=LJZ_MDCExtract_ButtonProc
 
     // ---- info boxes ----
-    GroupBox gbInfo, pos={6,524}, size={748,80}, title="Status"
-    TitleBox tbSel, pos={18,544}, size={720,18}, frame=0, title="Selected: "
-    TitleBox tbRun, pos={18,568}, size={720,18}, frame=0, title="RunDF: "
+    GroupBox gbInfo, pos={8,460}, size={744,78}, title="Status"
+    TitleBox tbSel, pos={20,480}, size={710,18}, frame=0, title="Selected: "
+    TitleBox tbRun, pos={20,504}, size={710,18}, frame=0, title="RunDF: "
 
     // Set popup to current SmMethod
     NVAR SmMethod = $(LJZ_MDCExtract_BaseDF() + ":SmMethod")
@@ -2219,65 +2219,65 @@ Function LJZ_EDCExtract_OpenPanel()
         return 0
     endif
 
-    NewPanel/N=$p /W=(120, 120, 800, 600) as "EDC Extract (LJZ)"
+    NewPanel/N=$p /W=(120,120,760,500) as "EDC Extract (LJZ)"
 
     // ---- top row: source DF ----
-    GroupBox gbSrc, pos={6,6}, size={748,56}, title="Data Source"
-    TitleBox tbSrcDF, pos={18,28}, size={52,18}, title="Source DF:", frame=0
-    SetVariable svSourceDF, pos={80,26}, size={490,20}, title=" "
+    GroupBox gbSrc, pos={8,6}, size={744,48}, title="Data Source"
+    TitleBox tbSrcDF, pos={20,26}, size={52,18}, title="Source DF:", frame=0
+    SetVariable svSourceDF, pos={84,23}, size={500,20}, title=" "
     SetVariable svSourceDF, value=root:ARPES_LJZ:EDCExtract:SourceDF, proc=LJZ_EDCExtract_SetVarProc
-    CheckBox cbRec, pos={592,29}, size={78,16}, title="Recursive"
+    CheckBox cbRec, pos={596,26}, size={78,16}, title="Recursive"
     CheckBox cbRec, variable=root:ARPES_LJZ:EDCExtract:Recursive, proc=LJZ_EDCExtract_CheckProc
-    Button btScan, pos={686,24}, size={60,24}, title="Scan", proc=LJZ_EDCExtract_ButtonProc
+    Button btScan, pos={684,21}, size={58,24}, title="Scan", proc=LJZ_EDCExtract_ButtonProc
 
     // ---- left: wave list ----
-    GroupBox gbList, pos={6,70}, size={340,386}, title="Available 3D Waves"
-    ListBox lbWave, pos={18,90}, size={318,358}
+    GroupBox gbList, pos={8,62}, size={330,300}, title="3D Waves"
+    ListBox lbWave, pos={18,82}, size={310,270}
     ListBox lbWave, listWave=root:ARPES_LJZ:EDCExtract:LB_Disp
     ListBox lbWave, selWave=root:ARPES_LJZ:EDCExtract:LB_Sel, mode=1, proc=LJZ_EDCExtract_ListBoxProc
 
     // ---- right: extraction parameters ----
-    GroupBox gbParam, pos={358,70}, size={396,154}, title="k Window (dim1)"
-    TitleBox tbKMode, pos={370,92}, size={380,16}, title="Mode: 0=index  1=physical value", frame=0
-    CheckBox cbPhysK, pos={370,114}, size={120,16}, title="Use physical k value"
+    GroupBox gbParam, pos={350,62}, size={402,104}, title="k Window"
+    TitleBox tbKMode, pos={364,84}, size={380,16}, title="0=index, 1=physical k", frame=0
+    CheckBox cbPhysK, pos={364,106}, size={90,16}, title="Physical k"
     CheckBox cbPhysK, variable=root:ARPES_LJZ:EDCExtract:UsePhysK, proc=LJZ_EDCExtract_CheckProc
 
-    SetVariable svK0, pos={370,138}, size={180,20}, title="k start"
+    SetVariable svK0, pos={364,130}, size={175,20}, title="k start"
     SetVariable svK0, variable=root:ARPES_LJZ:EDCExtract:KIndex, proc=LJZ_EDCExtract_SetVarProc
-    SetVariable svK1, pos={564,138}, size={180,20}, title="k end"
+    SetVariable svK1, pos={554,130}, size={175,20}, title="k end"
     SetVariable svK1, variable=root:ARPES_LJZ:EDCExtract:Kxe, proc=LJZ_EDCExtract_SetVarProc
 
-    SetVariable svEvary, pos={370,168}, size={180,20}, title="Vertical offset"
+    SetVariable svEvary, pos={364,154}, size={175,20}, title="Offset"
     SetVariable svEvary, variable=root:ARPES_LJZ:EDCExtract:evary, proc=LJZ_EDCExtract_SetVarProc
-    SetVariable svBaseName, pos={564,168}, size={180,20}, title="Base name"
+    SetVariable svBaseName, pos={554,154}, size={175,20}, title="Name"
     SetVariable svBaseName, value=root:ARPES_LJZ:EDCExtract:BaseName, proc=LJZ_EDCExtract_SetVarProc
 
     // ---- right: smoothing ----
-    GroupBox gbSm, pos={358,232}, size={396,130}, title="Smoothing"
-    CheckBox cbSmEn, pos={370,254}, size={68,16}, title="Enable"
+    GroupBox gbSm, pos={350,180}, size={402,100}, title="Smoothing"
+    CheckBox cbSmEn, pos={364,202}, size={68,16}, title="Enable"
     CheckBox cbSmEn, variable=root:ARPES_LJZ:EDCExtract:SmEnable, proc=LJZ_EDCExtract_CheckProc
-    PopupMenu pmSmMethod, pos={452,252}, size={180,20}, title="Method"
+    PopupMenu pmSmMethod, pos={450,200}, size={180,20}, title="Method"
     PopupMenu pmSmMethod, mode=2, popvalue="Smooth", value="0 None;1 Smooth;2 Savitzky-Golay;3 NLPF low-pass;"
     PopupMenu pmSmMethod, proc=LJZ_EDCExtract_PopupProc
 
-    SetVariable svSmN, pos={370,282}, size={170,20}, title="N1 (points)"
+    SetVariable svSmN, pos={364,226}, size={175,20}, title="N1"
     SetVariable svSmN, variable=root:ARPES_LJZ:EDCExtract:SmN, proc=LJZ_EDCExtract_SetVarProc
-    SetVariable svSmN2, pos={554,282}, size={170,20}, title="N2 (2nd pass)"
+    SetVariable svSmN2, pos={554,226}, size={175,20}, title="N2"
     SetVariable svSmN2, variable=root:ARPES_LJZ:EDCExtract:SmN2, proc=LJZ_EDCExtract_SetVarProc
-    SetVariable svSmPoly, pos={370,310}, size={170,20}, title="Poly order (SG)"
+    SetVariable svSmPoly, pos={364,250}, size={175,20}, title="SG poly"
     SetVariable svSmPoly, variable=root:ARPES_LJZ:EDCExtract:SmPoly, proc=LJZ_EDCExtract_SetVarProc
-    SetVariable svSmCutoff, pos={554,310}, size={170,20}, title="Cutoff (BLPF)"
+    SetVariable svSmCutoff, pos={554,250}, size={175,20}, title="BLPF"
     SetVariable svSmCutoff, variable=root:ARPES_LJZ:EDCExtract:SmCutoff, proc=LJZ_EDCExtract_SetVarProc
 
     // ---- action buttons ----
-    Button btExtract, pos={370,376}, size={120,32}, title="Extract EDC", proc=LJZ_EDCExtract_ButtonProc
-    Button btReShow,  pos={504,376}, size={120,32}, title="Re-smooth",   proc=LJZ_EDCExtract_ButtonProc
-    Button btFocusG,  pos={638,376}, size={110,32}, title="Focus Graph", proc=LJZ_EDCExtract_ButtonProc
+    Button btExtract, pos={350,300}, size={120,28}, title="Extract EDC", proc=LJZ_EDCExtract_ButtonProc
+    Button btReShow,  pos={490,300}, size={120,28}, title="Re-smooth",   proc=LJZ_EDCExtract_ButtonProc
+    Button btFocusG,  pos={630,300}, size={120,28}, title="Focus Graph", proc=LJZ_EDCExtract_ButtonProc
 
     // ---- info boxes ----
-    GroupBox gbInfo, pos={6,464}, size={748,80}, title="Status"
-    TitleBox tbSel, pos={18,484}, size={720,18}, frame=0, title="Selected: "
-    TitleBox tbRun, pos={18,508}, size={720,18}, frame=0, title="RunDF: "
+    GroupBox gbInfo, pos={8,380}, size={744,78}, title="Status"
+    TitleBox tbSel, pos={20,400}, size={710,18}, frame=0, title="Selected: "
+    TitleBox tbRun, pos={20,424}, size={710,18}, frame=0, title="RunDF: "
 
     NVAR SmMethod = $(LJZ_EDCExtract_BaseDF() + ":SmMethod")
     PopupMenu pmSmMethod, win=$p, mode=(SmMethod + 1)
