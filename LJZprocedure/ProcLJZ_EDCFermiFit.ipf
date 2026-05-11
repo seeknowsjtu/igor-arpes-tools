@@ -1482,9 +1482,9 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
     Variable kB = 8.617333262e-5
     Variable A   = pw[0]
     Variable EF  = pw[1]
-    Variable T   = max(abs(pw[2]), 0.2)
+    Variable T   = min(max(abs(pw[2]), 0.2), 1000)
     Variable BG  = pw[3]
-    Variable sig = abs(pw[4])
+    Variable sig = min(max(abs(pw[4]), 1e-8), 0.20)
     Variable SB  = max(pw[5], 0)
     Variable OccSlope = pw[6]
 
@@ -1503,6 +1503,7 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
     Variable dxAbs = abs(dx)
     Variable blurEV = max(sig, 4 * kB * T)
     Variable padN = max(24, ceil(8 * blurEV / dxAbs))
+    padN = min(padN, 2000)
     Variable nExt = n + 2 * padN
 
     Make/FREE/D/N=(nExt) xExt, yBare
@@ -1522,6 +1523,7 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
 
     if (sig > 1e-7 * dxAbs)
         Variable rad = max(3, ceil(4 * sig / dxAbs))
+        rad = min(rad, 1000)
         Variable gN = 2 * rad + 1
         Make/FREE/D/N=(gN) gk
         gk = exp(-(((p - rad) * dxAbs)^2) / (2 * sig^2))
@@ -1752,8 +1754,9 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     Duplicate/O startPW, pw_fit
     KillWaves/Z W_sigma
 
-    FuncFit/Q/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_ModelAA pw_fit wFit[pLo, pHi]
-    variable V_FitError
+    Variable/G V_FitMaxIters = 80
+    Variable/G V_FitError = 0
+    FuncFit/Z/Q/NTHR=0/N/G/H=holdStr LJZ_EDCFermiFit_ModelAA pw_fit wFit[pLo, pHi]
     Variable fitErr = V_FitError
     Variable chiSq = V_chisq
 
@@ -1859,6 +1862,10 @@ Function LJZ_EDCFermiFit_FitAll()
     Variable i, okCount = 0
     for (i = 0; i < n; i += 1)
         String wPath = StringFromList(i, listStr, ";")
+        if ((i == 0) || (mod(i, 5) == 0) || (i == n - 1))
+            Print "EDCFermiFit FitAll: fitting " + num2str(i + 1) + " / " + num2str(n) + " : " + NameOfWave($wPath)
+            DoUpdate
+        endif
         Variable ret = LJZ_EDCFermiFit_FitWaveByPath(wPath, workInit, holdStr, 0, 0)
         if (ret == 0)
             okCount += 1
