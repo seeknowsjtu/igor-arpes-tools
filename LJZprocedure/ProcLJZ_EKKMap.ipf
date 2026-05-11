@@ -342,6 +342,19 @@ Function LJZ_EKKMap_GetPreviewDimForMode(w, mode)
     return 0
 End
 
+
+Function LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
+    Wave dest
+    Variable nx, ny
+
+    nx = max(1, round(nx))
+    ny = max(1, round(ny))
+
+    Redimension/D/N=(nx, ny) dest
+    dest = NaN
+    return 0
+End
+
 Function LJZ_EKKMap_EnsureDF()
     NewDataFolder/O root:ARPES_LJZ
     NewDataFolder/O $(LJZ_EKKMap_BaseDF())
@@ -483,6 +496,15 @@ Function LJZ_EKKMap_EnsureDF()
     Wave/Z wSel = $(LJZ_EKKMap_BaseDF() + ":LB_Sel")
     if (!WaveExists(wSel))
         Make/O/N=0 $(LJZ_EKKMap_BaseDF() + ":LB_Sel") = 0
+    endif
+
+    Wave/Z preview2D = $(LJZ_EKKMap_BaseDF() + ":Preview2D")
+    if (!WaveExists(preview2D))
+        Make/O/D/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":Preview2D")
+        Wave preview2DRef = $(LJZ_EKKMap_BaseDF() + ":Preview2D")
+        preview2DRef = NaN
+        SetScale/P x, 0, 1, "", preview2DRef
+        SetScale/P y, 0, 1, "", preview2DRef
     endif
 
     Wave/Z graphStub = $(LJZ_EKKMap_BaseDF() + ":GraphStub")
@@ -666,12 +688,12 @@ Function LJZ_EKKMap_MakeSliceFrom3D(src3D, iz, transpose, dest)
     // transpose 仅供 preview；Run 阶段必须固定传 0，保持物理轴含义不变。
     // Transpose is for display only, not for physical mapping.
     if (transpose)
-        Redimension/N=(ny,nx) dest
+        LJZ_EKKMap_Prepare2DWave(dest, ny, nx)
         SetScale/P x, DimOffset(src3D,2), DimDelta(src3D,2), WaveUnits(src3D,2), dest
         SetScale/P y, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
         dest = src3D[iz][q][p]
     else
-        Redimension/N=(nx,ny) dest
+        LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
         SetScale/P x, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
         SetScale/P y, DimOffset(src3D,2), DimDelta(src3D,2), WaveUnits(src3D,2), dest
         dest = src3D[iz][p][q]
@@ -691,12 +713,12 @@ Function LJZ_EKKMap_MakeSliceFrom3D_EK(src3D, iz, transpose, dest)
     // transpose 仅供 preview；Run 阶段必须固定传 0，保持 angle / energy / stack 不变。
     // Transpose is for display only, not for physical mapping.
     if (transpose)
-        Redimension/N=(ny,nx) dest
+        LJZ_EKKMap_Prepare2DWave(dest, ny, nx)
         SetScale/P x, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
         SetScale/P y, DimOffset(src3D,0), DimDelta(src3D,0), WaveUnits(src3D,0), dest
         dest = src3D[q][p][iz]
     else
-        Redimension/N=(nx,ny) dest
+        LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
         SetScale/P x, DimOffset(src3D,0), DimDelta(src3D,0), WaveUnits(src3D,0), dest
         SetScale/P y, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
         dest = src3D[p][q][iz]
@@ -1171,7 +1193,7 @@ Function LJZ_EKKMap_MakeDisplaySliceFrom3D(w3D, iz, dest)
 
     Variable nz = DimSize(w3D,2)
     Variable useZ = LJZ_EKKMap_Clamp(round(iz), 0, nz-1)
-    Redimension/N=(DimSize(w3D,0), DimSize(w3D,1)) dest
+    LJZ_EKKMap_Prepare2DWave(dest, DimSize(w3D,0), DimSize(w3D,1))
     SetScale/P x, DimOffset(w3D,0), DimDelta(w3D,0), WaveUnits(w3D,0), dest
     SetScale/P y, DimOffset(w3D,1), DimDelta(w3D,1), WaveUnits(w3D,1), dest
     dest = w3D[p][q][useZ]
@@ -1221,7 +1243,7 @@ Function LJZ_EKKMap_Resample2DToCommonGrid(src, xMin, xMax, yMin, yMax, nx, ny, 
     Variable xMin, xMax, yMin, yMax, nx, ny
     Wave dest
 
-    Redimension/N=(nx,ny) dest
+    LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
     SetScale/I x, xMin, xMax, WaveUnits(src,0), dest
     SetScale/I y, yMin, yMax, WaveUnits(src,1), dest
     Variable srcXMin = LJZ_EKKMap_DimMin(src,0)
