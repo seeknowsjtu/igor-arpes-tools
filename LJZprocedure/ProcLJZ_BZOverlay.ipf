@@ -336,132 +336,165 @@ End
 // ---------------------------------- panel -----------------------------------
 Window LJZ_BZOverlay_Panel() : Panel
     PauseUpdate; Silent 1
-    NewPanel /W=(360,70,1260,700) as "BZ Overlay + Analyzer Cuts for kx-ky FS (LJZ)"
+    NewPanel /W=(360,70,1120,630) as "BZ Overlay + Analyzer Cuts for kx-ky FS (LJZ)"
     ModifyPanel frameStyle=1
 
-    TitleBox bzov_title,pos={12,10},size={260,18},title="BZ Overlay for selected 2D k-space image",frame=0
-    TitleBox bzov_status,pos={12,30},size={260,18},title="Selected: (none)",frame=0
+    // ------------------------------------------------------------------------
+    // Header
+    // ------------------------------------------------------------------------
+    TitleBox bzov_title,pos={10,8},size={360,18},title="BZ Overlay for selected 2D k-space image",frame=0
+    TitleBox bzov_status,pos={10,28},size={720,18},title="Selected: (none)",frame=0
 
-    TitleBox bzov_df_t,pos={12,58},size={55,18},title="Source DF",frame=0
-    SetVariable bzov_sv_df,pos={78,55},size={305,20},proc=BZOV_sv_df_proc,title=""
+    TitleBox bzov_df_t,pos={10,55},size={55,18},title="Source DF",frame=0
+    SetVariable bzov_sv_df,pos={72,52},size={395,20},proc=BZOV_sv_df_proc,title=""
     SetVariable bzov_sv_df,value=root:ARPES_LJZ:BZOverlay:baseDF
-    Button bzov_btn_cur,pos={392,54},size={72,22},proc=BZOV_btn_current,title="Current"
-    Button bzov_btn_scan,pos={472,54},size={72,22},proc=BZOV_btn_scan,title="Scan"
+    Button bzov_btn_cur,pos={480,50},size={72,23},proc=BZOV_btn_current,title="Current"
+    Button bzov_btn_scan,pos={560,50},size={72,23},proc=BZOV_btn_scan,title="Scan"
 
-    ListBox bzov_lb,pos={12,88},size={245,395},proc=BZOV_lb_proc
+    // ------------------------------------------------------------------------
+    // Left column: wave list
+    // ------------------------------------------------------------------------
+    GroupBox bzov_gb_src,pos={8,82},size={242,410},title="2D FS waves"
+    ListBox bzov_lb,pos={18,104},size={222,378},proc=BZOV_lb_proc
     ListBox bzov_lb,listWave=root:ARPES_LJZ:BZOverlay:LB_Items
     ListBox bzov_lb,selWave=root:ARPES_LJZ:BZOverlay:LB_Sel,mode=1,selRow=0
 
-    TitleBox bzov_params,pos={275,88},size={170,18},title="Lattice / overlay parameters",frame=0
+    // ------------------------------------------------------------------------
+    // Middle column: BZ parameters
+    // ------------------------------------------------------------------------
+    GroupBox bzov_gb_bz,pos={260,82},size={245,275},title="BZ / overlay"
 
-    PopupMenu bzov_pm_lattice,pos={275,116},size={210,20},proc=BZOV_pm_lattice,title="Lattice"
+    PopupMenu bzov_pm_lattice,pos={272,108},size={108,20},proc=BZOV_pm_lattice,title="Lat"
     PopupMenu bzov_pm_lattice,mode=1,popvalue="Square",value=#"\"Square;Rectangular;Hexagonal;Custom2D\""
-
-    PopupMenu bzov_pm_unit,pos={275,144},size={210,20},proc=BZOV_pm_unit,title="unit"
+    PopupMenu bzov_pm_unit,pos={388,108},size={105,20},proc=BZOV_pm_unit,title="unit"
     PopupMenu bzov_pm_unit,mode=1,popvalue="A^-1",value=#"\"A^-1;pi/a\""
 
-    SetVariable bzov_sv_a,pos={275,176},size={230,20},title="a (Å)"
+    SetVariable bzov_sv_a,pos={272,136},size={108,20},title="a"
     SetVariable bzov_sv_a,limits={1e-9,1e9,0.01},value=root:ARPES_LJZ:BZOverlay:a
-    SetVariable bzov_sv_b,pos={275,204},size={230,20},title="b (Å)"
+    SetVariable bzov_sv_b,pos={388,136},size={105,20},title="b"
     SetVariable bzov_sv_b,limits={1e-9,1e9,0.01},value=root:ARPES_LJZ:BZOverlay:b
-    SetVariable bzov_sv_g,pos={275,232},size={230,20},title="gamma (deg)"
+
+    SetVariable bzov_sv_g,pos={272,164},size={221,20},title="gamma"
     SetVariable bzov_sv_g,limits={1,179,0.1},value=root:ARPES_LJZ:BZOverlay:gammaDeg
 
-    SetVariable bzov_sv_cx,pos={275,268},size={230,20},title="cx"
+    SetVariable bzov_sv_cx,pos={272,192},size={108,20},title="cx"
     SetVariable bzov_sv_cx,limits={-1e9,1e9,0.001},value=root:ARPES_LJZ:BZOverlay:centerX
-    SetVariable bzov_sv_cy,pos={275,296},size={230,20},title="cy"
+    SetVariable bzov_sv_cy,pos={388,192},size={105,20},title="cy"
     SetVariable bzov_sv_cy,limits={-1e9,1e9,0.001},value=root:ARPES_LJZ:BZOverlay:centerY
 
-    SetVariable bzov_sv_rep,pos={275,332},size={230,20},title="repeat"
+    SetVariable bzov_sv_rep,pos={272,220},size={108,20},title="repeat"
     SetVariable bzov_sv_rep,limits={0,5,1},value=root:ARPES_LJZ:BZOverlay:repeatN
-    CheckBox bzov_ck_rep,pos={275,362},size={150,18},title="Show repeated BZ"
+    CheckBox bzov_ck_rep,pos={388,222},size={95,18},title="repeat BZ"
     CheckBox bzov_ck_rep,variable=root:ARPES_LJZ:BZOverlay:showRepeated
-    CheckBox bzov_ck_lab,pos={275,386},size={150,18},title="labels"
+
+    CheckBox bzov_ck_lab,pos={272,248},size={80,18},title="labels"
     CheckBox bzov_ck_lab,variable=root:ARPES_LJZ:BZOverlay:showLabels
-    CheckBox bzov_ck_plan,pos={275,410},size={150,18},title="plan"
+    CheckBox bzov_ck_plan,pos={360,248},size={70,18},title="plan"
     CheckBox bzov_ck_plan,variable=root:ARPES_LJZ:BZOverlay:imagePlan
 
-    PopupMenu bzov_pm_color,pos={275,442},size={210,20},proc=BZOV_pm_color,title="BZ color"
+    PopupMenu bzov_pm_color,pos={272,276},size={108,20},proc=BZOV_pm_color,title="BZ"
     PopupMenu bzov_pm_color,mode=2,popvalue="White",value=#"BZOV_ColorPopupList()"
-    SetVariable bzov_sv_lw,pos={275,472},size={230,20},title="BZ line width"
+    SetVariable bzov_sv_lw,pos={388,276},size={105,20},title="lw"
     SetVariable bzov_sv_lw,limits={0.1,10,0.1},value=root:ARPES_LJZ:BZOverlay:lineWidth
-    SetVariable bzov_sv_fs,pos={275,500},size={230,20},title="label size"
+
+    SetVariable bzov_sv_fs,pos={272,304},size={108,20},title="font"
     SetVariable bzov_sv_fs,limits={6,36,1},value=root:ARPES_LJZ:BZOverlay:labelSize
 
-    TitleBox bzov_cut_title,pos={590,88},size={250,18},title="Analyzer scan-cut overlay",frame=0
-    CheckBox bzov_ck_cutshow,pos={590,116},size={155,18},title="show cuts"
-    CheckBox bzov_ck_cutshow,variable=root:ARPES_LJZ:BZOverlay:cutShow
-    PopupMenu bzov_pm_cutmode,pos={590,144},size={250,20},proc=BZOV_pm_cutmode,title="Cut mode"
-    PopupMenu bzov_pm_cutmode,mode=1,popvalue="Single scan angle",value=#"BZOV_CutModePopupList()"
-    Button bzov_btn_use_ekk,pos={855,142},size={140,23},proc=BZOV_btn_use_ekk,title="Use EKKMap params"
+    // ------------------------------------------------------------------------
+    // Middle lower column: image / colorbar
+    // ------------------------------------------------------------------------
+    GroupBox bzov_gb_img,pos={260,365},size={245,127},title="Image / colorbar"
 
-    SetVariable bzov_sv_chv,pos={590,176},size={185,20},title="hv"
-    SetVariable bzov_sv_chv,limits={0,1e6,0.1},value=root:ARPES_LJZ:BZOverlay:cutHv
-    SetVariable bzov_sv_cwf,pos={790,176},size={185,20},title="WorkFunc"
-    SetVariable bzov_sv_cwf,limits={0,1e6,0.1},value=root:ARPES_LJZ:BZOverlay:cutWorkFunc
-    SetVariable bzov_sv_ce,pos={590,204},size={185,20},title="E_rel"
-    SetVariable bzov_sv_ce,limits={-1e6,1e6,0.001},value=root:ARPES_LJZ:BZOverlay:cutEnergyRel
-    SetVariable bzov_sv_ca,pos={790,204},size={185,20},title="LatticeA"
-    SetVariable bzov_sv_ca,limits={0,1e6,0.001},value=root:ARPES_LJZ:BZOverlay:cutLatticeA
-
-    SetVariable bzov_sv_ctilt,pos={590,240},size={185,20},title="Tilt"
-    SetVariable bzov_sv_ctilt,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutTilt
-    SetVariable bzov_sv_cazi,pos={790,240},size={185,20},title="Azimuth"
-    SetVariable bzov_sv_cazi,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutAzimuth
-    SetVariable bzov_sv_cso,pos={590,268},size={185,20},title="Scan offset"
-    SetVariable bzov_sv_cso,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanOffset
-    CheckBox bzov_ck_cgeo,pos={790,270},size={155,18},title="WTZ geometry"
-    CheckBox bzov_ck_cgeo,variable=root:ARPES_LJZ:BZOverlay:cutGeometry
-
-    SetVariable bzov_sv_amin,pos={590,304},size={185,20},title="alpha min"
-    SetVariable bzov_sv_amin,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutAlphaMin
-    SetVariable bzov_sv_amax,pos={790,304},size={185,20},title="alpha max"
-    SetVariable bzov_sv_amax,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutAlphaMax
-    SetVariable bzov_sv_an,pos={590,332},size={185,20},title="alpha N"
-    SetVariable bzov_sv_an,limits={2,5000,1},value=root:ARPES_LJZ:BZOverlay:cutAlphaN
-
-    SetVariable bzov_sv_sval,pos={590,368},size={185,20},title="single scan"
-    SetVariable bzov_sv_sval,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanValue
-    SetVariable bzov_sv_smin,pos={590,396},size={185,20},title="scan min"
-    SetVariable bzov_sv_smin,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanMin
-    SetVariable bzov_sv_smax,pos={790,396},size={185,20},title="scan max"
-    SetVariable bzov_sv_smax,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanMax
-    SetVariable bzov_sv_sstep,pos={590,424},size={185,20},title="scan step"
-    SetVariable bzov_sv_sstep,limits={0.001,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanStep
-
-    PopupMenu bzov_pm_cutcolor,pos={590,456},size={210,20},proc=BZOV_pm_cutcolor,title="Cut color"
-    PopupMenu bzov_pm_cutcolor,mode=9,popvalue="Orange",value=#"BZOV_ColorPopupList()"
-    SetVariable bzov_sv_clw,pos={590,486},size={185,20},title="cut width"
-    SetVariable bzov_sv_clw,limits={0.1,10,0.1},value=root:ARPES_LJZ:BZOverlay:cutLineWidth
-    SetVariable bzov_sv_cls,pos={790,486},size={185,20},title="cut style"
-    SetVariable bzov_sv_cls,limits={0,18,1},value=root:ARPES_LJZ:BZOverlay:cutLineStyle
-    CheckBox bzov_ck_clab,pos={590,514},size={170,18},title="cut labels"
-    CheckBox bzov_ck_clab,variable=root:ARPES_LJZ:BZOverlay:cutShowLabels
-
-    GroupBox bzov_gb_img,pos={275,526},size={300,104},title="Image / colorbar"
-    PopupMenu bzov_pm_image_ct,pos={282,548},size={140,20},proc=BZOV_pm_image_ct,title="CT"
+    PopupMenu bzov_pm_image_ct,pos={272,389},size={112,20},proc=BZOV_pm_image_ct,title="CT"
     PopupMenu bzov_pm_image_ct,mode=1,popvalue="Grays",value=#"BZOV_ImageCTPopupList()"
-    PopupMenu bzov_pm_zmode,pos={430,548},size={138,20},proc=BZOV_pm_image_zmode,title="z mode"
+    PopupMenu bzov_pm_zmode,pos={392,389},size={102,20},proc=BZOV_pm_image_zmode,title="z"
     PopupMenu bzov_pm_zmode,mode=2,popvalue="Percentile",value=#"\"Auto;Percentile;Manual\""
-    CheckBox bzov_ck_imginv,pos={282,574},size={90,18},proc=BZOV_ck_image_proc,title="Invert CT",variable=root:ARPES_LJZ:BZOverlay:imageCTInvert
-    CheckBox bzov_ck_cbar,pos={376,574},size={90,18},proc=BZOV_ck_image_proc,title="Colorbar",variable=root:ARPES_LJZ:BZOverlay:showColorScale
-    SetVariable bzov_sv_zmin,pos={282,598},size={140,20},proc=BZOV_sv_image_num_proc,title="z min"
+
+    CheckBox bzov_ck_imginv,pos={272,416},size={78,18},proc=BZOV_ck_image_proc,title="invert",variable=root:ARPES_LJZ:BZOverlay:imageCTInvert
+    CheckBox bzov_ck_cbar,pos={360,416},size={78,18},proc=BZOV_ck_image_proc,title="colorbar",variable=root:ARPES_LJZ:BZOverlay:showColorScale
+
+    SetVariable bzov_sv_zmin,pos={272,440},size={108,20},proc=BZOV_sv_image_num_proc,title="zmin"
     SetVariable bzov_sv_zmin,value=root:ARPES_LJZ:BZOverlay:imageZMin
-    SetVariable bzov_sv_zmax,pos={430,598},size={138,20},proc=BZOV_sv_image_num_proc,title="z max"
+    SetVariable bzov_sv_zmax,pos={388,440},size={106,20},proc=BZOV_sv_image_num_proc,title="zmax"
     SetVariable bzov_sv_zmax,value=root:ARPES_LJZ:BZOverlay:imageZMax
-    SetVariable bzov_sv_plo,pos={282,622},size={140,20},proc=BZOV_sv_image_num_proc,title="pct lo"
+
+    SetVariable bzov_sv_plo,pos={272,464},size={108,20},proc=BZOV_sv_image_num_proc,title="plo"
     SetVariable bzov_sv_plo,value=root:ARPES_LJZ:BZOverlay:imagePctLo
-    SetVariable bzov_sv_phi,pos={430,622},size={138,20},proc=BZOV_sv_image_num_proc,title="pct hi"
+    SetVariable bzov_sv_phi,pos={388,464},size={106,20},proc=BZOV_sv_image_num_proc,title="phi"
     SetVariable bzov_sv_phi,value=root:ARPES_LJZ:BZOverlay:imagePctHi
-    SetVariable bzov_sv_cbl,pos={282,646},size={286,20},proc=BZOV_sv_image_label_proc,title="CB label"
+
+    SetVariable bzov_sv_cbl,pos={272,488},size={222,20},proc=BZOV_sv_image_label_proc,title="label"
     SetVariable bzov_sv_cbl,value=root:ARPES_LJZ:BZOverlay:imageColorScaleLabel
 
-    Button bzov_btn_display,pos={12,662},size={155,28},proc=BZOV_btn_display,title="Display FS + BZ"
-    Button bzov_btn_overlay,pos={176,662},size={125,28},proc=BZOV_btn_overlay_top,title="Overlay Top Graph"
-    Button bzov_btn_cuts,pos={310,662},size={105,28},proc=BZOV_btn_draw_cuts,title="Draw Cuts"
-    Button bzov_btn_clear,pos={425,662},size={105,28},proc=BZOV_btn_clear_top,title="Clear Top"
-    Button bzov_btn_help,pos={540,662},size={65,24},proc=BZOV_btn_help,title="Help"
-    Button bzov_btn_close,pos={615,662},size={65,24},proc=BZOV_btn_close,title="Close"
+    // ------------------------------------------------------------------------
+    // Right column: analyzer scan cuts
+    // ------------------------------------------------------------------------
+    GroupBox bzov_gb_cut,pos={515,82},size={237,410},title="Analyzer cuts"
+
+    CheckBox bzov_ck_cutshow,pos={526,108},size={80,18},title="show"
+    CheckBox bzov_ck_cutshow,variable=root:ARPES_LJZ:BZOverlay:cutShow
+    Button bzov_btn_use_ekk,pos={624,104},size={116,23},proc=BZOV_btn_use_ekk,title="Use EKKMap"
+
+    PopupMenu bzov_pm_cutmode,pos={526,134},size={214,20},proc=BZOV_pm_cutmode,title="mode"
+    PopupMenu bzov_pm_cutmode,mode=1,popvalue="Single scan angle",value=#"BZOV_CutModePopupList()"
+
+    SetVariable bzov_sv_chv,pos={526,162},size={104,20},title="hv"
+    SetVariable bzov_sv_chv,limits={0,1e6,0.1},value=root:ARPES_LJZ:BZOverlay:cutHv
+    SetVariable bzov_sv_cwf,pos={636,162},size={104,20},title="WF"
+    SetVariable bzov_sv_cwf,limits={0,1e6,0.1},value=root:ARPES_LJZ:BZOverlay:cutWorkFunc
+
+    SetVariable bzov_sv_ce,pos={526,188},size={104,20},title="Erel"
+    SetVariable bzov_sv_ce,limits={-1e6,1e6,0.001},value=root:ARPES_LJZ:BZOverlay:cutEnergyRel
+    SetVariable bzov_sv_ca,pos={636,188},size={104,20},title="a"
+    SetVariable bzov_sv_ca,limits={0,1e6,0.001},value=root:ARPES_LJZ:BZOverlay:cutLatticeA
+
+    SetVariable bzov_sv_ctilt,pos={526,214},size={104,20},title="tilt"
+    SetVariable bzov_sv_ctilt,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutTilt
+    SetVariable bzov_sv_cazi,pos={636,214},size={104,20},title="azi"
+    SetVariable bzov_sv_cazi,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutAzimuth
+
+    SetVariable bzov_sv_cso,pos={526,240},size={104,20},title="offset"
+    SetVariable bzov_sv_cso,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanOffset
+    CheckBox bzov_ck_cgeo,pos={636,242},size={98,18},title="WTZ geom"
+    CheckBox bzov_ck_cgeo,variable=root:ARPES_LJZ:BZOverlay:cutGeometry
+
+    SetVariable bzov_sv_amin,pos={526,268},size={104,20},title="α min"
+    SetVariable bzov_sv_amin,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutAlphaMin
+    SetVariable bzov_sv_amax,pos={636,268},size={104,20},title="α max"
+    SetVariable bzov_sv_amax,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutAlphaMax
+
+    SetVariable bzov_sv_an,pos={526,294},size={104,20},title="α N"
+    SetVariable bzov_sv_an,limits={2,5000,1},value=root:ARPES_LJZ:BZOverlay:cutAlphaN
+    SetVariable bzov_sv_sval,pos={636,294},size={104,20},title="single"
+    SetVariable bzov_sv_sval,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanValue
+
+    SetVariable bzov_sv_smin,pos={526,320},size={104,20},title="s min"
+    SetVariable bzov_sv_smin,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanMin
+    SetVariable bzov_sv_smax,pos={636,320},size={104,20},title="s max"
+    SetVariable bzov_sv_smax,limits={-360,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanMax
+
+    SetVariable bzov_sv_sstep,pos={526,346},size={104,20},title="s step"
+    SetVariable bzov_sv_sstep,limits={0.001,360,0.1},value=root:ARPES_LJZ:BZOverlay:cutScanStep
+    SetVariable bzov_sv_cls,pos={636,346},size={104,20},title="style"
+    SetVariable bzov_sv_cls,limits={0,18,1},value=root:ARPES_LJZ:BZOverlay:cutLineStyle
+
+    PopupMenu bzov_pm_cutcolor,pos={526,374},size={104,20},proc=BZOV_pm_cutcolor,title="color"
+    PopupMenu bzov_pm_cutcolor,mode=9,popvalue="Orange",value=#"BZOV_ColorPopupList()"
+    SetVariable bzov_sv_clw,pos={636,374},size={104,20},title="lw"
+    SetVariable bzov_sv_clw,limits={0.1,10,0.1},value=root:ARPES_LJZ:BZOverlay:cutLineWidth
+
+    CheckBox bzov_ck_clab,pos={526,402},size={95,18},title="cut labels"
+    CheckBox bzov_ck_clab,variable=root:ARPES_LJZ:BZOverlay:cutShowLabels
+
+    // ------------------------------------------------------------------------
+    // Bottom buttons
+    // ------------------------------------------------------------------------
+    Button bzov_btn_display,pos={10,518},size={128,28},proc=BZOV_btn_display,title="Display FS+BZ"
+    Button bzov_btn_overlay,pos={148,518},size={126,28},proc=BZOV_btn_overlay_top,title="Overlay Top"
+    Button bzov_btn_cuts,pos={284,518},size={94,28},proc=BZOV_btn_draw_cuts,title="Draw Cuts"
+    Button bzov_btn_clear,pos={388,518},size={94,28},proc=BZOV_btn_clear_top,title="Clear Top"
+    Button bzov_btn_help,pos={492,518},size={72,28},proc=BZOV_btn_help,title="Help"
+    Button bzov_btn_close,pos={574,518},size={72,28},proc=BZOV_btn_close,title="Close"
 EndMacro
 
 // ------------------------------- UI callbacks -------------------------------
@@ -844,9 +877,10 @@ Function BZOV_ApplyImageColorTable(gName)
     BZOV_GetImageZRange(imgWave, zLo, zHi)
     ModifyImage/W=$gName $imgInst,ctab={zLo,zHi,$imageCTName,imageCTInvert}
     ColorScale/K/N=bzov_colorScale/W=$gName
+
     if (showColorScale)
-        ColorScale/C/N=bzov_colorScale/F=0/A=RC/E/W=$gName image=$imgInst,heightPct=35,widthPct=3,frame=1
-        ColorScale/C/N=bzov_colorScale/W=$gName axisLabelStr=imageColorScaleLabel
+        ColorScale/C/N=bzov_colorScale/F=0/A=RC/E/W=$gName image=$imgInst, heightPct=35, widthPct=3, frame=1
+        AppendText/W=$gName/N=bzov_colorScale imageColorScaleLabel
     endif
     DoUpdate
     return 0
