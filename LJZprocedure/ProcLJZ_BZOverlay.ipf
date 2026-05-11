@@ -235,6 +235,42 @@ Function BZOV_EnsureDF()
     if (!NVAR_Exists(imagePlan))
         Variable/G root:ARPES_LJZ:BZOverlay:imagePlan = 1         // for kx/ky image, Plan aspect is usually desired
     endif
+    SVAR/Z imageCTName = root:ARPES_LJZ:BZOverlay:imageCTName
+    if (!SVAR_Exists(imageCTName))
+        String/G root:ARPES_LJZ:BZOverlay:imageCTName = "Grays"
+    endif
+    NVAR/Z imageCTInvert = root:ARPES_LJZ:BZOverlay:imageCTInvert
+    if (!NVAR_Exists(imageCTInvert))
+        Variable/G root:ARPES_LJZ:BZOverlay:imageCTInvert = 0
+    endif
+    NVAR/Z imageZMode = root:ARPES_LJZ:BZOverlay:imageZMode
+    if (!NVAR_Exists(imageZMode))
+        Variable/G root:ARPES_LJZ:BZOverlay:imageZMode = 1
+    endif
+    NVAR/Z imageZMin = root:ARPES_LJZ:BZOverlay:imageZMin
+    if (!NVAR_Exists(imageZMin))
+        Variable/G root:ARPES_LJZ:BZOverlay:imageZMin = 0
+    endif
+    NVAR/Z imageZMax = root:ARPES_LJZ:BZOverlay:imageZMax
+    if (!NVAR_Exists(imageZMax))
+        Variable/G root:ARPES_LJZ:BZOverlay:imageZMax = 1
+    endif
+    NVAR/Z imagePctLo = root:ARPES_LJZ:BZOverlay:imagePctLo
+    if (!NVAR_Exists(imagePctLo))
+        Variable/G root:ARPES_LJZ:BZOverlay:imagePctLo = 1
+    endif
+    NVAR/Z imagePctHi = root:ARPES_LJZ:BZOverlay:imagePctHi
+    if (!NVAR_Exists(imagePctHi))
+        Variable/G root:ARPES_LJZ:BZOverlay:imagePctHi = 99.5
+    endif
+    NVAR/Z showColorScale = root:ARPES_LJZ:BZOverlay:showColorScale
+    if (!NVAR_Exists(showColorScale))
+        Variable/G root:ARPES_LJZ:BZOverlay:showColorScale = 1
+    endif
+    SVAR/Z imageColorScaleLabel = root:ARPES_LJZ:BZOverlay:imageColorScaleLabel
+    if (!SVAR_Exists(imageColorScaleLabel))
+        String/G root:ARPES_LJZ:BZOverlay:imageColorScaleLabel = "Intensity"
+    endif
 
     SetDataFolder df0
     return 0
@@ -279,6 +315,14 @@ Function/S BZOV_CutModePopupList()
     return "Single scan angle;Multiple scan angles"
 End
 
+Function/S BZOV_ImageCTPopupList()
+    String s = CTabList()
+    if (ItemsInList(s, ";") <= 0)
+        s = "Grays;Rainbow;YellowHot;BlueHot;BlueRedGreen;RedWhiteBlue;PlanetEarth;Terrain;"
+    endif
+    return s
+End
+
 // ------------------------------ entry point ---------------------------------
 Proc LJZ_BZOverlay()
     BZOV_EnsureDF()
@@ -292,7 +336,7 @@ End
 // ---------------------------------- panel -----------------------------------
 Window LJZ_BZOverlay_Panel() : Panel
     PauseUpdate; Silent 1
-    NewPanel /W=(400,70,1120,780) as "BZ Overlay + Analyzer Cuts for kx-ky FS (LJZ)"
+    NewPanel /W=(360,70,1260,700) as "BZ Overlay + Analyzer Cuts for kx-ky FS (LJZ)"
     ModifyPanel frameStyle=1
 
     TitleBox bzov_title,pos={12,10},size={260,18},title="BZ Overlay for selected 2D k-space image",frame=0
@@ -313,7 +357,7 @@ Window LJZ_BZOverlay_Panel() : Panel
     PopupMenu bzov_pm_lattice,pos={275,116},size={210,20},proc=BZOV_pm_lattice,title="Lattice"
     PopupMenu bzov_pm_lattice,mode=1,popvalue="Square",value=#"\"Square;Rectangular;Hexagonal;Custom2D\""
 
-    PopupMenu bzov_pm_unit,pos={275,144},size={210,20},proc=BZOV_pm_unit,title="Axes unit"
+    PopupMenu bzov_pm_unit,pos={275,144},size={210,20},proc=BZOV_pm_unit,title="unit"
     PopupMenu bzov_pm_unit,mode=1,popvalue="A^-1",value=#"\"A^-1;pi/a\""
 
     SetVariable bzov_sv_a,pos={275,176},size={230,20},title="a (Å)"
@@ -323,18 +367,18 @@ Window LJZ_BZOverlay_Panel() : Panel
     SetVariable bzov_sv_g,pos={275,232},size={230,20},title="gamma (deg)"
     SetVariable bzov_sv_g,limits={1,179,0.1},value=root:ARPES_LJZ:BZOverlay:gammaDeg
 
-    SetVariable bzov_sv_cx,pos={275,268},size={230,20},title="center kx"
+    SetVariable bzov_sv_cx,pos={275,268},size={230,20},title="cx"
     SetVariable bzov_sv_cx,limits={-1e9,1e9,0.001},value=root:ARPES_LJZ:BZOverlay:centerX
-    SetVariable bzov_sv_cy,pos={275,296},size={230,20},title="center ky"
+    SetVariable bzov_sv_cy,pos={275,296},size={230,20},title="cy"
     SetVariable bzov_sv_cy,limits={-1e9,1e9,0.001},value=root:ARPES_LJZ:BZOverlay:centerY
 
-    SetVariable bzov_sv_rep,pos={275,332},size={230,20},title="repeat N"
+    SetVariable bzov_sv_rep,pos={275,332},size={230,20},title="repeat"
     SetVariable bzov_sv_rep,limits={0,5,1},value=root:ARPES_LJZ:BZOverlay:repeatN
     CheckBox bzov_ck_rep,pos={275,362},size={150,18},title="Show repeated BZ"
     CheckBox bzov_ck_rep,variable=root:ARPES_LJZ:BZOverlay:showRepeated
-    CheckBox bzov_ck_lab,pos={275,386},size={150,18},title="Show Γ/X/M/K labels"
+    CheckBox bzov_ck_lab,pos={275,386},size={150,18},title="labels"
     CheckBox bzov_ck_lab,variable=root:ARPES_LJZ:BZOverlay:showLabels
-    CheckBox bzov_ck_plan,pos={275,410},size={150,18},title="Plan aspect for image"
+    CheckBox bzov_ck_plan,pos={275,410},size={150,18},title="plan"
     CheckBox bzov_ck_plan,variable=root:ARPES_LJZ:BZOverlay:imagePlan
 
     PopupMenu bzov_pm_color,pos={275,442},size={210,20},proc=BZOV_pm_color,title="BZ color"
@@ -345,7 +389,7 @@ Window LJZ_BZOverlay_Panel() : Panel
     SetVariable bzov_sv_fs,limits={6,36,1},value=root:ARPES_LJZ:BZOverlay:labelSize
 
     TitleBox bzov_cut_title,pos={590,88},size={250,18},title="Analyzer scan-cut overlay",frame=0
-    CheckBox bzov_ck_cutshow,pos={590,116},size={155,18},title="Show analyzer cuts"
+    CheckBox bzov_ck_cutshow,pos={590,116},size={155,18},title="show cuts"
     CheckBox bzov_ck_cutshow,variable=root:ARPES_LJZ:BZOverlay:cutShow
     PopupMenu bzov_pm_cutmode,pos={590,144},size={250,20},proc=BZOV_pm_cutmode,title="Cut mode"
     PopupMenu bzov_pm_cutmode,mode=1,popvalue="Single scan angle",value=#"BZOV_CutModePopupList()"
@@ -391,15 +435,33 @@ Window LJZ_BZOverlay_Panel() : Panel
     SetVariable bzov_sv_clw,limits={0.1,10,0.1},value=root:ARPES_LJZ:BZOverlay:cutLineWidth
     SetVariable bzov_sv_cls,pos={790,486},size={185,20},title="cut style"
     SetVariable bzov_sv_cls,limits={0,18,1},value=root:ARPES_LJZ:BZOverlay:cutLineStyle
-    CheckBox bzov_ck_clab,pos={590,514},size={170,18},title="Label scan angles"
+    CheckBox bzov_ck_clab,pos={590,514},size={170,18},title="cut labels"
     CheckBox bzov_ck_clab,variable=root:ARPES_LJZ:BZOverlay:cutShowLabels
 
-    Button bzov_btn_display,pos={12,590},size={155,28},proc=BZOV_btn_display,title="Display FS + BZ"
-    Button bzov_btn_overlay,pos={176,590},size={125,28},proc=BZOV_btn_overlay_top,title="Overlay Top Graph"
-    Button bzov_btn_cuts,pos={310,590},size={105,28},proc=BZOV_btn_draw_cuts,title="Draw Cuts"
-    Button bzov_btn_clear,pos={425,590},size={105,28},proc=BZOV_btn_clear_top,title="Clear Top"
-    Button bzov_btn_help,pos={540,590},size={65,24},proc=BZOV_btn_help,title="Help"
-    Button bzov_btn_close,pos={615,590},size={65,24},proc=BZOV_btn_close,title="Close"
+    GroupBox bzov_gb_img,pos={275,526},size={300,104},title="Image / colorbar"
+    PopupMenu bzov_pm_image_ct,pos={282,548},size={140,20},proc=BZOV_pm_image_ct,title="CT"
+    PopupMenu bzov_pm_image_ct,mode=1,popvalue="Grays",value=#"BZOV_ImageCTPopupList()"
+    PopupMenu bzov_pm_zmode,pos={430,548},size={138,20},proc=BZOV_pm_image_zmode,title="z mode"
+    PopupMenu bzov_pm_zmode,mode=2,popvalue="Percentile",value=#"\"Auto;Percentile;Manual\""
+    CheckBox bzov_ck_imginv,pos={282,574},size={90,18},proc=BZOV_ck_image_proc,title="Invert CT",variable=root:ARPES_LJZ:BZOverlay:imageCTInvert
+    CheckBox bzov_ck_cbar,pos={376,574},size={90,18},proc=BZOV_ck_image_proc,title="Colorbar",variable=root:ARPES_LJZ:BZOverlay:showColorScale
+    SetVariable bzov_sv_zmin,pos={282,598},size={140,20},proc=BZOV_sv_image_num_proc,title="z min"
+    SetVariable bzov_sv_zmin,value=root:ARPES_LJZ:BZOverlay:imageZMin
+    SetVariable bzov_sv_zmax,pos={430,598},size={138,20},proc=BZOV_sv_image_num_proc,title="z max"
+    SetVariable bzov_sv_zmax,value=root:ARPES_LJZ:BZOverlay:imageZMax
+    SetVariable bzov_sv_plo,pos={282,622},size={140,20},proc=BZOV_sv_image_num_proc,title="pct lo"
+    SetVariable bzov_sv_plo,value=root:ARPES_LJZ:BZOverlay:imagePctLo
+    SetVariable bzov_sv_phi,pos={430,622},size={138,20},proc=BZOV_sv_image_num_proc,title="pct hi"
+    SetVariable bzov_sv_phi,value=root:ARPES_LJZ:BZOverlay:imagePctHi
+    SetVariable bzov_sv_cbl,pos={282,646},size={286,20},proc=BZOV_sv_image_label_proc,title="CB label"
+    SetVariable bzov_sv_cbl,value=root:ARPES_LJZ:BZOverlay:imageColorScaleLabel
+
+    Button bzov_btn_display,pos={12,662},size={155,28},proc=BZOV_btn_display,title="Display FS + BZ"
+    Button bzov_btn_overlay,pos={176,662},size={125,28},proc=BZOV_btn_overlay_top,title="Overlay Top Graph"
+    Button bzov_btn_cuts,pos={310,662},size={105,28},proc=BZOV_btn_draw_cuts,title="Draw Cuts"
+    Button bzov_btn_clear,pos={425,662},size={105,28},proc=BZOV_btn_clear_top,title="Clear Top"
+    Button bzov_btn_help,pos={540,662},size={65,24},proc=BZOV_btn_help,title="Help"
+    Button bzov_btn_close,pos={615,662},size={65,24},proc=BZOV_btn_close,title="Close"
 EndMacro
 
 // ------------------------------- UI callbacks -------------------------------
@@ -483,6 +545,45 @@ Function BZOV_pm_cutmode(ctrlName, popNum, popStr) : PopupMenuControl
     return 0
 End
 
+Function BZOV_pm_image_ct(ctrlName, popNum, popStr) : PopupMenuControl
+    String ctrlName, popStr
+    Variable popNum
+    SVAR imageCTName = root:ARPES_LJZ:BZOverlay:imageCTName
+    imageCTName = popStr
+    BZOV_ApplyImageColorTable(WinName(0,1))
+    return 0
+End
+
+Function BZOV_pm_image_zmode(ctrlName, popNum, popStr) : PopupMenuControl
+    String ctrlName, popStr
+    Variable popNum
+    NVAR imageZMode = root:ARPES_LJZ:BZOverlay:imageZMode
+    imageZMode = popNum - 1
+    BZOV_ApplyImageColorTable(WinName(0,1))
+    return 0
+End
+
+Function BZOV_ck_image_proc(ctrlName, checked) : CheckBoxControl
+    String ctrlName
+    Variable checked
+    BZOV_ApplyImageColorTable(WinName(0,1))
+    return 0
+End
+
+Function BZOV_sv_image_num_proc(ctrlName, varNum, varStr, varName) : SetVariableControl
+    String ctrlName, varStr, varName
+    Variable varNum
+    BZOV_ApplyImageColorTable(WinName(0,1))
+    return 0
+End
+
+Function BZOV_sv_image_label_proc(ctrlName, varNum, varStr, varName) : SetVariableControl
+    String ctrlName, varStr, varName
+    Variable varNum
+    BZOV_ApplyImageColorTable(WinName(0,1))
+    return 0
+End
+
 Function BZOV_btn_use_ekk(ctrlName) : ButtonControl
     String ctrlName
     BZOV_CopyEKKMapParamsToCuts()
@@ -539,6 +640,7 @@ Function BZOV_btn_overlay_top(ctrlName) : ButtonControl
     if (strlen(gName) == 0)
         Abort "BZ Overlay: no top graph window. First display a 2D FS image."
     endif
+    BZOV_ApplyImageColorTable(gName)
     BZOV_DrawBZOverlay(gName)
     return 0
 End
@@ -654,6 +756,102 @@ Function/WAVE BZOV_GetSelectedWave()
     return w
 End
 
+Function BZOV_GetImageZRange(imgWave, zLo, zHi)
+    Wave imgWave
+    Variable &zLo, &zHi
+    NVAR imageZMode = root:ARPES_LJZ:BZOverlay:imageZMode
+    NVAR imageZMin = root:ARPES_LJZ:BZOverlay:imageZMin
+    NVAR imageZMax = root:ARPES_LJZ:BZOverlay:imageZMax
+    NVAR imagePctLo = root:ARPES_LJZ:BZOverlay:imagePctLo
+    NVAR imagePctHi = root:ARPES_LJZ:BZOverlay:imagePctHi
+    if (imageZMode == 2)
+        zLo = imageZMin; zHi = imageZMax
+        if (zHi <= zLo)
+            zLo = 0; zHi = 1
+        endif
+        return 0
+    endif
+    WaveStats/Q/M=1 imgWave
+    Variable aLo = V_min, aHi = V_max
+    if (imageZMode == 0)
+        zLo = aLo; zHi = aHi
+        if (numtype(zLo) != 0 || numtype(zHi) != 0 || zHi <= zLo)
+            zLo = 0; zHi = 1
+        endif
+        return 0
+    endif
+    Duplicate/O imgWave, root:ARPES_LJZ:BZOverlay:Output:bzov_tmp_ct_stat
+    Wave stat = root:ARPES_LJZ:BZOverlay:Output:bzov_tmp_ct_stat
+    Redimension/N=(DimSize(stat,0)*DimSize(stat,1)) stat
+    Sort stat, stat
+    Variable n = DimSize(stat,0), i0=0, i1=n-1, i
+    for (i=0; i<n; i+=1)
+        if (numtype(stat[i]) == 0)
+            i0 = i
+            break
+        endif
+    endfor
+    for (i=n-1; i>=0; i-=1)
+        if (numtype(stat[i]) == 0)
+            i1 = i
+            break
+        endif
+    endfor
+    if (i1 <= i0)
+        zLo = aLo; zHi = aHi
+    else
+        Variable pLo = max(0,min(100,imagePctLo)), pHi = max(0,min(100,imagePctHi))
+        if (pHi <= pLo)
+            pLo = 1
+            pHi = 99.5
+        endif
+        zLo = stat[i0 + round((pLo/100)*(i1-i0))]
+        zHi = stat[i0 + round((pHi/100)*(i1-i0))]
+    endif
+    if (numtype(zLo) != 0 || numtype(zHi) != 0 || zHi <= zLo)
+        zLo = aLo; zHi = aHi
+        if (numtype(zLo) != 0 || numtype(zHi) != 0 || zHi <= zLo)
+            zLo = 0; zHi = 1
+        endif
+    endif
+    KillWaves/Z stat
+    return 0
+End
+
+Function BZOV_ApplyImageColorTable(gName)
+    String gName
+    if (WinType(gName) != 1)
+        return -1
+    endif
+    String imgList = ImageNameList(gName, ";")
+    if (ItemsInList(imgList, ";") <= 0)
+        return -1
+    endif
+    String imgInst = StringFromList(0, imgList, ";")
+    Wave/Z imgWave = ImageNameToWaveRef(gName, imgInst)
+    if (!WaveExists(imgWave))
+        return -1
+    endif
+    SVAR imageCTName = root:ARPES_LJZ:BZOverlay:imageCTName
+    NVAR imageCTInvert = root:ARPES_LJZ:BZOverlay:imageCTInvert
+    NVAR showColorScale = root:ARPES_LJZ:BZOverlay:showColorScale
+    SVAR imageColorScaleLabel = root:ARPES_LJZ:BZOverlay:imageColorScaleLabel
+    String ctList = ";" + BZOV_ImageCTPopupList()
+    if (FindListItem(imageCTName, ctList, ";", 0) < 0)
+        imageCTName = "Grays"
+    endif
+    Variable zLo, zHi
+    BZOV_GetImageZRange(imgWave, zLo, zHi)
+    ModifyImage/W=$gName $imgInst,ctab={zLo,zHi,$imageCTName,imageCTInvert}
+    ColorScale/K/N=bzov_colorScale/W=$gName
+    if (showColorScale)
+        ColorScale/C/N=bzov_colorScale/F=0/A=RC/E/W=$gName image=$imgInst,heightPct=35,widthPct=3,frame=1
+        ColorScale/C/N=bzov_colorScale/W=$gName axisLabelStr=imageColorScaleLabel
+    endif
+    DoUpdate
+    return 0
+End
+
 // -------------------------- display and graph style -------------------------
 Function BZOV_DisplayFSWithBZ(fs)
     Wave fs
@@ -662,6 +860,7 @@ Function BZOV_DisplayFSWithBZ(fs)
     DoWindow/K $gName
     Display/K=1/N=$gName
     AppendImage/W=$gName fs
+    BZOV_ApplyImageColorTable(gName)
 
     ModifyGraph/W=$gName margin(left)=58,margin(bottom)=48,margin(right)=22,margin(top)=16,mirror=2,standoff=0
     NVAR imagePlan = root:ARPES_LJZ:BZOverlay:imagePlan
@@ -684,8 +883,6 @@ Function BZOV_DisplayFSWithBZ(fs)
 
     SetAxis/A/W=$gName bottom
     SetAxis/A/W=$gName left
-    ColorScale/C/N=bzov_colorScale/F=0/A=RC/E/W=$gName image=$NameOfWave(fs), heightPct=35, widthPct=3, frame=1
-
     BZOV_DrawBZOverlay(gName)
     return 0
 End
