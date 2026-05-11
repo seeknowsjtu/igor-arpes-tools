@@ -785,13 +785,26 @@ Function BZOV_GetImageZRange(imgWave, zLo, zHi)
     Redimension/N=(DimSize(stat,0)*DimSize(stat,1)) stat
     Sort stat, stat
     Variable n = DimSize(stat,0), i0=0, i1=n-1, i
-    for(i=0;i<n;i+=1); if(numtype(stat[i])==0); i0=i; break; endif; endfor
-    for(i=n-1;i>=0;i-=1); if(numtype(stat[i])==0); i1=i; break; endif; endfor
+    for (i=0; i<n; i+=1)
+        if (numtype(stat[i]) == 0)
+            i0 = i
+            break
+        endif
+    endfor
+    for (i=n-1; i>=0; i-=1)
+        if (numtype(stat[i]) == 0)
+            i1 = i
+            break
+        endif
+    endfor
     if (i1 <= i0)
         zLo = aLo; zHi = aHi
     else
         Variable pLo = max(0,min(100,imagePctLo)), pHi = max(0,min(100,imagePctHi))
-        if (pHi <= pLo); pLo = 1; pHi = 99.5; endif
+        if (pHi <= pLo)
+            pLo = 1
+            pHi = 99.5
+        endif
         zLo = stat[i0 + round((pLo/100)*(i1-i0))]
         zHi = stat[i0 + round((pHi/100)*(i1-i0))]
     endif
