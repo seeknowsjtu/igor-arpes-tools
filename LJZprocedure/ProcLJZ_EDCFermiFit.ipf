@@ -902,6 +902,24 @@ Function LJZ_EDCFermiFit_ClearResultForWave(wPath)
     Make/FREE/D/N=7 pwNaN = NaN
     Make/FREE/D/N=7 sigNaN = NaN
     LJZ_EDCFermiFit_WriteResultForWave(wPath, pwNaN, sigNaN, NaN, 0)
+    LJZ_EDCFermiFit_KillStoredFitWave(wPath)
+    return 0
+End
+
+Function LJZ_EDCFermiFit_KillStoredFitWave(wPath)
+    String wPath
+
+    Variable idx = LJZ_EDCFermiFit_ParseWaveIndex(NameOfWave($wPath))
+    if (numtype(idx) != 0)
+        return -1
+    endif
+
+    SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
+    String fitPath = LJZ_EDCFermiFit_df_with_colon(sDF) + LJZ_EDCFermiFit_FitWaveNameByIndex(idx)
+    Wave/Z fitW = $fitPath
+    if (WaveExists(fitW))
+        KillWaves/Z fitW
+    endif
     return 0
 End
 
@@ -1788,6 +1806,16 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     Print "pw_fit=", pw_fit[0], ",", pw_fit[1], ",", pw_fit[2], ",", pw_fit[3], ",", pw_fit[4], ",", pw_fit[5], ",", pw_fit[6]
     Print "delta=", (pw_fit[0]-startPW[0]), ",", (pw_fit[1]-startPW[1]), ",", (pw_fit[2]-startPW[2]), ",", (pw_fit[3]-startPW[3]), ",", (pw_fit[4]-startPW[4]), ",", (pw_fit[5]-startPW[5]), ",", (pw_fit[6]-startPW[6])
 
+    if (fitErr != 0)
+        Print "FuncFit failed; no fit curve will be displayed."
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "Fermi 拟合失败，请检查拟合窗口、初值和 hold 设置。"
+        endif
+        SetDataFolder $oldDF
+        return -1
+    endif
+
     NVAR HOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
     if (HOccSlope == 0 && numtype(pw_fit[6]) == 0 && numtype(startPW[6]) == 0 && abs(pw_fit[6] - startPW[6]) <= 1e-12)
         Print "WARNING: OccSlope was free but did not change."
@@ -1798,14 +1826,36 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     Make/FREE/D/N=7 sigOut = NaN
 
     Variable ok = 1
+    Variable freeUnchanged = 1
     for (i = 0; i < 7; i += 1)
         if (numtype(pw_fit[i]) != 0)
             ok = 0
+        endif
+        Variable isHeld = 0
+        if (i < holdLen)
+            if (char2num(holdStr[i]) == char2num("1"))
+                isHeld = 1
+            endif
+        endif
+        if (!isHeld)
+            if (numtype(pw_fit[i]) != 0 || numtype(startPW[i]) != 0 || abs(pw_fit[i] - startPW[i]) > 1e-12)
+                freeUnchanged = 0
+            endif
         endif
     endfor
 
     if (numtype(fitErr) != 0)
         ok = 0
+    endif
+
+    if (ok && freeUnchanged)
+        Print "WARNING: all free parameters unchanged; treating as failed fit."
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "Fermi 拟合失败，请检查拟合窗口、初值和 hold 设置。"
+        endif
+        SetDataFolder $oldDF
+        return -1
     endif
 
     Variable residRMS = NaN
@@ -2064,7 +2114,14 @@ Function LJZ_EDCFermiFit_CreateGraphSubwindow()
         SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
         String fitPath = LJZ_EDCFermiFit_df_with_colon(sDF) + LJZ_EDCFermiFit_FitWaveNameByIndex(idx)
         Wave/Z fitW = $fitPath
-        if (WaveExists(fitW) && LJZ_EDCFermiFit_Is1DWave(fitW))
+        Wave/Z wOK = $(LJZ_EDCFermiFit_BaseDF() + ":edc_ff_ok")
+        Variable canShowFit = 0
+        if (WaveExists(wOK) && idx >= 0 && idx < numpnts(wOK))
+            if (numtype(wOK[idx]) == 0 && wOK[idx] > 0)
+                canShowFit = 1
+            endif
+        endif
+        if (canShowFit && WaveExists(fitW) && LJZ_EDCFermiFit_Is1DWave(fitW))
             AppendToGraph/W=$graphPath fitW
             String fitNm = NameOfWave(fitW)
             ModifyGraph/W=$graphPath rgb($fitNm)=(0,0,65535),lstyle($fitNm)=0,lsize($fitNm)=1.5
