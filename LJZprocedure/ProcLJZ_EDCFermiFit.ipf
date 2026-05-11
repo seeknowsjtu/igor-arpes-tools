@@ -1748,11 +1748,35 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
         endif
     endif
 
+    Variable i
+    Variable freeCount = 0
+    Variable holdLen = strlen(holdStr)
+    for (i = 0; i < 7; i += 1)
+        if (i < holdLen)
+            if (char2num(holdStr[i]) != char2num("1"))
+                freeCount += 1
+            endif
+        else
+            freeCount += 1
+        endif
+    endfor
+    if (freeCount <= 0)
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        Print "All parameters are held. No fitting will be performed."
+        if (doAlertOnFail)
+            DoAlert 0, "All parameters are held. No fitting will be performed."
+        endif
+        return -1
+    endif
+
     String oldDF = GetDataFolder(1)
     SetDataFolder $(LJZ_EDCFermiFit_BaseDF())
 
     Duplicate/O startPW, pw_fit
     KillWaves/Z W_sigma
+
+    Print "LJZ_EDCFermiFit FuncFit start: wave=", NameOfWave(wSrc), ", holdStr=", holdStr
+    Print "startPW=", startPW[0], ",", startPW[1], ",", startPW[2], ",", startPW[3], ",", startPW[4], ",", startPW[5], ",", startPW[6]
 
     Variable/G V_FitMaxIters = 80
     Variable/G V_FitError = 0
@@ -1760,12 +1784,20 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, initPW, holdStr, updateUI, doAlert
     Variable fitErr = V_FitError
     Variable chiSq = V_chisq
 
+    Print "LJZ_EDCFermiFit FuncFit done: V_FitError=", fitErr, ", V_chisq=", chiSq
+    Print "pw_fit=", pw_fit[0], ",", pw_fit[1], ",", pw_fit[2], ",", pw_fit[3], ",", pw_fit[4], ",", pw_fit[5], ",", pw_fit[6]
+    Print "delta=", (pw_fit[0]-startPW[0]), ",", (pw_fit[1]-startPW[1]), ",", (pw_fit[2]-startPW[2]), ",", (pw_fit[3]-startPW[3]), ",", (pw_fit[4]-startPW[4]), ",", (pw_fit[5]-startPW[5]), ",", (pw_fit[6]-startPW[6])
+
+    NVAR HOccSlope = $(LJZ_EDCFermiFit_BaseDF() + ":HOccSlope")
+    if (HOccSlope == 0 && numtype(pw_fit[6]) == 0 && numtype(startPW[6]) == 0 && abs(pw_fit[6] - startPW[6]) <= 1e-12)
+        Print "WARNING: OccSlope was free but did not change."
+    endif
+
     Make/FREE/D/N=7 pwStore, sigStore
     Make/FREE/D/N=7 pwOut = NaN
     Make/FREE/D/N=7 sigOut = NaN
 
     Variable ok = 1
-    Variable i
     for (i = 0; i < 7; i += 1)
         if (numtype(pw_fit[i]) != 0)
             ok = 0
