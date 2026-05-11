@@ -425,6 +425,21 @@ Function LJZ_EKKMap_EnsureDF()
         Variable/G $(LJZ_EKKMap_BaseDF() + ":FL") = 0
     endif
 
+    NVAR/Z QuickEF = $(LJZ_EKKMap_BaseDF() + ":QuickEF")
+    if (!NVAR_Exists(QuickEF))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":QuickEF") = FL
+    endif
+
+    NVAR/Z QuickHalfN = $(LJZ_EKKMap_BaseDF() + ":QuickHalfN")
+    if (!NVAR_Exists(QuickHalfN))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":QuickHalfN") = 2
+    endif
+
+    NVAR/Z QuickDownsample = $(LJZ_EKKMap_BaseDF() + ":QuickDownsample")
+    if (!NVAR_Exists(QuickDownsample))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":QuickDownsample") = 1
+    endif
+
     NVAR/Z Pixel = $(LJZ_EKKMap_BaseDF() + ":Pixel")
     if (!NVAR_Exists(Pixel))
         Variable/G $(LJZ_EKKMap_BaseDF() + ":Pixel") = 0
@@ -1216,15 +1231,20 @@ Function LJZ_EKKMap_ShowResultWave(w, graphName)
         Make/O/N=(2,2) $(LJZ_EKKMap_TempDisplaySlicePath(graphName)) = NaN
         Wave dispSlice = $(LJZ_EKKMap_TempDisplaySlicePath(graphName))
         LJZ_EKKMap_MakeDisplaySliceFrom3D(w, PreviewZ, dispSlice)
-        String imName3D = NameOfWave(dispSlice)
         AppendImage/W=$graphName dispSlice
         ModifyGraph/W=$graphName width=0,height=0
         ModifyGraph/W=$graphName mirror=2
     else
-        String imName2D = NameOfWave(w)
         AppendImage/W=$graphName w
         ModifyGraph/W=$graphName width=0,height=0
         ModifyGraph/W=$graphName mirror=2
+    endif
+
+    if (StringMatch(graphName, "Im_qkxky_*"))
+        String imNameQuick = StringFromList(0, ImageNameList(graphName, ";"), ";")
+        if (strlen(imNameQuick) > 0)
+            ModifyImage/W=$graphName $imNameQuick ctab={*,*,PlanetEarth,0}
+        endif
     endif
     return 0
 End
@@ -1839,6 +1859,81 @@ Function LJZ_EKKMap_RunKxKy()
     return 0
 End
 
+Function LJZ_EKKMap_RunQuickFSKxKy()
+    LJZ_EKKMap_EnsureDF()
+    LJZ_EKKMap_SetCurrentMode(LJZ_EKKMap_Mode_KxKy)
+
+    String listStr = LJZ_EKKMap_GetSelectedWaveList()
+    Variable n = ItemsInList(listStr, ";")
+    if (n <= 0)
+        DoAlert 0, "No wave selected."
+        return -1
+    endif
+
+    String wPath = StringFromList(0, listStr, ";")
+    Wave/Z w = $wPath
+    if (!WaveExists(w))
+        DoAlert 0, "Selected wave does not exist."
+        return -1
+    endif
+    if (!LJZ_EKKMap_Is3DWave(w) || !LJZ_EKKMap_ValidateInputForKxKy(w, 1))
+        DoAlert 0, "Quick FS only supports 3D K-map input (energy × angle × scan-angle)."
+        return -1
+    endif
+
+    NVAR ThetaAngle = $(LJZ_EKKMap_BaseDF() + ":ThetaAngle")
+    NVAR hv = $(LJZ_EKKMap_BaseDF() + ":hv")
+    NVAR WorkFunc = $(LJZ_EKKMap_BaseDF() + ":WorkFunc")
+    NVAR FL = $(LJZ_EKKMap_BaseDF() + ":FL")
+    NVAR Pixel = $(LJZ_EKKMap_BaseDF() + ":Pixel")
+    NVAR LatticeA = $(LJZ_EKKMap_BaseDF() + ":LatticeA")
+    NVAR Azimuth = $(LJZ_EKKMap_BaseDF() + ":Azimuth")
+    NVAR ScanOffset = $(LJZ_EKKMap_BaseDF() + ":ScanOffset")
+    NVAR Geometry = $(LJZ_EKKMap_BaseDF() + ":Geometry")
+    NVAR QuickEF = $(LJZ_EKKMap_BaseDF() + ":QuickEF")
+    NVAR QuickHalfN = $(LJZ_EKKMap_BaseDF() + ":QuickHalfN")
+    NVAR QuickDownsample = $(LJZ_EKKMap_BaseDF() + ":QuickDownsample")
+
+    Variable ie0 = round((QuickEF - DimOffset(w,0))/DimDelta(w,0))
+    Variable i0 = LJZ_EKKMap_Clamp(ie0 - round(abs(QuickHalfN)), 0, DimSize(w,0)-1)
+    Variable i1 = LJZ_EKKMap_Clamp(ie0 + round(abs(QuickHalfN)), 0, DimSize(w,0)-1)
+    Variable ds = max(1, round(abs(QuickDownsample)))
+
+    Make/O/D/N=(DimSize(w,1), DimSize(w,2)) $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D")
+    Wave tmpQuick = $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D")
+    SetScale/P x, DimOffset(w,1), DimDelta(w,1), WaveUnits(w,1), tmpQuick
+    SetScale/P y, DimOffset(w,2), DimDelta(w,2), WaveUnits(w,2), tmpQuick
+    tmpQuick = 0
+    Variable ie
+    for (ie=i0; ie<=i1; ie+=1)
+        tmpQuick += w[ie][p][q]
+    endfor
+    tmpQuick /= max(1, i1 - i0 + 1)
+
+    if (ds > 1)
+        Variable nxD = floor((DimSize(tmpQuick,0)-1)/ds) + 1
+        Variable nyD = floor((DimSize(tmpQuick,1)-1)/ds) + 1
+        Make/O/D/N=(nxD,nyD) $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D_DS")
+        Wave tmpQuickDS = $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D_DS")
+        SetScale/P x, DimOffset(tmpQuick,0), DimDelta(tmpQuick,0)*ds, WaveUnits(tmpQuick,0), tmpQuickDS
+        SetScale/P y, DimOffset(tmpQuick,1), DimDelta(tmpQuick,1)*ds, WaveUnits(tmpQuick,1), tmpQuickDS
+        tmpQuickDS = tmpQuick[p*ds][q*ds]
+        Duplicate/O tmpQuickDS, $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D")
+        KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D_DS")
+        Wave tmpQuick = $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D")
+    endif
+
+    Variable energyRelQuick = QuickEF - FL
+    String outDF = LJZ_EKKMap_EnsureOutputDF("KxKyQuick")
+    String outName = "qkxky_" + NameOfWave(w)
+    Duplicate/O LJZ_EKKMap_CalcKxKy2D(tmpQuick, energyRelQuick, hv, WorkFunc, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry), $(outDF + outName)
+    Wave outQuick = $(outDF + outName)
+    LJZ_EKKMap_ShowResultWave(outQuick, "Im_" + outName)
+
+    KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D")
+    return 0
+End
+
 Function LJZ_EKKMap_RunKxKz()
     LJZ_EKKMap_EnsureDF()
     LJZ_EKKMap_SetCurrentMode(LJZ_EKKMap_Mode_KxKz)
@@ -1977,6 +2072,9 @@ Function LJZ_EKKMap_ButtonProc(ctrlName) : ButtonControl
         case "btKxKy":
             LJZ_EKKMap_RunKxKy()
             break
+        case "btQuickKxKy":
+            LJZ_EKKMap_RunQuickFSKxKy()
+            break
         case "btKxKz":
             LJZ_EKKMap_RunKxKz()
             break
@@ -2104,7 +2202,7 @@ Function LJZ_EKKMap_OpenPanel()
     CheckBox cbTranspose,pos={415,478},size={90,18},title="Transpose"
     CheckBox cbTranspose,variable=$(LJZ_EKKMap_BaseDF() + ":Transpose"),proc=LJZ_EKKMap_CheckProc
 
-    GroupBox gbPhoto,pos={590,402},size={350,118},title="Photon / lattice"
+    GroupBox gbPhoto,pos={590,402},size={350,144},title="Photon / lattice"
     GroupBox gbPhoto,font="Arial",fSize=10,fStyle=2
 
     SetVariable svHv,pos={605,424},size={150,20},title="hv"
@@ -2128,19 +2226,29 @@ Function LJZ_EKKMap_OpenPanel()
     SetVariable svV0,pos={825,478},size={100,20},title="V0"
     SetVariable svV0,variable=$(LJZ_EKKMap_BaseDF() + ":V0"),proc=LJZ_EKKMap_SetVarProc
 
-    GroupBox gbRun,pos={250,534},size={690,86},title="Run"
+    SetVariable svQuickEF,pos={605,504},size={150,20},title="QuickEF"
+    SetVariable svQuickEF,variable=$(LJZ_EKKMap_BaseDF() + ":QuickEF"),proc=LJZ_EKKMap_SetVarProc
+
+    SetVariable svQuickHalfN,pos={775,504},size={150,20},title="QuickHalfN"
+    SetVariable svQuickHalfN,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickHalfN"),proc=LJZ_EKKMap_SetVarProc
+
+    SetVariable svQuickDS,pos={605,530},size={150,20},title="QuickDownsample"
+    SetVariable svQuickDS,limits={1,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickDownsample"),proc=LJZ_EKKMap_SetVarProc
+
+    GroupBox gbRun,pos={250,550},size={690,70},title="Run"
     GroupBox gbRun,font="Arial",fSize=10,fStyle=2
 
-    SetVariable svMDCKf,pos={265,560},size={150,20},title="MDC K_F shift"
+    SetVariable svMDCKf,pos={265,578},size={150,20},title="MDC K_F shift"
     SetVariable svMDCKf,variable=$(LJZ_EKKMap_BaseDF() + ":MDCKf"),proc=LJZ_EKKMap_SetVarProc
 
     NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
-    PopupMenu pmInputKind,pos={265,534},size={265,20},title="Input kind"
+    PopupMenu pmInputKind,pos={265,552},size={265,20},title="Input kind"
     PopupMenu pmInputKind,mode=InputKind,popvalue=LJZ_EKKMap_InputKindLabel(InputKind),value=#"LJZ_EKKMap_InputKindPopupList()",proc=LJZ_EKKMap_PopupProc
 
-    Button btEK,pos={445,552},size={120,32},title="Calc E-k",proc=LJZ_EKKMap_ButtonProc
-    Button btKxKy,pos={590,552},size={120,32},title="Calc kx-ky",proc=LJZ_EKKMap_ButtonProc
-    Button btKxKz,pos={735,552},size={120,32},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc
+    Button btEK,pos={445,578},size={100,24},title="Calc E-k",proc=LJZ_EKKMap_ButtonProc
+    Button btKxKy,pos={560,578},size={100,24},title="Calc kx-ky",proc=LJZ_EKKMap_ButtonProc
+    Button btKxKz,pos={675,578},size={100,24},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc
+    Button btQuickKxKy,pos={790,578},size={145,24},title="Quick FS kx-ky",proc=LJZ_EKKMap_ButtonProc
 
     TitleBox tbNote,pos={265,592},size={650,18},frame=0,title="Single-select run target = current preview. 3D run requires matching Input kind to avoid semantic mismatch."
 
