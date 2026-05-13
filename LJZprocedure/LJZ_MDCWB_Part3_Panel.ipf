@@ -135,6 +135,11 @@ Function LJZ_MDCWB_EnsurePanelState()
         Variable/G $(base + ":UI_autoPreview") = 1
     endif
 
+    NVAR/Z carryFit = $(base + ":UI_carryFitToNext")
+    if (!NVAR_Exists(carryFit))
+        Variable/G $(base + ":UI_carryFitToNext") = 1
+    endif
+
     return 0
 End
 
@@ -357,7 +362,51 @@ Function LJZ_MDCWB_SelectWaveRow(row)
     sel[row] = 1
     ListBox/Z $LJZ_MDCWB_WaveListBoxName(), win=$LJZ_MDCWB_PanelName(), selRow=row
 
-    LJZ_MDCWB_LoadCurrentToWork(w)
+    Variable hadState = LJZ_MDCWB_HasEditState(w)
+    Variable loadRC = LJZ_MDCWB_LoadCurrentToWork(w)
+    if (loadRC != 0)
+        return loadRC
+    endif
+
+    NVAR/Z carryOn = $(LJZ_MDCWB_BaseDF() + ":UI_carryFitToNext")
+    if (NVAR_Exists(carryOn) && carryOn)
+        if (!hadState)
+            if (LJZ_MDCWB_ApplyCarryTemplateToWork() == 0)
+                LJZ_MDCWB_ClearLastError()
+            endif
+        endif
+    endif
+    return 0
+End
+
+Function LJZ_MDCWB_SaveCarryTemplateFromWork()
+    String base = LJZ_MDCWB_BaseDF()
+    Duplicate/O $(base + ":Work_peaks_num"),  $(base + ":Carry_peaks_num")
+    Duplicate/O $(base + ":Work_peaks_hold"), $(base + ":Carry_peaks_hold")
+    Duplicate/O $(base + ":Work_bg"),         $(base + ":Carry_bg")
+    Duplicate/O $(base + ":Work_resH"),       $(base + ":Carry_resH")
+    Duplicate/O $(base + ":Work_roi"),        $(base + ":Carry_roi")
+    return 0
+End
+
+Function LJZ_MDCWB_ApplyCarryTemplateToWork()
+    String base = LJZ_MDCWB_BaseDF()
+    Wave/Z cPN = $(base + ":Carry_peaks_num")
+    Wave/Z cPH = $(base + ":Carry_peaks_hold")
+    Wave/Z cBG = $(base + ":Carry_bg")
+    Wave/Z cRH = $(base + ":Carry_resH")
+    Wave/Z cROI = $(base + ":Carry_roi")
+    if (!WaveExists(cPN) || !WaveExists(cPH) || !WaveExists(cBG) || !WaveExists(cRH) || !WaveExists(cROI))
+        return -1
+    endif
+
+    Duplicate/O cPN,  $(base + ":Work_peaks_num")
+    Duplicate/O cPH,  $(base + ":Work_peaks_hold")
+    Duplicate/O cBG,  $(base + ":Work_bg")
+    Duplicate/O cRH,  $(base + ":Work_resH")
+    Duplicate/O cROI, $(base + ":Work_roi")
+    LJZ_MDCWB_SanitizeWorkState()
+    LJZ_MDCWB_MarkDirty(1)
     return 0
 End
 
@@ -590,8 +639,8 @@ End
 Function LJZ_MDCWB_CreatePreviewGraphs()
     String host = "MDCIFit_LJZ_Panel"
 
-    String pvChild = "PVGraph"
-    String rvChild = "RVGraph"
+    String pvChild = "pvGraph"
+    String rvChild = "rsGraph"
 
     String pvWin = host + "#" + pvChild
     String rvWin = host + "#" + rvChild
@@ -600,13 +649,13 @@ Function LJZ_MDCWB_CreatePreviewGraphs()
     String childList = ChildWindowList(host)
 
     if (WhichListItem(pvChild, childList, ";") < 0)
-        Display /HOST=$host /N=PVGraph /W=(310,82,810,245)
+        Display /HOST=$host /N=pvGraph /W=(310,82,810,245)
     endif
 
     childList = ChildWindowList(host)
 
     if (WhichListItem(rvChild, childList, ";") < 0)
-        Display /HOST=$host /N=RVGraph /W=(310,252,810,315)
+        Display /HOST=$host /N=rsGraph /W=(310,252,810,315)
     endif
 
     // Move them every time, but do not delete/recreate them.
@@ -726,7 +775,12 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     if (previewOK && WaveExists(guessW))
         AppendToGraph/W=$pvPath guessW
     endif
-    if ((!dirty) && WaveExists(fitW))
+    Variable hasCleanFit = 0
+    if (LJZ_MDCWB_HasFitRecord(wData) && LJZ_MDCWB_ReadFitOK(wData))
+        hasCleanFit = 1
+    endif
+
+    if (hasCleanFit && WaveExists(fitW))
         AppendToGraph/W=$pvPath fitW
     endif
 
@@ -735,12 +789,12 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     if (previewOK && WaveExists(guessW))
         ModifyGraph/W=$pvPath rgb($NameOfWave(guessW))=(0,0,65535), lstyle($NameOfWave(guessW))=2
     endif
-    if ((!dirty) && WaveExists(fitW))
+    if (hasCleanFit && WaveExists(fitW))
         ModifyGraph/W=$pvPath rgb($NameOfWave(fitW))=(65535,0,0)
     endif
 
-    SetAxis/W=$pvPath bottom, showLo, showHi
-    SetAxis/W=$pvPath/A=2 left
+    SetAxis/W=$pvPath bottom showLo, showHi
+    SetAxis/W=$pvPath/A left
 
     if (!previewOK)
         TextBox/W=$pvPath/C/N=pvStatus/F=0/A=RT/X=-2/Y=2 "\\Z11Preview unavailable"
@@ -752,13 +806,20 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
 
     // ---- residual ----
     LJZ_MDCWB_ClearGraphTraces(rsPath)
-    if ((!dirty) && WaveExists(resW))
+    TextBox/W=$rsPath/K/N=rsStatus
+    if (hasCleanFit && WaveExists(resW))
         AppendToGraph/W=$rsPath resW
         ModifyGraph/W=$rsPath mode=0, lsize=1.2
         ModifyGraph/W=$rsPath rgb($NameOfWave(resW))=(30000,30000,30000)
+    else
+        TextBox/W=$rsPath/C/N=rsStatus/F=0/A=LT/X=2/Y=2 "\\Z10No clean residual"
     endif
-    SetAxis/W=$rsPath bottom, showLo, showHi
-    SetAxis/W=$rsPath/A=2 left
+    SetAxis/W=$rsPath bottom showLo, showHi
+    if ((!dirty) && WaveExists(resW))
+        SetAxis/W=$rsPath/A left
+    else
+        SetAxis/W=$rsPath left -1, 1
+    endif
 
     return 0
 End
@@ -1072,6 +1133,8 @@ Window LJZ_MDCWB_Panel() : Panel
     Button btnFit,            pos={904,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Fit", fSize=10
     CheckBox cbCsr,           pos={964,58}, size={92,16}, proc=LJZ_MDCWB_CheckProc, title="cursor ROI", fSize=10
     CheckBox cbCsr,           value=1
+    CheckBox cbCarryFit,      pos={1048,58}, size={72,16}, proc=LJZ_MDCWB_CheckProc, title="Carry fit", fSize=10
+    CheckBox cbCarryFit,      variable=$(LJZ_MDCWB_BaseDF() + ":UI_carryFitToNext")
 
     // ---- left wave list ----
     ListBox lbMDC, pos={12,58}, size={280,590}, proc=LJZ_MDCWB_LBProc, fSize=11
@@ -1363,6 +1426,11 @@ Function LJZ_MDCWB_CheckProc(cba) : CheckBoxControl
         useCsr = on
         return 0
     endif
+    if (StringMatch(c, "cbCarryFit"))
+        NVAR carryOn = $(LJZ_MDCWB_BaseDF() + ":UI_carryFitToNext")
+        carryOn = on
+        return 0
+    endif
 
     if (StringMatch(c, "cbBGHold0"))
         LJZ_MDCWB_SetBGHold(0, on)
@@ -1533,6 +1601,9 @@ Function LJZ_MDCWB_ButtonProc(ba) : ButtonControl
         endif
         LJZ_MDCWB_PullROIFromCursorsIfWanted()
         Variable rc = LJZ_MDCWB_RunFit(cw6)
+        if (rc == 0)
+            LJZ_MDCWB_SaveCarryTemplateFromWork()
+        endif
         if (rc != 0)
             String err = LJZ_MDCWB_GetLastError()
             if (strlen(err) <= 0)

@@ -500,6 +500,28 @@ Function LJZ_MDCWB_SetPeakField(idx, fieldId, val)
     return 0
 End
 
+Function LJZ_MDCWB_HasFreeAsymPVWidthWithFreeResH()
+    Wave wPN = $(LJZ_MDCWB_BaseDF() + ":Work_peaks_num")
+    Wave wPH = $(LJZ_MDCWB_BaseDF() + ":Work_peaks_hold")
+    Wave wRH = $(LJZ_MDCWB_BaseDF() + ":Work_resH")
+    if (!WaveExists(wPN) || !WaveExists(wPH) || !WaveExists(wRH))
+        return 0
+    endif
+    if (numpnts(wRH) < 2 || wRH[1] != 0)
+        return 0
+    endif
+    Variable np = DimSize(wPN, 0)
+    Variable ip
+    for (ip = 0; ip < np; ip += 1)
+        if (round(wPN[ip][0]) == LJZ_MDCWB_PeakTypeAsymPV())
+            if ((wPH[ip][1] == 0) || (wPH[ip][2] == 0))
+                return 1
+            endif
+        endif
+    endfor
+    return 0
+End
+
 Function LJZ_MDCWB_SetPeakHold(idx, holdFieldId, on)
     Variable idx, holdFieldId, on
 
@@ -962,6 +984,7 @@ Function LJZ_MDCWB_DistributeFitResult(flatCoef, flatSigma, slotMap)
     Wave wPN = $(base + ":Work_peaks_num")
     Wave wBG = $(base + ":Work_bg")
     Wave wRH = $(base + ":Work_resH")
+    Variable debugAsym = 0
 
     Variable nPeak = DimSize(wPN, 0)
     if (numpnts(slotMap) < nPeak + 1)
@@ -988,6 +1011,9 @@ Function LJZ_MDCWB_DistributeFitResult(flatCoef, flatSigma, slotMap)
             wPN[ip][3] = flatCoef[s + 2]
             wPN[ip][4] = flatCoef[s + 3]
             wPN[ip][5] = flatCoef[s + 4]
+            if (debugAsym)
+                Print "AsymPV result ip=", ip, " x0=", wPN[ip][1], " wL=", wPN[ip][2], " wR=", wPN[ip][3], " H=", wPN[ip][4], " eta=", wPN[ip][5]
+            endif
         else
             wPN[ip][3] = NaN
             wPN[ip][4] = flatCoef[s + 2]
@@ -1545,6 +1571,23 @@ Function LJZ_MDCWB_RunFit(wData)
     String holdMask = ""
     LJZ_MDCWB_AssembleFitParams(flatCoef, flatHold, slotMap, holdMask)
     LJZ_MDCWB_CopyActiveLayoutFromWork(slotMap)
+
+    if (LJZ_MDCWB_HasFreeAsymPVWidthWithFreeResH())
+        Wave wPN_dbg = $(LJZ_MDCWB_BaseDF() + ":Work_peaks_num")
+        Wave wPH_dbg = $(LJZ_MDCWB_BaseDF() + ":Work_peaks_hold")
+        Wave wRH_dbg = $(LJZ_MDCWB_BaseDF() + ":Work_resH")
+        String warnMsg = "Warning: resH is free while AsymPV wL/wR are also free. This fit is underconstrained because resH broadens both sides and can trade off against wL/wR. Hold resH unless you intentionally want this."
+        LJZ_MDCWB_SetLastError(warnMsg)
+        Print warnMsg
+        Print "resH value=", wRH_dbg[0], " hold=", wRH_dbg[1]
+        Variable npDbg = DimSize(wPN_dbg, 0)
+        Variable ipDbg
+        for (ipDbg = 0; ipDbg < npDbg; ipDbg += 1)
+            if (round(wPN_dbg[ipDbg][0]) == LJZ_MDCWB_PeakTypeAsymPV())
+                Print "AsymPV ip=", ipDbg, " wL=", wPN_dbg[ipDbg][2], " wR=", wPN_dbg[ipDbg][3], " hold_w=", wPH_dbg[ipDbg][1], " hold_wR=", wPH_dbg[ipDbg][2]
+            endif
+        endfor
+    endif
 
     Variable paramCount = numpnts(flatCoef)
     Variable required   = LJZ_MDCWB_MinFiniteForFit(paramCount)
