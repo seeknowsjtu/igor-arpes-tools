@@ -727,7 +727,7 @@ Function LJZ_CTP2_SaveCustom5ToLibrary()
     String pName
     pName = LJZ_CTP2_PanelName()
     if (WinType(pName) != 0)
-        PopupMenu/Z pmLibCT, win=$pName, popvalue=LibraryCTName
+        ListBox/Z lbLibCT, win=$pName
         ControlUpdate/A/W=$pName
     endif
 
@@ -1093,6 +1093,36 @@ Function LJZ_CTP2_ResetImageToGrays(gName, imgName)
     return 0
 End
 
+Function LJZ_CTP2_AddColorbarToSelected()
+    LJZ_CTP2_EnsureDF()
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    SVAR ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+
+    if (strlen(gName) == 0 || strlen(ExistingImageName) == 0)
+        DoAlert 0, "No graph or image selected."
+        return -1
+    endif
+
+    String csName
+    csName = "ljz_ctp2_colorbar"
+
+    // If this colorbar already exists, update it.
+    // Otherwise create it.
+    String annList
+    annList = AnnotationList(gName)
+
+    if (WhichListItem(csName, annList, ";", 0, 0) >= 0)
+        ColorScale/W=$gName/C/N=$csName/A=RT/X=2/Y=0 image=$ExistingImageName, heightPct=55, width=10, frame=0, fsize=9, "Intensity"
+    else
+        ColorScale/W=$gName/N=$csName/A=RT/X=2/Y=0 image=$ExistingImageName, heightPct=55, width=10, frame=0, fsize=9, "Intensity"
+    endif
+
+    DoWindow/F $gName
+    return 0
+End
 
 Function LJZ_CTP2_ApplySelectedBuiltIn()
     LJZ_CTP2_EnsureDF()
@@ -1546,7 +1576,11 @@ Function LJZ_CTP2_ButtonProc(ctrlName) : ButtonControl
         case "btApplyCustom":
             LJZ_CTP2_ApplySelectedCustom()
             break
-
+            
+        case "btAddColorbar":
+            LJZ_CTP2_AddColorbarToSelected()
+            break
+            
         case "btLoadLibToCustom":
             LJZ_CTP2_LoadLibraryToCustom5()
             break
@@ -1830,13 +1864,15 @@ GroupBox gbSave,font="Arial",fSize=10,fStyle=1
 
 Button btResetSelected,pos={24,462},size={108,24},title="Reset selected",proc=LJZ_CTP2_ButtonProc
 
-CheckBox ckConfirmAll,pos={144,466},size={88,18},title="Confirm all"
+Button btAddColorbar,pos={142,462},size={104,24},title="Add colorbar",proc=LJZ_CTP2_ButtonProc
+
+CheckBox ckConfirmAll,pos={258,466},size={88,18},title="Confirm all"
 CheckBox ckConfirmAll,variable=$(LJZ_CTP2_BaseDF() + ":ApplyToAllConfirm")
 
-Button btApplyAllBuiltIn,pos={242,462},size={118,24},title="Apply all built-in",proc=LJZ_CTP2_ButtonProc
-Button btResetAll,pos={368,462},size={108,24},title="Reset all Grays",proc=LJZ_CTP2_ButtonProc
+Button btApplyAllBuiltIn,pos={356,462},size={118,24},title="Apply all built-in",proc=LJZ_CTP2_ButtonProc
+Button btResetAll,pos={482,462},size={108,24},title="Reset all Grays",proc=LJZ_CTP2_ButtonProc
 
-TitleBox tbSaveNote,pos={490,466},size={176,16},title="No lookup=lutWave applied.",frame=0
+TitleBox tbSaveNote,pos={604,466},size={68,16},title="No lookup.",frame=0
 TitleBox tbSaveNote,font="Arial",fSize=9
 
 Button btClose,pos={676,462},size={96,24},title="Close",proc=LJZ_CTP2_ButtonProc
