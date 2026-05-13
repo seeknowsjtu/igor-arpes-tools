@@ -771,9 +771,9 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
 
     // ---- main preview ----
     LJZ_MDCWB_ClearGraphTraces(pvPath)
-    AppendToGraph/W=$pvPath wData
+    AppendToGraph/W=$pvPath/TN=rawData wData
     if (previewOK && WaveExists(guessW))
-        AppendToGraph/W=$pvPath guessW
+        AppendToGraph/W=$pvPath/TN=guessData guessW
     endif
     Variable hasCleanFit = 0
     if (LJZ_MDCWB_HasFitRecord(wData) && LJZ_MDCWB_ReadFitOK(wData))
@@ -781,16 +781,16 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     endif
 
     if (hasCleanFit && WaveExists(fitW))
-        AppendToGraph/W=$pvPath fitW
+        AppendToGraph/W=$pvPath/TN=fitData fitW
     endif
 
     ModifyGraph/W=$pvPath mode=0, lsize=1.5
-    ModifyGraph/W=$pvPath rgb($NameOfWave(wData))=(0,0,0)
+    ModifyGraph/W=$pvPath rgb(rawData)=(0,0,0)
     if (previewOK && WaveExists(guessW))
-        ModifyGraph/W=$pvPath rgb($NameOfWave(guessW))=(0,0,65535), lstyle($NameOfWave(guessW))=2
+        ModifyGraph/W=$pvPath rgb(guessData)=(0,0,65535), lstyle(guessData)=2
     endif
     if (hasCleanFit && WaveExists(fitW))
-        ModifyGraph/W=$pvPath rgb($NameOfWave(fitW))=(65535,0,0)
+        ModifyGraph/W=$pvPath rgb(fitData)=(65535,0,0)
     endif
 
     SetAxis/W=$pvPath bottom showLo, showHi
@@ -808,9 +808,9 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     LJZ_MDCWB_ClearGraphTraces(rsPath)
     TextBox/W=$rsPath/K/N=rsStatus
     if (hasCleanFit && WaveExists(resW))
-        AppendToGraph/W=$rsPath resW
+        AppendToGraph/W=$rsPath/TN=residualData resW
         ModifyGraph/W=$rsPath mode=0, lsize=1.2
-        ModifyGraph/W=$rsPath rgb($NameOfWave(resW))=(30000,30000,30000)
+        ModifyGraph/W=$rsPath rgb(residualData)=(30000,30000,30000)
     else
         TextBox/W=$rsPath/C/N=rsStatus/F=0/A=LT/X=2/Y=2 "\\Z10No clean residual"
     endif
