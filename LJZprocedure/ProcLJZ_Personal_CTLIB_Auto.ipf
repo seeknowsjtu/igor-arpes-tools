@@ -261,6 +261,36 @@ Function LJZ_PersonalCTLib_InstallAll(overwrite)
     LJZ_PersonalCTLib_InstallPalette("CyberPunk", overwrite, 248,244,249, 240,150,212, 176,92,210, 82,112,226, 48,210,210)
     LJZ_PersonalCTLib_InstallPalette("ToxicHeat", overwrite, 246,248,238, 188,220,118, 228,190,64, 232,112,48, 182,42,38)
 
+    // ------------------------------------------------------------------------
+    // Nod-Krai / Luna version character palettes, v0.1
+    // RGB anchors are approximate visual picks from character artworks.
+    // Anchor meaning:
+    //   c0 = highlight / pale base
+    //   c1 = light secondary
+    //   c2 = main identity color
+    //   c3 = accent / elemental / ornament color
+    //   c4 = dark costume / shadow color
+    // ------------------------------------------------------------------------
+
+    LJZ_PersonalCTLib_InstallPalette("Ineffa", overwrite,        247,250,250, 190,226,234,  76,146,180, 205, 72, 58,  39, 70,110)
+    LJZ_PersonalCTLib_InstallPalette("Lauma", overwrite,         248,247,240, 200,232,218, 110,176,156, 148,112,196,  42, 56, 92)
+    LJZ_PersonalCTLib_InstallPalette("Aino", overwrite,          250,244,246, 238,184,214, 158,110,196, 128,180, 94,  70, 82,108)
+    LJZ_PersonalCTLib_InstallPalette("Flins", overwrite,         244,245,250, 184,180,232, 110, 88,198,  76,120,210,  34, 36, 66)
+    LJZ_PersonalCTLib_InstallPalette("Nefer", overwrite,         246,244,236, 198,224,198,  72,154,120, 204,164, 74,  34, 58, 54)
+    LJZ_PersonalCTLib_InstallPalette("Jahoda", overwrite,        250,244,232, 222,220,166, 136,164, 92, 226,144,156,  72, 78, 68)
+    LJZ_PersonalCTLib_InstallPalette("Columbina", overwrite,     246,248,250, 196,224,238,  88,136,170, 170, 96,132,  30, 38, 58)
+    LJZ_PersonalCTLib_InstallPalette("Illuga", overwrite,        246,244,236, 210,214,214, 112,112,120, 212,166, 72,  42, 42, 48)
+
+    LJZ_PersonalCTLib_InstallPalette("Durin", overwrite,         248,242,238, 234,194,200, 196, 84,104,  84, 96,156,  56, 48, 62)
+    LJZ_PersonalCTLib_InstallPalette("Zibai", overwrite,         248,247,242, 214,232,224,  90,150,146, 202,172, 92,  54, 78, 76)
+    LJZ_PersonalCTLib_InstallPalette("Varka", overwrite,         246,244,238, 220,214,202, 128,116, 98, 152, 72, 66,  38, 50, 62)
+    LJZ_PersonalCTLib_InstallPalette("Linnea", overwrite,        248,246,246, 214,202,232, 185, 94,132,  82,164,180,  54, 68,104)
+    LJZ_PersonalCTLib_InstallPalette("Nicole", overwrite,        250,248,238, 238,216,166, 194,154, 82, 226, 96, 66,  58, 78,134)
+    LJZ_PersonalCTLib_InstallPalette("Lohen", overwrite,         246,250,252, 188,226,230,  96,168,184,  76,106,186,  34, 42, 82)
+    LJZ_PersonalCTLib_InstallPalette("Prune", overwrite,         248,244,250, 220,196,238, 156, 96,196, 104,196,174,  52, 44, 82)
+    LJZ_PersonalCTLib_InstallPalette("Alice", overwrite,         249,242,232, 225,188,230, 162, 82,190, 190, 58, 96,  54, 46,102)
+    LJZ_PersonalCTLib_InstallPalette("Sandrone", overwrite,      246,246,244, 198,210,210, 112,134,140, 172,106, 88,  44, 54, 58)
+
     LJZ_PersonalCTLib_UpdateMenuList()
 
     return 0
