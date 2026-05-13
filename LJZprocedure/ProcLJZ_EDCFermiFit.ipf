@@ -66,6 +66,38 @@ Function LJZ_EDCFermiFit_df_exists(dfStr)
     return DataFolderExists(s)
 End
 
+Function LJZ_EDCFermiFit_IsRootDF(dfStr)
+    String dfStr
+
+    String s = LJZ_EDCFermiFit_df_with_colon(dfStr)
+    if (CmpStr(s, "root:") == 0)
+        return 1
+    endif
+
+    return 0
+End
+
+Function LJZ_EDCFermiFit_SourceDFWritable(dfStr, allowRoot)
+    String dfStr
+    Variable allowRoot
+
+    String s = LJZ_EDCFermiFit_df_with_colon(dfStr)
+
+    if (strlen(dfStr) == 0)
+        return 0
+    endif
+
+    if (!DataFolderExists(s))
+        return 0
+    endif
+
+    if (!allowRoot && LJZ_EDCFermiFit_IsRootDF(s))
+        return 0
+    endif
+
+    return 1
+End
+
 Function LJZ_EDCFermiFit_Is1DWave(w)
     Wave/Z w
 
@@ -131,7 +163,7 @@ Function LJZ_EDCFermiFit_EnsureDF()
 
     SVAR/Z sSourceDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
     if (!SVAR_Exists(sSourceDF))
-        String/G $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF") = "root:"
+        String/G $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF") = ""
     endif
 
     SVAR/Z sWave = $(LJZ_EDCFermiFit_BaseDF() + ":WaveSel")
@@ -512,7 +544,9 @@ Function LJZ_EDCFermiFit_RebuildWaveList()
     endif
 
     LJZ_EDCFermiFit_ClearCurrentWorkWave()
-    LJZ_EDCFermiFit_EnsureResultWaves()
+    if (n > 0 && !LJZ_EDCFermiFit_IsRootDF(dfStr))
+        LJZ_EDCFermiFit_EnsureResultWaves()
+    endif
     return 0
 End
 
@@ -627,16 +661,16 @@ Function LJZ_EDCFermiFit_EnsureResultWaves()
 
     SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
     String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    if (!LJZ_EDCFermiFit_SourceDFWritable(dfStr, 0))
+        return -1
+    endif
+
     String listStr = LJZ_EDCFermiFit_ListEDCShowWaves_OneDF(dfStr)
     Variable maxIdx = LJZ_EDCFermiFit_MaxWaveIndexInList(listStr)
     Variable nResult = maxIdx + 1
 
-    if (!DataFolderExists(dfStr))
-        return -1
-    endif
-
-    if (nResult < 0)
-        nResult = 0
+    if (nResult <= 0)
+        return 0
     endif
 
     LJZ_EDCFermiFit_EnsureOneResultWave(dfStr, "edc_ff_height", nResult)
@@ -826,6 +860,10 @@ Function LJZ_EDCFermiFit_WriteResultForWave(wPath, pw, sigw, chisqVal, okFlag)
 
     SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
     String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    if (!LJZ_EDCFermiFit_SourceDFWritable(dfStr, 0))
+        return -1
+    endif
+
     Variable idx = LJZ_EDCFermiFit_ParseWaveIndex(NameOfWave($wPath))
 
     if (numtype(idx) != 0)
@@ -916,7 +954,12 @@ Function LJZ_EDCFermiFit_KillStoredFitWave(wPath)
     endif
 
     SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
-    String fitPath = LJZ_EDCFermiFit_df_with_colon(sDF) + LJZ_EDCFermiFit_FitWaveNameByIndex(idx)
+    String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    if (!LJZ_EDCFermiFit_SourceDFWritable(dfStr, 0))
+        return -1
+    endif
+
+    String fitPath = dfStr + LJZ_EDCFermiFit_FitWaveNameByIndex(idx)
     Wave/Z fitW = $fitPath
     if (WaveExists(fitW))
         KillWaves/Z fitW
@@ -1719,6 +1762,10 @@ Function LJZ_EDCFermiFit_CreateStoredFitWave(wPath, pwFit)
 
     SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
     String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    if (!LJZ_EDCFermiFit_SourceDFWritable(dfStr, 0))
+        return -1
+    endif
+
     Variable idxFit = LJZ_EDCFermiFit_ParseWaveIndex(NameOfWave($wPath))
     Variable nFit
     Variable i
@@ -2690,10 +2737,12 @@ Function LJZ_EDCFermiFit()
     LJZ_EDCFermiFit_EnsureDF()
 
     SVAR sSourceDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
-    if (CmpStr(sSourceDF, "root:") == 0)
+    if (strlen(sSourceDF) == 0 || CmpStr(sSourceDF, "root:") == 0)
         String curRun = LJZ_EDCFermiFit_GetCurrentRunDF()
         if (strlen(curRun) > 0)
             sSourceDF = curRun
+        else
+            sSourceDF = ""
         endif
     endif
 
@@ -3134,14 +3183,10 @@ Function LJZ_EDCFermiFit_PreviewInitialParams()
         return -1
     endif
 
-    dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
-    if (!DataFolderExists(dfStr))
-        DoAlert 0, "SourceDF 无效，无法创建 preview wave。"
-        return -1
-    endif
+    dfStr = LJZ_EDCFermiFit_BaseDF() + ":"
 
-    yName = LJZ_EDCFermiFit_InitPreviewWaveNameByIndex(idx)
-    xName = LJZ_EDCFermiFit_InitPreviewXWaveNameByIndex(idx)
+    yName = "edc_init_preview"
+    xName = "edc_init_preview_x"
     yPath = dfStr + yName
     xPath = dfStr + xName
 
