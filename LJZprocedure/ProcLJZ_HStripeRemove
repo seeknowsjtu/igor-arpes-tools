@@ -1,0 +1,2069 @@
+#pragma TextEncoding = "UTF-8"
+#pragma rtGlobals=3
+#pragma DefaultTab={3,20,4}
+
+// ============================================================================
+//  LJZ_HStripeRemove : horizontal/line stripe correction for 2D/3D ARPES images
+//
+//  目的：
+//    1) 扫描指定 SourceDF 下的 2D/3D numeric wave
+//    2) 对当前 wave 或全部 wave 做横纹/逐行强度校正
+//    3) 支持 additive / multiplicative / weak multiplicative / line high-pass reassemble
+//    4) 输出 corrected wave，并显示 profile / fit / stripe 检查图
+//
+//  数据约定：
+//    - 2D wave: dim0 × dim1
+//    - 3D wave: dim0 × dim1 × stack/layer
+//    - StripeAxis = 1: 条纹强度随 dim1 变化；profile 由 dim0 范围平均得到
+//    - StripeAxis = 0: 条纹强度随 dim0 变化；profile 由 dim1 范围平均得到
+//
+//  推荐：
+//    - 先用 Mode=1 Additive
+//    - StripeAxis 选错时，校正方向会不对；如果横纹没有变好，先换 StripeAxis
+// ============================================================================
+
+Menu "ARPES_LJZ"
+    "2026HStripeRemove_LJZ", LJZ_HStripeRemove()
+End
+
+
+// ============================================================================
+//  Section 0. paths / state
+// ============================================================================
+
+Function/S LJZ_HStripe_BaseDF()
+    return "root:ARPES_LJZ:HStripeRemove"
+End
+
+Function/S LJZ_HStripe_PanelName()
+    return "LJZ_HStripeRemove_Panel"
+End
+
+Function/S LJZ_HStripe_df_with_colon(inStr)
+    String inStr
+
+    String s
+    s = inStr
+
+    if (strlen(s) == 0)
+        return "root:"
+    endif
+
+    if (StringMatch(s, "root"))
+        s = "root:"
+    endif
+
+    if (!StringMatch(s, "*:"))
+        s += ":"
+    endif
+
+    return s
+End
+
+Function LJZ_HStripe_df_exists(dfStr)
+    String dfStr
+
+    String s
+    s = LJZ_HStripe_df_with_colon(dfStr)
+
+    return DataFolderExists(s)
+End
+
+Function/S LJZ_HStripe_ShortenForTitle(s, maxLen)
+    String s
+    Variable maxLen
+
+    if (strlen(s) <= maxLen)
+        return s
+    endif
+
+    return s[0, maxLen - 4] + "..."
+End
+
+Function LJZ_HStripe_Is2DOr3DNumericWave(w)
+    Wave/Z w
+
+    if (!WaveExists(w))
+        return 0
+    endif
+
+    if (WaveType(w, 1) != 1)
+        return 0
+    endif
+
+    if (DimSize(w, 0) <= 0)
+        return 0
+    endif
+
+    if (DimSize(w, 1) <= 0)
+        return 0
+    endif
+
+    if (DimSize(w, 3) > 0)
+        return 0
+    endif
+
+    return 1
+End
+
+Function LJZ_HStripe_EnsureDF()
+    NewDataFolder/O root:ARPES_LJZ
+    NewDataFolder/O $(LJZ_HStripe_BaseDF())
+
+    SVAR/Z sSourceDF = $(LJZ_HStripe_BaseDF() + ":SourceDF")
+    if (!SVAR_Exists(sSourceDF))
+        String/G $(LJZ_HStripe_BaseDF() + ":SourceDF") = "root:"
+    endif
+
+    SVAR/Z sWaveSel = $(LJZ_HStripe_BaseDF() + ":WaveSel")
+    if (!SVAR_Exists(sWaveSel))
+        String/G $(LJZ_HStripe_BaseDF() + ":WaveSel") = ""
+    endif
+
+    SVAR/Z sOutputSuffix = $(LJZ_HStripe_BaseDF() + ":OutputSuffix")
+    if (!SVAR_Exists(sOutputSuffix))
+        String/G $(LJZ_HStripe_BaseDF() + ":OutputSuffix") = "_hstripe"
+    endif
+
+    NVAR/Z SelRow = $(LJZ_HStripe_BaseDF() + ":SelRow")
+    if (!NVAR_Exists(SelRow))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":SelRow") = -1
+    endif
+
+    NVAR/Z Recursive = $(LJZ_HStripe_BaseDF() + ":Recursive")
+    if (!NVAR_Exists(Recursive))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":Recursive") = 0
+    endif
+
+    NVAR/Z StripeAxis = $(LJZ_HStripe_BaseDF() + ":StripeAxis")
+    if (!NVAR_Exists(StripeAxis))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":StripeAxis") = 1
+    endif
+
+    NVAR/Z AvgStart = $(LJZ_HStripe_BaseDF() + ":AvgStart")
+    if (!NVAR_Exists(AvgStart))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":AvgStart") = NaN
+    endif
+
+    NVAR/Z AvgEnd = $(LJZ_HStripe_BaseDF() + ":AvgEnd")
+    if (!NVAR_Exists(AvgEnd))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":AvgEnd") = NaN
+    endif
+
+    NVAR/Z EffStart = $(LJZ_HStripe_BaseDF() + ":EffStart")
+    if (!NVAR_Exists(EffStart))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":EffStart") = NaN
+    endif
+
+    NVAR/Z EffEnd = $(LJZ_HStripe_BaseDF() + ":EffEnd")
+    if (!NVAR_Exists(EffEnd))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":EffEnd") = NaN
+    endif
+
+    NVAR/Z SmoothCutoff = $(LJZ_HStripe_BaseDF() + ":SmoothCutoff")
+    if (!NVAR_Exists(SmoothCutoff))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":SmoothCutoff") = 0.4
+    endif
+
+    NVAR/Z EdgeSmooth = $(LJZ_HStripe_BaseDF() + ":EdgeSmooth")
+    if (!NVAR_Exists(EdgeSmooth))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":EdgeSmooth") = 0
+    endif
+
+    NVAR/Z CorrectionMode = $(LJZ_HStripe_BaseDF() + ":CorrectionMode")
+    if (!NVAR_Exists(CorrectionMode))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":CorrectionMode") = 1
+    endif
+
+    NVAR/Z CorrectionPower = $(LJZ_HStripe_BaseDF() + ":CorrectionPower")
+    if (!NVAR_Exists(CorrectionPower))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":CorrectionPower") = 0.5
+    endif
+
+    NVAR/Z CorrMin = $(LJZ_HStripe_BaseDF() + ":CorrMin")
+    if (!NVAR_Exists(CorrMin))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":CorrMin") = 0.5
+    endif
+
+    NVAR/Z CorrMax = $(LJZ_HStripe_BaseDF() + ":CorrMax")
+    if (!NVAR_Exists(CorrMax))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":CorrMax") = 2.0
+    endif
+
+    NVAR/Z StripeLimitFactor = $(LJZ_HStripe_BaseDF() + ":StripeLimitFactor")
+    if (!NVAR_Exists(StripeLimitFactor))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":StripeLimitFactor") = 1.0
+    endif
+
+    NVAR/Z LineSmoothPts = $(LJZ_HStripe_BaseDF() + ":LineSmoothPts")
+    if (!NVAR_Exists(LineSmoothPts))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":LineSmoothPts") = 51
+    endif
+
+    NVAR/Z MDCAlpha = $(LJZ_HStripe_BaseDF() + ":MDCAlpha")
+    if (!NVAR_Exists(MDCAlpha))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":MDCAlpha") = 0.35
+    endif
+
+    NVAR/Z LayerNormMode = $(LJZ_HStripe_BaseDF() + ":LayerNormMode")
+    if (!NVAR_Exists(LayerNormMode))
+        Variable/G $(LJZ_HStripe_BaseDF() + ":LayerNormMode") = 1
+    endif
+
+    Wave/T/Z wDisp = $(LJZ_HStripe_BaseDF() + ":LB_Disp")
+    if (!WaveExists(wDisp))
+        Make/O/T/N=0 $(LJZ_HStripe_BaseDF() + ":LB_Disp")
+    endif
+
+    Wave/Z wSel = $(LJZ_HStripe_BaseDF() + ":LB_Sel")
+    if (!WaveExists(wSel))
+        Make/O/N=0 $(LJZ_HStripe_BaseDF() + ":LB_Sel") = 0
+    endif
+
+    Make/O/D/N=2 $(LJZ_HStripe_BaseDF() + ":GraphStub") = NaN
+    SetScale/P x, 0, 1, "", $(LJZ_HStripe_BaseDF() + ":GraphStub")
+
+    return 0
+End
+
+
+// ============================================================================
+//  Section 1. wave scanning / selection
+// ============================================================================
+
+Function/S LJZ_HStripe_ListWaves_OneDF(dfStr)
+    String dfStr
+
+    String out
+    Variable iObj
+    Variable nObj
+
+    out = ""
+    nObj = CountObjects(dfStr, 1)
+
+    for (iObj = 0; iObj < nObj; iObj += 1)
+        String nm = GetIndexedObjName(dfStr, 1, iObj)
+        Wave/Z w = $(dfStr + nm)
+
+        if (!LJZ_HStripe_Is2DOr3DNumericWave(w))
+            continue
+        endif
+
+        out = AddListItem(dfStr + nm, out, ";", Inf)
+    endfor
+
+    return out
+End
+
+Function/S LJZ_HStripe_ListWaves(dfStr, recursive)
+    String dfStr
+    Variable recursive
+
+    String out
+    String sub
+    Variable iObj
+    Variable nObj
+
+    dfStr = LJZ_HStripe_df_with_colon(dfStr)
+    if (!DataFolderExists(dfStr))
+        return ""
+    endif
+
+    out = LJZ_HStripe_ListWaves_OneDF(dfStr)
+
+    if (!recursive)
+        return out
+    endif
+
+    nObj = CountObjects(dfStr, 4)
+    for (iObj = 0; iObj < nObj; iObj += 1)
+        sub = GetIndexedObjName(dfStr, 4, iObj)
+        if (strlen(sub) == 0)
+            continue
+        endif
+
+        out += LJZ_HStripe_ListWaves(dfStr + sub + ":", 1)
+    endfor
+
+    return out
+End
+
+Function/S LJZ_HStripe_CurrentWaveList()
+    SVAR sDF = $(LJZ_HStripe_BaseDF() + ":SourceDF")
+    NVAR recursive = $(LJZ_HStripe_BaseDF() + ":Recursive")
+
+    return LJZ_HStripe_ListWaves(LJZ_HStripe_df_with_colon(sDF), recursive)
+End
+
+Function LJZ_HStripe_RebuildWaveList()
+    LJZ_HStripe_EnsureDF()
+
+    SVAR sDF = $(LJZ_HStripe_BaseDF() + ":SourceDF")
+    SVAR sWave = $(LJZ_HStripe_BaseDF() + ":WaveSel")
+    NVAR SelRow = $(LJZ_HStripe_BaseDF() + ":SelRow")
+
+    String dfStr
+    String listStr
+    String prevWave
+    Variable n
+    Variable i
+    Variable keepRow
+
+    dfStr = LJZ_HStripe_df_with_colon(sDF)
+
+    Wave/T/Z wDisp = $(LJZ_HStripe_BaseDF() + ":LB_Disp")
+    if (!WaveExists(wDisp))
+        Make/O/T/N=0 $(LJZ_HStripe_BaseDF() + ":LB_Disp")
+        Wave/T wDisp = $(LJZ_HStripe_BaseDF() + ":LB_Disp")
+    endif
+
+    Wave/Z wSel = $(LJZ_HStripe_BaseDF() + ":LB_Sel")
+    if (!WaveExists(wSel))
+        Make/O/N=0 $(LJZ_HStripe_BaseDF() + ":LB_Sel")
+        Wave wSel = $(LJZ_HStripe_BaseDF() + ":LB_Sel")
+    endif
+
+    if (!DataFolderExists(dfStr))
+        Redimension/N=0 wDisp
+        Redimension/N=0 wSel
+        sWave = ""
+        SelRow = -1
+        LJZ_HStripe_RebindListBox()
+        return -1
+    endif
+
+    prevWave = sWave
+    listStr = LJZ_HStripe_CurrentWaveList()
+    n = ItemsInList(listStr, ";")
+
+    // Do not recreate listWave / selWave after the panel has been bound to them.
+    // Redimension keeps the wave identity stable and avoids the red-X/empty ListBox issue.
+    Redimension/N=(n) wDisp
+    Redimension/N=(n) wSel
+
+    wSel = 0
+
+    for (i = 0; i < n; i += 1)
+        String wPath = StringFromList(i, listStr, ";")
+        Wave/Z w = $wPath
+
+        if (WaveExists(w))
+            wDisp[i] = NameOfWave(w)
+        else
+            wDisp[i] = "(missing)"
+        endif
+    endfor
+
+    keepRow = WhichListItem(prevWave, listStr, ";", 0, 0)
+
+    if (keepRow < 0)
+        keepRow = SelRow
+    endif
+
+    if (keepRow < 0)
+        keepRow = 0
+    endif
+
+    if (n > 0)
+        keepRow = max(0, min(n - 1, keepRow))
+        wSel[keepRow] = 1
+        sWave = StringFromList(keepRow, listStr, ";")
+        SelRow = keepRow
+    else
+        sWave = ""
+        SelRow = -1
+    endif
+
+    LJZ_HStripe_RebindListBox()
+    LJZ_HStripe_RefreshTitleBoxes()
+
+    return 0
+End
+
+
+Function LJZ_HStripe_RebindListBox()
+    String pName
+
+    pName = LJZ_HStripe_PanelName()
+
+    DoWindow $pName
+    if (!V_flag)
+        return 0
+    endif
+
+    Wave/T/Z wDisp = $(LJZ_HStripe_BaseDF() + ":LB_Disp")
+    Wave/Z wSel = $(LJZ_HStripe_BaseDF() + ":LB_Sel")
+
+    if (!WaveExists(wDisp))
+        return -1
+    endif
+
+    if (!WaveExists(wSel))
+        return -1
+    endif
+
+    if (numpnts(wSel) != numpnts(wDisp))
+        Redimension/N=(numpnts(wDisp)) wSel
+        wSel = 0
+    endif
+
+    ListBox lbWave, win=$pName, listWave=wDisp
+    ListBox lbWave, win=$pName, selWave=wSel
+    ListBox lbWave, win=$pName, mode=1
+
+    return 0
+End
+
+
+Function LJZ_HStripe_RestoreListSelection()
+    LJZ_HStripe_EnsureDF()
+
+    NVAR SelRow = $(LJZ_HStripe_BaseDF() + ":SelRow")
+
+    Wave/Z wSel = $(LJZ_HStripe_BaseDF() + ":LB_Sel")
+    if (!WaveExists(wSel))
+        return -1
+    endif
+
+    if (numpnts(wSel) <= 0)
+        return -1
+    endif
+
+    wSel = 0
+
+    if (SelRow >= 0 && SelRow < numpnts(wSel))
+        wSel[SelRow] = 1
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_SelectWaveRow(row)
+    Variable row
+
+    String listStr
+    Variable n
+
+    LJZ_HStripe_EnsureDF()
+
+    listStr = LJZ_HStripe_CurrentWaveList()
+    n = ItemsInList(listStr, ";")
+
+    if (n <= 0)
+        return -1
+    endif
+
+    row = max(0, min(n - 1, row))
+
+    Wave/T/Z wDisp = $(LJZ_HStripe_BaseDF() + ":LB_Disp")
+    Wave/Z wSel = $(LJZ_HStripe_BaseDF() + ":LB_Sel")
+
+    if (!WaveExists(wDisp))
+        return -1
+    endif
+
+    if (!WaveExists(wSel))
+        return -1
+    endif
+
+    if (numpnts(wDisp) != n)
+        LJZ_HStripe_RebuildWaveList()
+        Wave/Z wSel = $(LJZ_HStripe_BaseDF() + ":LB_Sel")
+    endif
+
+    if (numpnts(wSel) != n)
+        Redimension/N=(n) wSel
+    endif
+
+    wSel = 0
+    wSel[row] = 1
+
+    SVAR sWave = $(LJZ_HStripe_BaseDF() + ":WaveSel")
+    NVAR SelRow = $(LJZ_HStripe_BaseDF() + ":SelRow")
+
+    sWave = StringFromList(row, listStr, ";")
+    SelRow = row
+
+    LJZ_HStripe_RefreshTitleBoxes()
+
+    return 0
+End
+
+
+// ============================================================================
+//  Section 2. helpers
+// ============================================================================
+
+Function LJZ_HStripe_GetPointRange(w, axis, x1, x2, pLoOut, pHiOut)
+    Wave w
+    Variable axis
+    Variable x1
+    Variable x2
+    Variable &pLoOut
+    Variable &pHiOut
+
+    Variable n
+    Variable p1
+    Variable p2
+    Variable offset
+    Variable delta
+
+    n = DimSize(w, axis)
+    if (n < 2)
+        pLoOut = 0
+        pHiOut = n - 1
+        return -1
+    endif
+
+    offset = DimOffset(w, axis)
+    delta = DimDelta(w, axis)
+
+    if (numtype(x1) != 0 || numtype(x2) != 0 || delta == 0)
+        pLoOut = 0
+        pHiOut = n - 1
+        return 0
+    endif
+
+    p1 = round((x1 - offset) / delta)
+    p2 = round((x2 - offset) / delta)
+
+    p1 = max(0, min(n - 1, p1))
+    p2 = max(0, min(n - 1, p2))
+
+    pLoOut = min(p1, p2)
+    pHiOut = max(p1, p2)
+
+    if (pHiOut <= pLoOut)
+        pLoOut = 0
+        pHiOut = n - 1
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_SetProfileScale(profile, src, stripeAxis)
+    Wave profile
+    Wave src
+    Variable stripeAxis
+
+    if (stripeAxis == 0)
+        SetScale/P x, DimOffset(src, 0), DimDelta(src, 0), WaveUnits(src, 0), profile
+    else
+        SetScale/P x, DimOffset(src, 1), DimDelta(src, 1), WaveUnits(src, 1), profile
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_CleanAndLimitCorrection(corr, corrMin, corrMax)
+    Wave corr
+    Variable corrMin
+    Variable corrMax
+
+    Variable i
+    Variable n
+    Variable v
+
+    n = numpnts(corr)
+    if (corrMin <= 0 || numtype(corrMin) != 0)
+        corrMin = 0.1
+    endif
+    if (corrMax <= corrMin || numtype(corrMax) != 0)
+        corrMax = 10
+    endif
+
+    for (i = 0; i < n; i += 1)
+        v = corr[i]
+        if (numtype(v) != 0)
+            v = 1
+        endif
+        if (abs(v) < 1e-12)
+            v = 1
+        endif
+        if (v < corrMin)
+            v = corrMin
+        endif
+        if (v > corrMax)
+            v = corrMax
+        endif
+        corr[i] = v
+    endfor
+
+    return 0
+End
+
+Function LJZ_HStripe_LimitStripe(stripe, stripeLimitFactor)
+    Wave stripe
+    Variable stripeLimitFactor
+
+    Variable limitVal
+    Variable i
+    Variable n
+    Variable v
+
+    if (stripeLimitFactor <= 0 || numtype(stripeLimitFactor) != 0)
+        return 0
+    endif
+
+    WaveStats/Q stripe
+    limitVal = stripeLimitFactor * V_sdev
+
+    if (numtype(limitVal) != 0 || limitVal <= 0)
+        return 0
+    endif
+
+    n = numpnts(stripe)
+
+    for (i = 0; i < n; i += 1)
+        v = stripe[i]
+        if (numtype(v) != 0)
+            v = 0
+        endif
+        if (v > limitVal)
+            v = limitVal
+        endif
+        if (v < -limitVal)
+            v = -limitVal
+        endif
+        stripe[i] = v
+    endfor
+
+    return 0
+End
+
+Function LJZ_HStripe_FillBoundary(profile, pStart, pEnd)
+    Wave profile
+    Variable pStart
+    Variable pEnd
+
+    Variable n
+
+    n = numpnts(profile)
+
+    if (n <= 0)
+        return -1
+    endif
+
+    pStart = max(0, min(n - 1, round(pStart)))
+    pEnd = max(0, min(n - 1, round(pEnd)))
+
+    if (pEnd < pStart)
+        Variable tmpP
+        tmpP = pStart
+        pStart = pEnd
+        pEnd = tmpP
+    endif
+
+    if (pStart > 0)
+        profile[0, pStart - 1] = profile[pStart]
+    endif
+
+    if (pEnd < n - 1)
+        profile[pEnd + 1, n - 1] = profile[pEnd]
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_MakeProfileFromLayer(src, profile, layer, stripeAxis, avgLo, avgHi)
+    Wave src
+    Wave profile
+    Variable layer
+    Variable stripeAxis
+    Variable avgLo
+    Variable avgHi
+
+    Variable n0
+    Variable n1
+    Variable n2
+    Variable i
+    Variable j
+    Variable count
+    Variable sumVal
+    Variable v
+    Variable is3D
+
+    n0 = DimSize(src, 0)
+    n1 = DimSize(src, 1)
+    n2 = DimSize(src, 2)
+    is3D = 0
+    if (n2 > 0)
+        is3D = 1
+    endif
+
+    if (stripeAxis == 0)
+        Redimension/N=(n0) profile
+        LJZ_HStripe_SetProfileScale(profile, src, 0)
+
+        avgLo = max(0, min(n1 - 1, round(avgLo)))
+        avgHi = max(0, min(n1 - 1, round(avgHi)))
+        if (avgHi < avgLo)
+            Variable tmpA0
+            tmpA0 = avgLo
+            avgLo = avgHi
+            avgHi = tmpA0
+        endif
+
+        for (i = 0; i < n0; i += 1)
+            sumVal = 0
+            count = 0
+
+            for (j = avgLo; j <= avgHi; j += 1)
+                if (is3D)
+                    v = src[i][j][layer]
+                else
+                    v = src[i][j]
+                endif
+
+                if (numtype(v) == 0)
+                    sumVal += v
+                    count += 1
+                endif
+            endfor
+
+            if (count > 0)
+                profile[i] = sumVal / count
+            else
+                profile[i] = NaN
+            endif
+        endfor
+    else
+        Redimension/N=(n1) profile
+        LJZ_HStripe_SetProfileScale(profile, src, 1)
+
+        avgLo = max(0, min(n0 - 1, round(avgLo)))
+        avgHi = max(0, min(n0 - 1, round(avgHi)))
+        if (avgHi < avgLo)
+            Variable tmpA1
+            tmpA1 = avgLo
+            avgLo = avgHi
+            avgHi = tmpA1
+        endif
+
+        for (j = 0; j < n1; j += 1)
+            sumVal = 0
+            count = 0
+
+            for (i = avgLo; i <= avgHi; i += 1)
+                if (is3D)
+                    v = src[i][j][layer]
+                else
+                    v = src[i][j]
+                endif
+
+                if (numtype(v) == 0)
+                    sumVal += v
+                    count += 1
+                endif
+            endfor
+
+            if (count > 0)
+                profile[j] = sumVal / count
+            else
+                profile[j] = NaN
+            endif
+        endfor
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_ApplyProfileCorrection(src, dest, layer, stripeAxis, mode, corr, stripe, power, effLo, effHi)
+    Wave src
+    Wave dest
+    Variable layer
+    Variable stripeAxis
+    Variable mode
+    Wave corr
+    Wave stripe
+    Variable power
+    Variable effLo
+    Variable effHi
+
+    Variable n0
+    Variable n1
+    Variable n2
+    Variable i
+    Variable j
+    Variable v
+    Variable c
+    Variable s
+    Variable is3D
+    Variable inRange
+
+    n0 = DimSize(src, 0)
+    n1 = DimSize(src, 1)
+    n2 = DimSize(src, 2)
+
+    is3D = 0
+    if (n2 > 0)
+        is3D = 1
+    endif
+
+    if (power <= 0 || numtype(power) != 0)
+        power = 0.5
+    endif
+
+    if (stripeAxis == 0)
+        effLo = max(0, min(n0 - 1, round(effLo)))
+        effHi = max(0, min(n0 - 1, round(effHi)))
+    else
+        effLo = max(0, min(n1 - 1, round(effLo)))
+        effHi = max(0, min(n1 - 1, round(effHi)))
+    endif
+
+    if (effHi < effLo)
+        Variable tmpP
+        tmpP = effLo
+        effLo = effHi
+        effHi = tmpP
+    endif
+
+    for (i = 0; i < n0; i += 1)
+        for (j = 0; j < n1; j += 1)
+            if (is3D)
+                v = src[i][j][layer]
+            else
+                v = src[i][j]
+            endif
+
+            if (stripeAxis == 0)
+                c = corr[i]
+                s = stripe[i]
+                inRange = (i >= effLo && i <= effHi)
+            else
+                c = corr[j]
+                s = stripe[j]
+                inRange = (j >= effLo && j <= effHi)
+            endif
+
+            if (!inRange)
+                if (is3D)
+                    dest[i][j][layer] = v
+                else
+                    dest[i][j] = v
+                endif
+                continue
+            endif
+
+            if (mode == 1)
+                v = v - s
+            elseif (mode == 2)
+                if (numtype(c) == 0 && abs(c) > 1e-12)
+                    v = v / c
+                endif
+            elseif (mode == 3)
+                if (numtype(c) == 0 && abs(c) > 1e-12)
+                    v = v / (c ^ power)
+                endif
+            endif
+
+            if (is3D)
+                dest[i][j][layer] = v
+            else
+                dest[i][j] = v
+            endif
+        endfor
+    endfor
+
+    return 0
+End
+
+Function LJZ_HStripe_ApplyLineHighpass(src, dest, layer, stripeAxis, effLo, effHi, lineSmoothPts)
+    Wave src
+    Wave dest
+    Variable layer
+    Variable stripeAxis
+    Variable effLo
+    Variable effHi
+    Variable lineSmoothPts
+
+    Variable n0
+    Variable n1
+    Variable n2
+    Variable i
+    Variable j
+    Variable count
+    Variable is3D
+    Variable v
+
+    n0 = DimSize(src, 0)
+    n1 = DimSize(src, 1)
+    n2 = DimSize(src, 2)
+
+    is3D = 0
+    if (n2 > 0)
+        is3D = 1
+    endif
+
+    lineSmoothPts = round(lineSmoothPts)
+    if (lineSmoothPts < 3)
+        lineSmoothPts = 3
+    endif
+
+    if (stripeAxis == 0)
+        effLo = max(0, min(n0 - 1, round(effLo)))
+        effHi = max(0, min(n0 - 1, round(effHi)))
+
+        if (effHi < effLo)
+            Variable tmp0
+            tmp0 = effLo
+            effLo = effHi
+            effHi = tmp0
+        endif
+
+        Make/FREE/D/N=(n1) line, lineLow, lowRef
+        lowRef = 0
+        count = 0
+
+        for (i = effLo; i <= effHi; i += 1)
+            for (j = 0; j < n1; j += 1)
+                if (is3D)
+                    line[j] = src[i][j][layer]
+                else
+                    line[j] = src[i][j]
+                endif
+            endfor
+
+            Duplicate/O/FREE line, lineLow
+            Smooth lineSmoothPts, lineLow
+            lowRef += lineLow
+            count += 1
+        endfor
+
+        if (count > 0)
+            lowRef /= count
+        endif
+
+        for (i = 0; i < n0; i += 1)
+            for (j = 0; j < n1; j += 1)
+                if (is3D)
+                    line[j] = src[i][j][layer]
+                else
+                    line[j] = src[i][j]
+                endif
+            endfor
+
+            Duplicate/O/FREE line, lineLow
+            Smooth lineSmoothPts, lineLow
+
+            for (j = 0; j < n1; j += 1)
+                if (i >= effLo && i <= effHi)
+                    v = line[j] - lineLow[j] + lowRef[j]
+                else
+                    v = line[j]
+                endif
+
+                if (is3D)
+                    dest[i][j][layer] = v
+                else
+                    dest[i][j] = v
+                endif
+            endfor
+        endfor
+    else
+        effLo = max(0, min(n1 - 1, round(effLo)))
+        effHi = max(0, min(n1 - 1, round(effHi)))
+
+        if (effHi < effLo)
+            Variable tmp1
+            tmp1 = effLo
+            effLo = effHi
+            effHi = tmp1
+        endif
+
+        Make/FREE/D/N=(n0) line2, lineLow2, lowRef2
+        lowRef2 = 0
+        count = 0
+
+        for (j = effLo; j <= effHi; j += 1)
+            for (i = 0; i < n0; i += 1)
+                if (is3D)
+                    line2[i] = src[i][j][layer]
+                else
+                    line2[i] = src[i][j]
+                endif
+            endfor
+
+            Duplicate/O/FREE line2, lineLow2
+            Smooth lineSmoothPts, lineLow2
+            lowRef2 += lineLow2
+            count += 1
+        endfor
+
+        if (count > 0)
+            lowRef2 /= count
+        endif
+
+        for (j = 0; j < n1; j += 1)
+            for (i = 0; i < n0; i += 1)
+                if (is3D)
+                    line2[i] = src[i][j][layer]
+                else
+                    line2[i] = src[i][j]
+                endif
+            endfor
+
+            Duplicate/O/FREE line2, lineLow2
+            Smooth lineSmoothPts, lineLow2
+
+            for (i = 0; i < n0; i += 1)
+                if (j >= effLo && j <= effHi)
+                    v = line2[i] - lineLow2[i] + lowRef2[i]
+                else
+                    v = line2[i]
+                endif
+
+                if (is3D)
+                    dest[i][j][layer] = v
+                else
+                    dest[i][j] = v
+                endif
+            endfor
+        endfor
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_MakeLastLayerImages(src, dest, layer)
+    Wave src
+    Wave dest
+    Variable layer
+
+    Variable n0
+    Variable n1
+    Variable n2
+    Variable i
+    Variable j
+    Variable is3D
+
+    n0 = DimSize(src, 0)
+    n1 = DimSize(src, 1)
+    n2 = DimSize(src, 2)
+    is3D = 0
+    if (n2 > 0)
+        is3D = 1
+    endif
+
+    Make/O/D/N=(n0,n1) $(LJZ_HStripe_BaseDF() + ":LastRaw2D")
+    Make/O/D/N=(n0,n1) $(LJZ_HStripe_BaseDF() + ":LastCorrected2D")
+
+    Wave raw2D = $(LJZ_HStripe_BaseDF() + ":LastRaw2D")
+    Wave cor2D = $(LJZ_HStripe_BaseDF() + ":LastCorrected2D")
+
+    SetScale/P x, DimOffset(src, 0), DimDelta(src, 0), WaveUnits(src, 0), raw2D, cor2D
+    SetScale/P y, DimOffset(src, 1), DimDelta(src, 1), WaveUnits(src, 1), raw2D, cor2D
+
+    for (i = 0; i < n0; i += 1)
+        for (j = 0; j < n1; j += 1)
+            if (is3D)
+                raw2D[i][j] = src[i][j][layer]
+                cor2D[i][j] = dest[i][j][layer]
+            else
+                raw2D[i][j] = src[i][j]
+                cor2D[i][j] = dest[i][j]
+            endif
+        endfor
+    endfor
+
+    return 0
+End
+
+
+Function LJZ_HStripe_ClampValue(v, limitVal)
+    Variable v
+    Variable limitVal
+
+    if (numtype(v) != 0)
+        return 0
+    endif
+
+    if (limitVal <= 0 || numtype(limitVal) != 0)
+        return v
+    endif
+
+    if (v > limitVal)
+        return limitVal
+    endif
+
+    if (v < -limitVal)
+        return -limitVal
+    endif
+
+    return v
+End
+
+
+Function LJZ_HStripe_ResidualSDev(stripe, pLo, pHi)
+    Wave stripe
+    Variable pLo
+    Variable pHi
+
+    Variable n
+    Variable i
+    Variable count
+    Variable meanVal
+    Variable ss
+    Variable v
+
+    n = numpnts(stripe)
+
+    if (n <= 1)
+        return 0
+    endif
+
+    pLo = round(pLo)
+    pHi = round(pHi)
+
+    pLo = max(0, min(n - 1, pLo))
+    pHi = max(0, min(n - 1, pHi))
+
+    if (pHi < pLo)
+        Variable tmpP
+        tmpP = pLo
+        pLo = pHi
+        pHi = tmpP
+    endif
+
+    count = 0
+    meanVal = 0
+
+    for (i = pLo; i <= pHi; i += 1)
+        v = stripe[i]
+        if (numtype(v) == 0)
+            meanVal += v
+            count += 1
+        endif
+    endfor
+
+    if (count <= 1)
+        return 0
+    endif
+
+    meanVal /= count
+    ss = 0
+
+    for (i = pLo; i <= pHi; i += 1)
+        v = stripe[i]
+        if (numtype(v) == 0)
+            ss += (v - meanVal) * (v - meanVal)
+        endif
+    endfor
+
+    return sqrt(ss / (count - 1))
+End
+
+
+Function LJZ_HStripe_NormalizeLayerToRawMean(src, dest, layer)
+    Wave src
+    Wave dest
+    Variable layer
+
+    Variable n0
+    Variable n1
+    Variable n2
+    Variable i
+    Variable j
+    Variable is3D
+    Variable rawSum
+    Variable destSum
+    Variable rawCount
+    Variable destCount
+    Variable rawMean
+    Variable destMean
+    Variable factor
+    Variable vRaw
+    Variable vDest
+
+    n0 = DimSize(src, 0)
+    n1 = DimSize(src, 1)
+    n2 = DimSize(src, 2)
+
+    is3D = 0
+    if (n2 > 0)
+        is3D = 1
+    endif
+
+    rawSum = 0
+    destSum = 0
+    rawCount = 0
+    destCount = 0
+
+    for (i = 0; i < n0; i += 1)
+        for (j = 0; j < n1; j += 1)
+            if (is3D)
+                vRaw = src[i][j][layer]
+                vDest = dest[i][j][layer]
+            else
+                vRaw = src[i][j]
+                vDest = dest[i][j]
+            endif
+
+            if (numtype(vRaw) == 0)
+                rawSum += vRaw
+                rawCount += 1
+            endif
+
+            if (numtype(vDest) == 0)
+                destSum += vDest
+                destCount += 1
+            endif
+        endfor
+    endfor
+
+    if (rawCount <= 0 || destCount <= 0)
+        return -1
+    endif
+
+    rawMean = rawSum / rawCount
+    destMean = destSum / destCount
+
+    if (numtype(rawMean) != 0 || numtype(destMean) != 0)
+        return -1
+    endif
+
+    if (abs(destMean) < 1e-12)
+        return -1
+    endif
+
+    factor = rawMean / destMean
+
+    for (i = 0; i < n0; i += 1)
+        for (j = 0; j < n1; j += 1)
+            if (is3D)
+                dest[i][j][layer] *= factor
+            else
+                dest[i][j] *= factor
+            endif
+        endfor
+    endfor
+
+    return 0
+End
+
+
+Function LJZ_HStripe_SaveMode5Diagnostic(line, low, stripe, corrected)
+    Wave line
+    Wave low
+    Wave stripe
+    Wave corrected
+
+    Variable n
+
+    n = numpnts(line)
+
+    Make/O/D/N=(n) $(LJZ_HStripe_BaseDF() + ":LastProfile")
+    Make/O/D/N=(n) $(LJZ_HStripe_BaseDF() + ":LastFitProfile")
+    Make/O/D/N=(n) $(LJZ_HStripe_BaseDF() + ":LastStripeProfile")
+    Make/O/D/N=(n) $(LJZ_HStripe_BaseDF() + ":LastCorrectionProfile")
+
+    Wave lastProfile = $(LJZ_HStripe_BaseDF() + ":LastProfile")
+    Wave lastFit = $(LJZ_HStripe_BaseDF() + ":LastFitProfile")
+    Wave lastStripe = $(LJZ_HStripe_BaseDF() + ":LastStripeProfile")
+    Wave lastCorr = $(LJZ_HStripe_BaseDF() + ":LastCorrectionProfile")
+
+    lastProfile = line[p]
+    lastFit = low[p]
+    lastStripe = stripe[p]
+    lastCorr = corrected[p]
+
+    SetScale/P x, DimOffset(line, 0), DimDelta(line, 0), WaveUnits(line, 0), lastProfile
+    SetScale/P x, DimOffset(line, 0), DimDelta(line, 0), WaveUnits(line, 0), lastFit
+    SetScale/P x, DimOffset(line, 0), DimDelta(line, 0), WaveUnits(line, 0), lastStripe
+    SetScale/P x, DimOffset(line, 0), DimDelta(line, 0), WaveUnits(line, 0), lastCorr
+
+    return 0
+End
+
+
+Function LJZ_HStripe_ApplyMDCWiseCorrection(src, dest, layer, stripeAxis, effLo, effHi, lineSmoothPts, alpha, stripeLimitFactor, layerNormMode)
+    Wave src
+    Wave dest
+    Variable layer
+    Variable stripeAxis
+    Variable effLo
+    Variable effHi
+    Variable lineSmoothPts
+    Variable alpha
+    Variable stripeLimitFactor
+    Variable layerNormMode
+
+    Variable n0
+    Variable n1
+    Variable n2
+    Variable i
+    Variable j
+    Variable is3D
+    Variable nLine
+    Variable pLo
+    Variable pHi
+    Variable limitVal
+    Variable sdevVal
+    Variable v
+    Variable cutoff
+    Variable diagIndex
+    Variable diagDone
+
+    NVAR SmoothCutoff = $(LJZ_HStripe_BaseDF() + ":SmoothCutoff")
+
+    n0 = DimSize(src, 0)
+    n1 = DimSize(src, 1)
+    n2 = DimSize(src, 2)
+
+    is3D = 0
+    if (n2 > 0)
+        is3D = 1
+    endif
+
+    if (alpha < 0 || numtype(alpha) != 0)
+        alpha = 0.35
+    endif
+
+    if (alpha > 1)
+        alpha = 1
+    endif
+
+    lineSmoothPts = round(lineSmoothPts)
+    if (lineSmoothPts < 3)
+        lineSmoothPts = 3
+    endif
+
+    cutoff = SmoothCutoff
+    if (numtype(cutoff) != 0 || cutoff <= 0)
+        cutoff = 0.25
+    endif
+
+    if (cutoff > 0.99)
+        cutoff = 0.99
+    endif
+
+    if (stripeAxis == 0)
+        nLine = n0
+    else
+        nLine = n1
+    endif
+
+    pLo = round(effLo)
+    pHi = round(effHi)
+
+    pLo = max(0, min(nLine - 1, pLo))
+    pHi = max(0, min(nLine - 1, pHi))
+
+    if (pHi < pLo)
+        Variable tmpP
+        tmpP = pLo
+        pLo = pHi
+        pHi = tmpP
+    endif
+
+    Make/FREE/D/N=(nLine) line
+    Make/FREE/D/N=(nLine) low
+    Make/FREE/D/N=(nLine) stripe
+    Make/FREE/D/N=(nLine) corrected
+
+    diagDone = 0
+
+    if (stripeAxis == 1)
+        diagIndex = round(n0 / 2)
+        diagIndex = max(0, min(n0 - 1, diagIndex))
+
+        SetScale/P x, DimOffset(src, 1), DimDelta(src, 1), WaveUnits(src, 1), line
+        SetScale/P x, DimOffset(src, 1), DimDelta(src, 1), WaveUnits(src, 1), low
+        SetScale/P x, DimOffset(src, 1), DimDelta(src, 1), WaveUnits(src, 1), stripe
+        SetScale/P x, DimOffset(src, 1), DimDelta(src, 1), WaveUnits(src, 1), corrected
+
+        for (i = 0; i < n0; i += 1)
+            for (j = 0; j < n1; j += 1)
+                if (is3D)
+                    line[j] = src[i][j][layer]
+                else
+                    line[j] = src[i][j]
+                endif
+            endfor
+
+            low = line[p]
+            Smooth/BLPF cutoff, low
+
+            stripe = line[p] - low[p]
+            sdevVal = LJZ_HStripe_ResidualSDev(stripe, pLo, pHi)
+            limitVal = stripeLimitFactor * sdevVal
+
+            for (j = 0; j < n1; j += 1)
+                v = line[j]
+
+                if (j >= pLo && j <= pHi)
+                    v = line[j] - alpha * LJZ_HStripe_ClampValue(stripe[j], limitVal)
+                endif
+
+                corrected[j] = v
+
+                if (is3D)
+                    dest[i][j][layer] = v
+                else
+                    dest[i][j] = v
+                endif
+            endfor
+
+            if (i == diagIndex)
+                LJZ_HStripe_SaveMode5Diagnostic(line, low, stripe, corrected)
+                diagDone = 1
+            endif
+        endfor
+
+        if (!diagDone)
+            LJZ_HStripe_SaveMode5Diagnostic(line, low, stripe, corrected)
+        endif
+    else
+        diagIndex = round(n1 / 2)
+        diagIndex = max(0, min(n1 - 1, diagIndex))
+
+        SetScale/P x, DimOffset(src, 0), DimDelta(src, 0), WaveUnits(src, 0), line
+        SetScale/P x, DimOffset(src, 0), DimDelta(src, 0), WaveUnits(src, 0), low
+        SetScale/P x, DimOffset(src, 0), DimDelta(src, 0), WaveUnits(src, 0), stripe
+        SetScale/P x, DimOffset(src, 0), DimDelta(src, 0), WaveUnits(src, 0), corrected
+
+        for (j = 0; j < n1; j += 1)
+            for (i = 0; i < n0; i += 1)
+                if (is3D)
+                    line[i] = src[i][j][layer]
+                else
+                    line[i] = src[i][j]
+                endif
+            endfor
+
+            low = line[p]
+            Smooth/BLPF cutoff, low
+
+            stripe = line[p] - low[p]
+            sdevVal = LJZ_HStripe_ResidualSDev(stripe, pLo, pHi)
+            limitVal = stripeLimitFactor * sdevVal
+
+            for (i = 0; i < n0; i += 1)
+                v = line[i]
+
+                if (i >= pLo && i <= pHi)
+                    v = line[i] - alpha * LJZ_HStripe_ClampValue(stripe[i], limitVal)
+                endif
+
+                corrected[i] = v
+
+                if (is3D)
+                    dest[i][j][layer] = v
+                else
+                    dest[i][j] = v
+                endif
+            endfor
+
+            if (j == diagIndex)
+                LJZ_HStripe_SaveMode5Diagnostic(line, low, stripe, corrected)
+                diagDone = 1
+            endif
+        endfor
+
+        if (!diagDone)
+            LJZ_HStripe_SaveMode5Diagnostic(line, low, stripe, corrected)
+        endif
+    endif
+
+    if (round(layerNormMode) == 1)
+        LJZ_HStripe_NormalizeLayerToRawMean(src, dest, layer)
+    endif
+
+    return 0
+End
+
+
+
+// ============================================================================
+//  Section 3. main correction
+// ============================================================================
+
+Function/S LJZ_HStripe_OutputName(srcName, suffix)
+    String srcName
+    String suffix
+
+    if (strlen(suffix) == 0)
+        suffix = "_hstripe"
+    endif
+
+    return CleanupName(srcName + suffix, 0)
+End
+
+Function LJZ_HStripe_ProcessWave(wPath, showChecks)
+    String wPath
+    Variable showChecks
+
+    LJZ_HStripe_EnsureDF()
+
+    Wave/Z src = $wPath
+    if (!WaveExists(src))
+        DoAlert 0, "Selected wave does not exist."
+        return -1
+    endif
+
+    if (!LJZ_HStripe_Is2DOr3DNumericWave(src))
+        DoAlert 0, "Selected wave must be a 2D or 3D numeric wave."
+        return -1
+    endif
+
+    NVAR StripeAxis = $(LJZ_HStripe_BaseDF() + ":StripeAxis")
+    NVAR AvgStart = $(LJZ_HStripe_BaseDF() + ":AvgStart")
+    NVAR AvgEnd = $(LJZ_HStripe_BaseDF() + ":AvgEnd")
+    NVAR EffStart = $(LJZ_HStripe_BaseDF() + ":EffStart")
+    NVAR EffEnd = $(LJZ_HStripe_BaseDF() + ":EffEnd")
+    NVAR SmoothCutoff = $(LJZ_HStripe_BaseDF() + ":SmoothCutoff")
+    NVAR EdgeSmooth = $(LJZ_HStripe_BaseDF() + ":EdgeSmooth")
+    NVAR CorrectionMode = $(LJZ_HStripe_BaseDF() + ":CorrectionMode")
+    NVAR CorrectionPower = $(LJZ_HStripe_BaseDF() + ":CorrectionPower")
+    NVAR CorrMin = $(LJZ_HStripe_BaseDF() + ":CorrMin")
+    NVAR CorrMax = $(LJZ_HStripe_BaseDF() + ":CorrMax")
+    NVAR StripeLimitFactor = $(LJZ_HStripe_BaseDF() + ":StripeLimitFactor")
+    NVAR LineSmoothPts = $(LJZ_HStripe_BaseDF() + ":LineSmoothPts")
+    NVAR MDCAlpha = $(LJZ_HStripe_BaseDF() + ":MDCAlpha")
+    NVAR LayerNormMode = $(LJZ_HStripe_BaseDF() + ":LayerNormMode")
+    SVAR OutputSuffix = $(LJZ_HStripe_BaseDF() + ":OutputSuffix")
+
+    Variable axis
+    Variable avgAxis
+    Variable avgLo
+    Variable avgHi
+    Variable effLo
+    Variable effHi
+    Variable nLayer
+    Variable layer
+    Variable mode
+    Variable cutoff
+    Variable showLayer
+    String oldDF
+    String outDF
+    String outName
+    String outPath
+
+    axis = round(StripeAxis)
+    if (axis != 0 && axis != 1)
+        axis = 1
+    endif
+
+    if (axis == 0)
+        avgAxis = 1
+    else
+        avgAxis = 0
+    endif
+
+    LJZ_HStripe_GetPointRange(src, avgAxis, AvgStart, AvgEnd, avgLo, avgHi)
+    LJZ_HStripe_GetPointRange(src, axis, EffStart, EffEnd, effLo, effHi)
+
+    mode = round(CorrectionMode)
+    if (mode < 1 || mode > 5)
+        mode = 5
+    endif
+
+    cutoff = SmoothCutoff
+    if (numtype(cutoff) != 0 || cutoff <= 0)
+        cutoff = 0.4
+    endif
+    if (cutoff > 0.99)
+        cutoff = 0.99
+    endif
+
+    oldDF = GetDataFolder(1)
+    outDF = GetWavesDataFolder(src, 1)
+    if (strlen(outDF) == 0)
+        outDF = "root:"
+    endif
+
+    outName = LJZ_HStripe_OutputName(NameOfWave(src), OutputSuffix)
+    outPath = LJZ_HStripe_df_with_colon(outDF) + outName
+
+    Duplicate/O src, $outPath
+    Wave dest = $outPath
+
+    nLayer = DimSize(src, 2)
+    if (nLayer <= 0)
+        nLayer = 1
+    endif
+
+    Make/O/D/N=0 $(LJZ_HStripe_BaseDF() + ":LastProfile")
+    Make/O/D/N=0 $(LJZ_HStripe_BaseDF() + ":LastFitProfile")
+    Make/O/D/N=0 $(LJZ_HStripe_BaseDF() + ":LastCorrectionProfile")
+    Make/O/D/N=0 $(LJZ_HStripe_BaseDF() + ":LastStripeProfile")
+
+    Wave profile = $(LJZ_HStripe_BaseDF() + ":LastProfile")
+    Wave fitProfile = $(LJZ_HStripe_BaseDF() + ":LastFitProfile")
+    Wave corrProfile = $(LJZ_HStripe_BaseDF() + ":LastCorrectionProfile")
+    Wave stripeProfile = $(LJZ_HStripe_BaseDF() + ":LastStripeProfile")
+
+    for (layer = 0; layer < nLayer; layer += 1)
+        if (mode == 5)
+            LJZ_HStripe_ApplyMDCWiseCorrection(src, dest, layer, axis, effLo, effHi, LineSmoothPts, MDCAlpha, StripeLimitFactor, LayerNormMode)
+            continue
+        endif
+
+        if (mode == 4)
+            LJZ_HStripe_ApplyLineHighpass(src, dest, layer, axis, effLo, effHi, LineSmoothPts)
+            continue
+        endif
+
+        LJZ_HStripe_MakeProfileFromLayer(src, profile, layer, axis, avgLo, avgHi)
+
+        Duplicate/O profile, fitProfile
+        LJZ_HStripe_FillBoundary(fitProfile, effLo, effHi)
+
+        Smooth/BLPF cutoff, fitProfile
+
+        LJZ_HStripe_FillBoundary(fitProfile, effLo, effHi)
+
+        Duplicate/O profile, corrProfile
+        corrProfile = profile[p] / fitProfile[p]
+        LJZ_HStripe_FillBoundary(corrProfile, effLo, effHi)
+        LJZ_HStripe_CleanAndLimitCorrection(corrProfile, CorrMin, CorrMax)
+
+        Duplicate/O profile, stripeProfile
+        stripeProfile = profile[p] - fitProfile[p]
+        LJZ_HStripe_FillBoundary(stripeProfile, effLo, effHi)
+        LJZ_HStripe_LimitStripe(stripeProfile, StripeLimitFactor)
+
+        if (EdgeSmooth > 1)
+            Smooth EdgeSmooth, corrProfile
+            Smooth EdgeSmooth, stripeProfile
+        endif
+
+        LJZ_HStripe_ApplyProfileCorrection(src, dest, layer, axis, mode, corrProfile, stripeProfile, CorrectionPower, effLo, effHi)
+    endfor
+
+    showLayer = nLayer - 1
+    LJZ_HStripe_MakeLastLayerImages(src, dest, showLayer)
+
+    Note/K dest
+    String noteStr
+    noteStr = ""
+    noteStr += "LJZ_HStripeRemove\r"
+    noteStr += "Source=" + wPath + "\r"
+    noteStr += "StripeAxis=" + num2str(axis) + "\r"
+    noteStr += "CorrectionMode=" + num2str(mode) + "\r"
+    noteStr += "AvgPointRange=" + num2str(avgLo) + " to " + num2str(avgHi) + "\r"
+    noteStr += "EffectivePointRange=" + num2str(effLo) + " to " + num2str(effHi) + "\r"
+    noteStr += "SmoothCutoff=" + num2str(cutoff) + "\r"
+    noteStr += "LineSmoothPts=" + num2str(LineSmoothPts) + "\r"
+    noteStr += "MDCAlpha=" + num2str(MDCAlpha) + "\r"
+    noteStr += "LayerNormMode=" + num2str(LayerNormMode) + "\r"
+    Note dest, noteStr
+
+    SetDataFolder oldDF
+
+    Print "LJZ_HStripeRemove: output = " + outPath
+    Print "  StripeAxis = ", axis, " CorrectionMode = ", mode, " LastLayer = ", showLayer
+
+    if (showChecks)
+        LJZ_HStripe_ShowCheckGraphs()
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_ProcessSelected()
+    LJZ_HStripe_EnsureDF()
+
+    SVAR sWave = $(LJZ_HStripe_BaseDF() + ":WaveSel")
+
+    if (strlen(sWave) == 0)
+        DoAlert 0, "Please select a 2D/3D wave first."
+        return -1
+    endif
+
+    return LJZ_HStripe_ProcessWave(sWave, 1)
+End
+
+Function LJZ_HStripe_ProcessAll()
+    LJZ_HStripe_EnsureDF()
+
+    String listStr
+    Variable n
+    Variable i
+    Variable okCount
+
+    listStr = LJZ_HStripe_CurrentWaveList()
+    n = ItemsInList(listStr, ";")
+
+    if (n <= 0)
+        DoAlert 0, "No 2D/3D numeric waves found in SourceDF."
+        return -1
+    endif
+
+    okCount = 0
+
+    for (i = 0; i < n; i += 1)
+        String wPath = StringFromList(i, listStr, ";")
+        Print "HStripeRemove: processing " + num2str(i + 1) + " / " + num2str(n) + " : " + wPath
+        if (LJZ_HStripe_ProcessWave(wPath, 0) == 0)
+            okCount += 1
+        endif
+        DoUpdate
+    endfor
+
+    LJZ_HStripe_ShowCheckGraphs()
+
+    Print "HStripeRemove: finished. success = ", okCount, " / ", n
+
+    return 0
+End
+
+Function LJZ_HStripe_ResetDefaults2()
+    LJZ_HStripe_EnsureDF()
+
+    NVAR StripeAxis = $(LJZ_HStripe_BaseDF() + ":StripeAxis")
+    NVAR AvgStart = $(LJZ_HStripe_BaseDF() + ":AvgStart")
+    NVAR AvgEnd = $(LJZ_HStripe_BaseDF() + ":AvgEnd")
+    NVAR EffStart = $(LJZ_HStripe_BaseDF() + ":EffStart")
+    NVAR EffEnd = $(LJZ_HStripe_BaseDF() + ":EffEnd")
+    NVAR SmoothCutoff = $(LJZ_HStripe_BaseDF() + ":SmoothCutoff")
+    NVAR EdgeSmooth = $(LJZ_HStripe_BaseDF() + ":EdgeSmooth")
+    NVAR CorrectionMode = $(LJZ_HStripe_BaseDF() + ":CorrectionMode")
+    NVAR CorrectionPower = $(LJZ_HStripe_BaseDF() + ":CorrectionPower")
+    NVAR CorrMin = $(LJZ_HStripe_BaseDF() + ":CorrMin")
+    NVAR CorrMax = $(LJZ_HStripe_BaseDF() + ":CorrMax")
+    NVAR StripeLimitFactor = $(LJZ_HStripe_BaseDF() + ":StripeLimitFactor")
+    NVAR LineSmoothPts = $(LJZ_HStripe_BaseDF() + ":LineSmoothPts")
+    NVAR MDCAlpha = $(LJZ_HStripe_BaseDF() + ":MDCAlpha")
+    NVAR LayerNormMode = $(LJZ_HStripe_BaseDF() + ":LayerNormMode")
+    SVAR OutputSuffix = $(LJZ_HStripe_BaseDF() + ":OutputSuffix")
+
+    StripeAxis = 1
+    AvgStart = NaN
+    AvgEnd = NaN
+    EffStart = NaN
+    EffEnd = NaN
+
+    SmoothCutoff = 0.25
+    EdgeSmooth = 0
+
+    CorrectionMode = 5
+    CorrectionPower = 0.5
+
+    CorrMin = 0.5
+    CorrMax = 2.0
+
+    StripeLimitFactor = 0.5
+    LineSmoothPts = 51
+    MDCAlpha = 0.35
+    LayerNormMode = 1
+    OutputSuffix = "_mdcwise"
+
+    LJZ_HStripe_RefreshTitleBoxes()
+
+    return 0
+End
+
+
+// ============================================================================
+//  Section 4. display
+// ============================================================================
+
+Function LJZ_HStripe_ShowCheckGraphs()
+    LJZ_HStripe_EnsureDF()
+
+    Wave/Z raw2D = $(LJZ_HStripe_BaseDF() + ":LastRaw2D")
+    Wave/Z cor2D = $(LJZ_HStripe_BaseDF() + ":LastCorrected2D")
+    Wave/Z profile = $(LJZ_HStripe_BaseDF() + ":LastProfile")
+    Wave/Z fitProfile = $(LJZ_HStripe_BaseDF() + ":LastFitProfile")
+    Wave/Z corrProfile = $(LJZ_HStripe_BaseDF() + ":LastCorrectionProfile")
+    Wave/Z stripeProfile = $(LJZ_HStripe_BaseDF() + ":LastStripeProfile")
+
+    String gName
+    String rawName
+    String corName
+    String pName
+    String fitName
+    String stripeName
+    String corrName
+
+    if (WaveExists(raw2D))
+        rawName = NameOfWave(raw2D)
+        gName = "LJZ_HStripe_Check_RawImage"
+        DoWindow/K $gName
+        Display/N=$gName
+        AppendImage/W=$gName raw2D
+        ModifyImage/W=$gName $rawName, ctab={*,*,Grays,0}
+        ModifyGraph/W=$gName margin(left)=45, margin(bottom)=38
+        TextBox/W=$gName/C/N=text0/A=LT "raw image"
+    endif
+
+    if (WaveExists(cor2D))
+        corName = NameOfWave(cor2D)
+        gName = "LJZ_HStripe_Check_CorrectedImage"
+        DoWindow/K $gName
+        Display/N=$gName
+        AppendImage/W=$gName cor2D
+        ModifyImage/W=$gName $corName, ctab={*,*,Grays,0}
+        ModifyGraph/W=$gName margin(left)=45, margin(bottom)=38
+        TextBox/W=$gName/C/N=text0/A=LT "corrected image"
+    endif
+
+    if (WaveExists(profile) && WaveExists(fitProfile))
+        if (numpnts(profile) > 0 && numpnts(fitProfile) > 0)
+            pName = NameOfWave(profile)
+            fitName = NameOfWave(fitProfile)
+
+            gName = "LJZ_HStripe_Check_Profile"
+            DoWindow/K $gName
+            Display/N=$gName profile
+            AppendToGraph/W=$gName fitProfile
+            ModifyGraph/W=$gName lsize($pName)=1
+            ModifyGraph/W=$gName lsize($fitName)=2
+            Label/W=$gName bottom "stripe axis coordinate"
+            Label/W=$gName left "profile intensity"
+            Legend/W=$gName/C/N=text0/J/A=LT "\s(" + pName + ") profile(" + fitName + ") BLPF background"
+        endif
+    endif
+
+    if (WaveExists(stripeProfile) && WaveExists(corrProfile))
+        if (numpnts(stripeProfile) > 0 && numpnts(corrProfile) > 0)
+            stripeName = NameOfWave(stripeProfile)
+            corrName = NameOfWave(corrProfile)
+
+            gName = "LJZ_HStripe_Check_Stripe"
+            DoWindow/K $gName
+            Display/N=$gName stripeProfile
+            AppendToGraph/W=$gName/R corrProfile
+            ModifyGraph/W=$gName lsize($stripeName)=2
+            ModifyGraph/W=$gName lsize($corrName)=1
+            Label/W=$gName bottom "stripe axis coordinate"
+            Label/W=$gName left "additive stripe"
+            Label/W=$gName right "multiplicative correction"
+            Legend/W=$gName/C/N=text0/J/A=LT "\s(" + stripeName + ") stripe(" + corrName + ") correction"
+        endif
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_RefreshTitleBoxes()
+    String p
+
+    p = LJZ_HStripe_PanelName()
+    DoWindow $p
+    if (!V_flag)
+        return 0
+    endif
+
+    SVAR sWave = $(LJZ_HStripe_BaseDF() + ":WaveSel")
+    NVAR StripeAxis = $(LJZ_HStripe_BaseDF() + ":StripeAxis")
+    NVAR CorrectionMode = $(LJZ_HStripe_BaseDF() + ":CorrectionMode")
+
+    String modeText
+    if (round(CorrectionMode) == 1)
+        modeText = "Mode 1 Additive"
+    elseif (round(CorrectionMode) == 2)
+        modeText = "Mode 2 Multiplicative"
+    elseif (round(CorrectionMode) == 3)
+        modeText = "Mode 3 Weak division"
+    elseif (round(CorrectionMode) == 4)
+        modeText = "Mode 4 Line high-pass"
+    else
+        modeText = "Mode 5 MDC-wise"
+    endif
+
+    TitleBox tbSelected, win=$p, title="Selected: " + LJZ_HStripe_ShortenForTitle(sWave, 82)
+    TitleBox tbStatus, win=$p, title="Axis=" + num2str(round(StripeAxis)) + "   " + modeText
+
+    return 0
+End
+
+
+// ============================================================================
+//  Section 5. panel and callbacks
+// ============================================================================
+
+Function LJZ_HStripeRemove()
+    LJZ_HStripe_EnsureDF()
+    LJZ_HStripe_RebuildWaveList()
+    LJZ_HStripe_OpenPanel()
+    LJZ_HStripe_RefreshTitleBoxes()
+
+    return 0
+End
+
+Function LJZ_HStripe_OpenPanel()
+    LJZ_HStripe_EnsureDF()
+
+    SVAR sSourceDF = $(LJZ_HStripe_BaseDF() + ":SourceDF")
+    SVAR sOutputSuffix = $(LJZ_HStripe_BaseDF() + ":OutputSuffix")
+
+    String p
+    p = LJZ_HStripe_PanelName()
+
+    DoWindow/F $p
+    if (V_flag)
+        LJZ_HStripe_RefreshTitleBoxes()
+        return 0
+    endif
+
+    NewPanel/N=$p /W=(120,80,875,635)
+    ModifyPanel frameStyle=1
+    ModifyPanel cbRGB=(60000,60000,60000)
+
+    TitleBox tbTitle,pos={12,8},size={300,18},title="LJZ Horizontal Stripe Remove",frame=0
+    TitleBox tbSelected,pos={12,28},size={620,18},title="Selected: (none)",frame=0
+    TitleBox tbStatus,pos={12,48},size={400,18},title="Status: idle",frame=0
+
+    SetVariable svSourceDF,pos={12,72},size={420,20},title="Source DF"
+    SetVariable svSourceDF,value=_STR:sSourceDF,proc=LJZ_HStripe_SetVarProc
+
+    CheckBox ckRecursive,pos={445,74},size={85,18},title="Recursive"
+    CheckBox ckRecursive,variable=$(LJZ_HStripe_BaseDF() + ":Recursive")
+
+    Button btScan,pos={545,70},size={70,24},title="Scan",proc=LJZ_HStripe_ButtonProc
+    Button btRunSel,pos={625,70},size={100,24},title="Run Selected",proc=LJZ_HStripe_ButtonProc
+
+    ListBox lbWave,pos={12,102},size={250,360},listWave=$(LJZ_HStripe_BaseDF() + ":LB_Disp"),selWave=$(LJZ_HStripe_BaseDF() + ":LB_Sel"),proc=LJZ_HStripe_ListBoxProc
+    ListBox lbWave,mode=1
+
+    GroupBox gbRange,pos={275,102},size={220,130},title="Axis and ranges"
+    SetVariable svAxis,pos={290,130},size={185,20},title="StripeAxis"
+    SetVariable svAxis,limits={0,1,1},value=$(LJZ_HStripe_BaseDF() + ":StripeAxis")
+
+    SetVariable svAvgStart,pos={290,158},size={185,20},title="AvgStart"
+    SetVariable svAvgStart,limits={-inf,inf,0.01},value=$(LJZ_HStripe_BaseDF() + ":AvgStart")
+
+    SetVariable svAvgEnd,pos={290,186},size={185,20},title="AvgEnd"
+    SetVariable svAvgEnd,limits={-inf,inf,0.01},value=$(LJZ_HStripe_BaseDF() + ":AvgEnd")
+
+    SetVariable svEffStart,pos={515,130},size={190,20},title="EffStart"
+    SetVariable svEffStart,limits={-inf,inf,0.01},value=$(LJZ_HStripe_BaseDF() + ":EffStart")
+
+    SetVariable svEffEnd,pos={515,158},size={190,20},title="EffEnd"
+    SetVariable svEffEnd,limits={-inf,inf,0.01},value=$(LJZ_HStripe_BaseDF() + ":EffEnd")
+
+    TitleBox tbAxisHint,pos={515,188},size={210,36},title="Axis=1: profile vs dim1\rAxis=0: profile vs dim0",frame=0
+
+    GroupBox gbSmooth,pos={275,245},size={220,115},title="BLPF / line smooth"
+    SetVariable svSmoothCutoff,pos={290,273},size={185,20},title="BLPF"
+    SetVariable svSmoothCutoff,limits={0.01,0.99,0.01},value=$(LJZ_HStripe_BaseDF() + ":SmoothCutoff")
+
+    SetVariable svEdgeSmooth,pos={290,301},size={185,20},title="EdgeSmooth"
+    SetVariable svEdgeSmooth,limits={0,101,1},value=$(LJZ_HStripe_BaseDF() + ":EdgeSmooth")
+
+    SetVariable svLineSmooth,pos={290,329},size={185,20},title="LineSmooth"
+    SetVariable svLineSmooth,limits={3,999,2},value=$(LJZ_HStripe_BaseDF() + ":LineSmoothPts")
+
+    GroupBox gbMode,pos={515,245},size={220,220},title="Correction mode"
+    SetVariable svMode,pos={530,273},size={185,20},title="Mode"
+    SetVariable svMode,limits={1,5,1},value=$(LJZ_HStripe_BaseDF() + ":CorrectionMode")
+
+    SetVariable svPower,pos={530,301},size={185,20},title="Power"
+    SetVariable svPower,limits={0.05,2,0.05},value=$(LJZ_HStripe_BaseDF() + ":CorrectionPower")
+
+    SetVariable svMDCAlpha,pos={530,329},size={185,20},title="MDCAlpha"
+    SetVariable svMDCAlpha,limits={0,1,0.05},value=$(LJZ_HStripe_BaseDF() + ":MDCAlpha")
+
+    SetVariable svNormMode,pos={530,357},size={185,20},title="NormMode"
+    SetVariable svNormMode,limits={0,1,1},value=$(LJZ_HStripe_BaseDF() + ":LayerNormMode")
+
+    SetVariable svCorrMin,pos={530,385},size={185,20},title="CorrMin"
+    SetVariable svCorrMin,limits={0.01,10,0.05},value=$(LJZ_HStripe_BaseDF() + ":CorrMin")
+
+    SetVariable svCorrMax,pos={530,413},size={185,20},title="CorrMax"
+    SetVariable svCorrMax,limits={0.01,10,0.05},value=$(LJZ_HStripe_BaseDF() + ":CorrMax")
+
+    SetVariable svStripeLimit,pos={530,441},size={185,20},title="StripeLim"
+    SetVariable svStripeLimit,limits={0,10,0.05},value=$(LJZ_HStripe_BaseDF() + ":StripeLimitFactor")
+
+    GroupBox gbOut,pos={275,474},size={460,42},title="Output"
+    SetVariable svSuffix,pos={290,498},size={260,20},title="Suffix"
+    SetVariable svSuffix,value=_STR:sOutputSuffix
+
+    Button btRunAll,pos={575,494},size={70,24},title="Run All",proc=LJZ_HStripe_ButtonProc
+    Button btShow,pos={655,494},size={70,24},title="Show",proc=LJZ_HStripe_ButtonProc
+
+    Button btDefaults,pos={275,530},size={95,28},title="Defaults",proc=LJZ_HStripe_ButtonProc
+    Button btClose,pos={382,530},size={80,28},title="Close",proc=LJZ_HStripe_ButtonProc
+
+    TitleBox tbHint,pos={485,528},size={255,44},title="Mode 5 = MDC-wise main mode.\rNormMode=1 preserves layer mean.",frame=0
+
+    LJZ_HStripe_RefreshTitleBoxes()
+
+    return 0
+End
+
+Function LJZ_HStripe_SetVarProc(sva) : SetVariableControl
+    STRUCT WMSetVariableAction &sva
+
+    if (sva.eventCode != 1 && sva.eventCode != 2 && sva.eventCode != 3)
+        return 0
+    endif
+
+    if (CmpStr(sva.ctrlName, "svSourceDF") == 0)
+        LJZ_HStripe_RebuildWaveList()
+        LJZ_HStripe_RefreshTitleBoxes()
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_ButtonProc(ba) : ButtonControl
+    STRUCT WMButtonAction &ba
+
+    if (ba.eventCode != 2)
+        return 0
+    endif
+
+    if (CmpStr(ba.ctrlName, "btScan") == 0)
+        LJZ_HStripe_RebuildWaveList()
+        LJZ_HStripe_RefreshTitleBoxes()
+        return 0
+    endif
+
+    if (CmpStr(ba.ctrlName, "btRunSel") == 0)
+        LJZ_HStripe_ProcessSelected()
+        LJZ_HStripe_RefreshTitleBoxes()
+        return 0
+    endif
+
+    if (CmpStr(ba.ctrlName, "btRunAll") == 0)
+        LJZ_HStripe_ProcessAll()
+        LJZ_HStripe_RefreshTitleBoxes()
+        return 0
+    endif
+
+    if (CmpStr(ba.ctrlName, "btShow") == 0)
+        LJZ_HStripe_ShowCheckGraphs()
+        return 0
+    endif
+
+    if (CmpStr(ba.ctrlName, "btDefaults") == 0)
+        LJZ_HStripe_ResetDefaults2()
+        return 0
+    endif
+
+    if (CmpStr(ba.ctrlName, "btClose") == 0)
+        DoWindow/K $(LJZ_HStripe_PanelName())
+        return 0
+    endif
+
+    return 0
+End
+
+Function LJZ_HStripe_ListBoxProc(ctrlName, row, col, eventCode) : ListBoxControl
+    String ctrlName
+    Variable row
+    Variable col
+    Variable eventCode
+
+    // The ListBox must only update the selection.
+    // It must never run stripe correction.
+    // Clicking empty space can clear selWave; restore the old selection in that case.
+
+    if (eventCode != 1 && eventCode != 3 && eventCode != 4 && eventCode != 5)
+        return 0
+    endif
+
+    if (row < 0)
+        LJZ_HStripe_RestoreListSelection()
+        return 0
+    endif
+
+    LJZ_HStripe_SelectWaveRow(row)
+
+    return 0
+End
