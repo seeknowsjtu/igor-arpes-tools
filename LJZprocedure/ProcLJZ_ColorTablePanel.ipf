@@ -1,20 +1,1909 @@
 #pragma TextEncoding = "UTF-8"
-#pragma rtGlobals=3		// Use modern global access method and strict wave access.
-//============================================================
-// CTLUZ_LJZ: 5-point ColorTable + Lookup wave + Apply to Top Graph
-// SAFE workflow version:
-//   1) editor workspace lives in root:ARPES_LJZ:CTLUZ
-//   2) applying to a graph writes per-image CT/LUT snapshots into
-//      root:ARPES_LJZ:CTLUZ:APPLIED
-//   3) reopening the panel will NOT reset current state
+#pragma rtGlobals=3
+#pragma DefaultTab={3,20,4}
+
+// ============================================================================
+//  ProcLJZ_ColorTablePanel_v2_1.ipf
 //
-// State in: root:ARPES_LJZ:CTLUZ
-//============================================================
+//  Safer color-table manager for Igor Pro image graphs.
+//
+//  Main changes from v2:
+//    1) Connects the user palette library:
+//         root:ARPES_LJZ:CTLUZ:CTLIB:
+//       It lists all valid numeric N x 3 color-table waves in that folder.
+//    2) Library palettes can be previewed, applied to the selected graph image,
+//       loaded into the Custom 5-anchor editor, or overwritten by Custom 5.
+//    3) Custom 5 editor now has Swap A/B tools to swap two selected anchor colors.
+//       It swaps only RGB values, not anchor positions.
+//    4) This file intentionally does not define old ctluz_* functions, so it can
+//       coexist with ProcLJZ_CTLUZ_Compat_v2.ipf or your older CTLUZ tools.
+//    5) No lookup=lutWave is used anywhere in this panel.
+//
+//  Recommended workflow:
+//    Graph on top -> open panel -> Refresh images -> select one image.
+//    Then use either built-in CT or CTLIB palette -> Apply selected.
+// ============================================================================
 
 
-// ============================================================
-// Folder / init helpers
-// ============================================================
+Menu "ARPES_LJZ"
+    "ColorTable Panel v2.1", LJZ_CTP2_OpenPanel()
+End
+
+
+// ============================================================================
+//  Section 0. Paths / state
+// ============================================================================
+
+Function/S LJZ_CTP2_BaseDF()
+    return "root:Packages:LJZ_ColorTablePanelV2"
+End
+
+
+Function/S LJZ_CTP2_CTLIB_DF()
+    return "root:ARPES_LJZ:CTLUZ:CTLIB"
+End
+
+
+Function/S LJZ_CTP2_CTLIB_DF_Colon()
+    return "root:ARPES_LJZ:CTLUZ:CTLIB:"
+End
+
+
+Function/S LJZ_CTP2_PanelName()
+    return "LJZ_ColorTablePanelV2_Panel"
+End
+
+
+Function/S LJZ_CTP2_PreviewGraphName()
+    return "ctPreviewGraph"
+End
+
+
+Function/S LJZ_CTP2_PreviewGraphPath()
+    return LJZ_CTP2_PanelName() + "#" + LJZ_CTP2_PreviewGraphName()
+End
+
+
+Function LJZ_CTP2_HasChildSubwindow(hostWin, childName)
+    String hostWin
+    String childName
+
+    String childList
+    childList = ChildWindowList(hostWin)
+
+    if (WhichListItem(childName, childList, ";", 0, 0) >= 0)
+        return 1
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_Clamp(v, lo, hi)
+    Variable v
+    Variable lo
+    Variable hi
+
+    if (v < lo)
+        return lo
+    endif
+
+    if (v > hi)
+        return hi
+    endif
+
+    return v
+End
+
+
+Function LJZ_CTP2_EnsureCTLIB()
+    NewDataFolder/O root:ARPES_LJZ
+    NewDataFolder/O root:ARPES_LJZ:CTLUZ
+    NewDataFolder/O root:ARPES_LJZ:CTLUZ:CTLIB
+
+    // These defaults are created only if absent. Existing user palettes are not
+    // touched and no CTLIB folder is ever killed by this panel.
+    Wave/Z/W/U wMualani = root:ARPES_LJZ:CTLUZ:CTLIB:Mualani
+    if (!WaveExists(wMualani))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:Mualani
+        Wave/W/U mualani = root:ARPES_LJZ:CTLUZ:CTLIB:Mualani
+        LJZ_CTP2_FillMualaniCT(mualani)
+    endif
+
+    Wave/Z/W/U wGray = root:ARPES_LJZ:CTLUZ:CTLIB:Gray
+    if (!WaveExists(wGray))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:Gray
+        Wave/W/U gray = root:ARPES_LJZ:CTLUZ:CTLIB:Gray
+        LJZ_CTP2_FillGrayCT(gray)
+    endif
+
+    Wave/Z/W/U wCyanHot = root:ARPES_LJZ:CTLUZ:CTLIB:CyanHot
+    if (!WaveExists(wCyanHot))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:CyanHot
+        Wave/W/U cyanhot = root:ARPES_LJZ:CTLUZ:CTLIB:CyanHot
+        LJZ_CTP2_FillCyanHotCT(cyanhot)
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_EnsureDF()
+    NewDataFolder/O root:Packages
+    NewDataFolder/O root:Packages:LJZ_ColorTablePanelV2
+    LJZ_CTP2_EnsureCTLIB()
+
+    SVAR/Z GraphName = $(LJZ_CTP2_BaseDF() + ":GraphName")
+    if (!SVAR_Exists(GraphName))
+        String/G $(LJZ_CTP2_BaseDF() + ":GraphName") = ""
+    endif
+
+    SVAR/Z ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+    if (!SVAR_Exists(ExistingImageName))
+        String/G $(LJZ_CTP2_BaseDF() + ":ExistingImageName") = ""
+    endif
+
+    SVAR/Z BuiltinCTName = $(LJZ_CTP2_BaseDF() + ":BuiltinCTName")
+    if (!SVAR_Exists(BuiltinCTName))
+        String/G $(LJZ_CTP2_BaseDF() + ":BuiltinCTName") = "Grays"
+    endif
+
+    SVAR/Z LibraryCTName = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
+    if (!SVAR_Exists(LibraryCTName))
+        String/G $(LJZ_CTP2_BaseDF() + ":LibraryCTName") = "Mualani"
+    endif
+
+    SVAR/Z LibraryMenuList = $(LJZ_CTP2_BaseDF() + ":LibraryMenuList")
+    if (!SVAR_Exists(LibraryMenuList))
+        String/G $(LJZ_CTP2_BaseDF() + ":LibraryMenuList") = "Mualani;Gray;CyanHot;"
+    endif
+    
+    Wave/T/Z LibList = $(LJZ_CTP2_BaseDF() + ":LibList")
+    if (!WaveExists(LibList))
+        Make/O/T/N=0 $(LJZ_CTP2_BaseDF() + ":LibList")
+    endif
+
+    Wave/Z LibSel = $(LJZ_CTP2_BaseDF() + ":LibSel")
+    if (!WaveExists(LibSel))
+        Make/O/N=0 $(LJZ_CTP2_BaseDF() + ":LibSel")
+    endif
+
+    SVAR/Z SaveCustomName = $(LJZ_CTP2_BaseDF() + ":SaveCustomName")
+    if (!SVAR_Exists(SaveCustomName))
+        String/G $(LJZ_CTP2_BaseDF() + ":SaveCustomName") = "MyCustomCT"
+    endif
+
+    NVAR/Z SelImageRow = $(LJZ_CTP2_BaseDF() + ":SelImageRow")
+    if (!NVAR_Exists(SelImageRow))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":SelImageRow") = -1
+    endif
+
+    NVAR/Z ReverseCT = $(LJZ_CTP2_BaseDF() + ":ReverseCT")
+    if (!NVAR_Exists(ReverseCT))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":ReverseCT") = 0
+    endif
+
+    NVAR/Z UseManualRange = $(LJZ_CTP2_BaseDF() + ":UseManualRange")
+    if (!NVAR_Exists(UseManualRange))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":UseManualRange") = 0
+    endif
+
+    NVAR/Z CMin = $(LJZ_CTP2_BaseDF() + ":CMin")
+    if (!NVAR_Exists(CMin))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":CMin") = 0
+    endif
+
+    NVAR/Z CMax = $(LJZ_CTP2_BaseDF() + ":CMax")
+    if (!NVAR_Exists(CMax))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":CMax") = 1
+    endif
+
+    NVAR/Z ApplyToAllConfirm = $(LJZ_CTP2_BaseDF() + ":ApplyToAllConfirm")
+    if (!NVAR_Exists(ApplyToAllConfirm))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":ApplyToAllConfirm") = 0
+    endif
+
+    NVAR/Z SwapA = $(LJZ_CTP2_BaseDF() + ":SwapA")
+    if (!NVAR_Exists(SwapA))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":SwapA") = 1
+    endif
+
+    NVAR/Z SwapB = $(LJZ_CTP2_BaseDF() + ":SwapB")
+    if (!NVAR_Exists(SwapB))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":SwapB") = 3
+    endif
+
+    NVAR/Z p0 = $(LJZ_CTP2_BaseDF() + ":p0")
+    if (!NVAR_Exists(p0))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":p0") = 0
+    endif
+
+    NVAR/Z p1 = $(LJZ_CTP2_BaseDF() + ":p1")
+    if (!NVAR_Exists(p1))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":p1") = 0.25
+    endif
+
+    NVAR/Z p2 = $(LJZ_CTP2_BaseDF() + ":p2")
+    if (!NVAR_Exists(p2))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":p2") = 0.50
+    endif
+
+    NVAR/Z p3 = $(LJZ_CTP2_BaseDF() + ":p3")
+    if (!NVAR_Exists(p3))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":p3") = 0.75
+    endif
+
+    NVAR/Z p4 = $(LJZ_CTP2_BaseDF() + ":p4")
+    if (!NVAR_Exists(p4))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":p4") = 1
+    endif
+
+    NVAR/Z r0 = $(LJZ_CTP2_BaseDF() + ":r0")
+    if (!NVAR_Exists(r0))
+        Variable/G $(LJZ_CTP2_BaseDF() + ":r0") = 0
+        Variable/G $(LJZ_CTP2_BaseDF() + ":g0") = 0
+        Variable/G $(LJZ_CTP2_BaseDF() + ":b0") = 0
+
+        Variable/G $(LJZ_CTP2_BaseDF() + ":r1") = 0
+        Variable/G $(LJZ_CTP2_BaseDF() + ":g1") = 0
+        Variable/G $(LJZ_CTP2_BaseDF() + ":b1") = 255
+
+        Variable/G $(LJZ_CTP2_BaseDF() + ":r2") = 0
+        Variable/G $(LJZ_CTP2_BaseDF() + ":g2") = 255
+        Variable/G $(LJZ_CTP2_BaseDF() + ":b2") = 255
+
+        Variable/G $(LJZ_CTP2_BaseDF() + ":r3") = 255
+        Variable/G $(LJZ_CTP2_BaseDF() + ":g3") = 255
+        Variable/G $(LJZ_CTP2_BaseDF() + ":b3") = 0
+
+        Variable/G $(LJZ_CTP2_BaseDF() + ":r4") = 255
+        Variable/G $(LJZ_CTP2_BaseDF() + ":g4") = 255
+        Variable/G $(LJZ_CTP2_BaseDF() + ":b4") = 255
+    endif
+
+    Wave/T/Z ImgList = $(LJZ_CTP2_BaseDF() + ":ImgList")
+    if (!WaveExists(ImgList))
+        Make/O/T/N=0 $(LJZ_CTP2_BaseDF() + ":ImgList")
+    endif
+
+    Wave/Z ImgSel = $(LJZ_CTP2_BaseDF() + ":ImgSel")
+    if (!WaveExists(ImgSel))
+        Make/O/N=0 $(LJZ_CTP2_BaseDF() + ":ImgSel")
+    endif
+
+    Wave/Z/W/U CustomCT = $(LJZ_CTP2_BaseDF() + ":CustomCT")
+    if (!WaveExists(CustomCT))
+        Make/O/W/U/N=(256,3) $(LJZ_CTP2_BaseDF() + ":CustomCT")
+    endif
+
+    Wave/Z PreviewImage = $(LJZ_CTP2_BaseDF() + ":PreviewImage")
+    if (!WaveExists(PreviewImage))
+        Make/O/N=(256,16) $(LJZ_CTP2_BaseDF() + ":PreviewImage")
+        Wave prev = $(LJZ_CTP2_BaseDF() + ":PreviewImage")
+        LJZ_CTP2_InitPreviewImage(prev)
+    endif
+
+    LJZ_CTP2_RefreshLibraryList()
+    return 0
+End
+
+
+Function LJZ_CTP2_InitPreviewImage(prev)
+    Wave prev
+
+    Variable nx
+    Variable ny
+    Variable i
+    Variable j
+
+    nx = DimSize(prev, 0)
+    ny = DimSize(prev, 1)
+
+    if (nx <= 0 || ny <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < nx; i += 1)
+        for (j = 0; j < ny; j += 1)
+            prev[i][j] = i
+        endfor
+    endfor
+
+    SetScale/I x, 0, nx - 1, "", prev
+    SetScale/I y, 0, 1, "", prev
+    return 0
+End
+
+
+// ============================================================================
+//  Section 1. Graph / image selection
+// ============================================================================
+
+Function/S LJZ_CTP2_GetGraphName(createIfMissing)
+    Variable createIfMissing
+
+    LJZ_CTP2_EnsureDF()
+
+    SVAR GraphName = $(LJZ_CTP2_BaseDF() + ":GraphName")
+    String gName
+    gName = GraphName
+
+    if (strlen(gName) == 0)
+        gName = WinName(0, 1)
+    endif
+
+    if (strlen(gName) == 0)
+        if (createIfMissing)
+            Display/N=LJZ_CTP2_Graph
+            gName = "LJZ_CTP2_Graph"
+        else
+            return ""
+        endif
+    endif
+
+    if (WinType(gName) == 0)
+        if (createIfMissing)
+            Display/N=$gName
+        else
+            return ""
+        endif
+    endif
+
+    return gName
+End
+
+
+Function LJZ_CTP2_SetSelectedImage(row)
+    Variable row
+
+    LJZ_CTP2_EnsureDF()
+
+    Wave/T ImgList = $(LJZ_CTP2_BaseDF() + ":ImgList")
+    Wave ImgSel = $(LJZ_CTP2_BaseDF() + ":ImgSel")
+    NVAR SelImageRow = $(LJZ_CTP2_BaseDF() + ":SelImageRow")
+    SVAR ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+
+    ImgSel = 0
+
+    if (numpnts(ImgList) <= 0)
+        SelImageRow = -1
+        ExistingImageName = ""
+        return -1
+    endif
+
+    if (row < 0 || row >= numpnts(ImgList))
+        SelImageRow = -1
+        ExistingImageName = ""
+        return -1
+    endif
+
+    ImgSel[row] = 1
+    SelImageRow = row
+    ExistingImageName = ImgList[row]
+    return 0
+End
+
+
+Function LJZ_CTP2_RefreshImageList()
+    LJZ_CTP2_EnsureDF()
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    Wave/T ImgList = $(LJZ_CTP2_BaseDF() + ":ImgList")
+    Wave ImgSel = $(LJZ_CTP2_BaseDF() + ":ImgSel")
+    SVAR ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+    NVAR SelImageRow = $(LJZ_CTP2_BaseDF() + ":SelImageRow")
+
+    String imgs
+    imgs = ""
+
+    if (strlen(gName) > 0)
+        imgs = ImageNameList(gName, ";")
+    endif
+
+    Variable n
+    n = ItemsInList(imgs, ";")
+
+    Redimension/N=(n) ImgList
+    Redimension/N=(n) ImgSel
+    ImgSel = 0
+
+    Variable i
+    for (i = 0; i < n; i += 1)
+        ImgList[i] = StringFromList(i, imgs, ";")
+    endfor
+
+    Variable keepRow
+    keepRow = -1
+
+    if (strlen(ExistingImageName) > 0)
+        for (i = 0; i < n; i += 1)
+            if (CmpStr(ExistingImageName, ImgList[i]) == 0)
+                keepRow = i
+            endif
+        endfor
+    endif
+
+    if (keepRow < 0 && n > 0)
+        keepRow = 0
+    endif
+
+    LJZ_CTP2_SetSelectedImage(keepRow)
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+
+    if (WinType(pName) != 0)
+        ListBox/Z lbImages, win=$pName, selRow=SelImageRow
+        ControlUpdate/A/W=$pName
+    endif
+
+    Print "LJZ_CTP2 graph = " + gName
+    Print "LJZ_CTP2 images = " + imgs
+    return 0
+End
+
+
+// ============================================================================
+//  Section 2. CTLIB palette library
+// ============================================================================
+
+Function LJZ_CTP2_IsValidCTWave(w)
+    Wave/Z w
+
+    if (!WaveExists(w))
+        return 0
+    endif
+
+    if (WaveType(w, 1) != 1)
+        return 0
+    endif
+
+    if (DimSize(w, 0) <= 0)
+        return 0
+    endif
+
+    if (DimSize(w, 1) < 3)
+        return 0
+    endif
+
+    if (DimSize(w, 2) > 0 || DimSize(w, 3) > 0)
+        return 0
+    endif
+
+    return 1
+End
+
+
+Function LJZ_CTP2_RefreshLibraryList()
+    LJZ_CTP2_EnsureCTLIB()
+
+    SVAR/Z LibraryMenuList = $(LJZ_CTP2_BaseDF() + ":LibraryMenuList")
+    if (!SVAR_Exists(LibraryMenuList))
+        String/G $(LJZ_CTP2_BaseDF() + ":LibraryMenuList") = ""
+    endif
+
+    SVAR/Z LibraryCTName = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
+    if (!SVAR_Exists(LibraryCTName))
+        String/G $(LJZ_CTP2_BaseDF() + ":LibraryCTName") = "Mualani"
+    endif
+
+    SVAR menuRef = $(LJZ_CTP2_BaseDF() + ":LibraryMenuList")
+    SVAR pickRef = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
+
+    String preferredList
+    preferredList = ""
+
+    SVAR/Z personalList = root:ARPES_LJZ:CTLUZ:ctlib_menu_list
+    if (SVAR_Exists(personalList))
+        preferredList = personalList
+    endif
+
+    String out
+    out = ""
+
+    Variable i
+    Variable n
+    String nm
+
+    n = ItemsInList(preferredList, ";")
+    for (i = 0; i < n; i += 1)
+        nm = StringFromList(i, preferredList, ";")
+        if (strlen(nm) == 0)
+            continue
+        endif
+
+        Wave/Z wPref = $("root:ARPES_LJZ:CTLUZ:CTLIB:" + nm)
+        if (!LJZ_CTP2_IsValidCTWave(wPref))
+            continue
+        endif
+
+        if (WhichListItem(nm, out, ";", 0, 0) < 0)
+            out += nm + ";"
+        endif
+    endfor
+
+    String oldDF
+    oldDF = GetDataFolder(1)
+
+    SetDataFolder root:ARPES_LJZ:CTLUZ:CTLIB
+    String wl
+    wl = WaveList("*", ";", "")
+    SetDataFolder oldDF
+
+    n = ItemsInList(wl, ";")
+    for (i = 0; i < n; i += 1)
+        nm = StringFromList(i, wl, ";")
+        if (strlen(nm) == 0)
+            continue
+        endif
+
+        Wave/Z w = $("root:ARPES_LJZ:CTLUZ:CTLIB:" + nm)
+        if (!LJZ_CTP2_IsValidCTWave(w))
+            continue
+        endif
+
+        if (WhichListItem(nm, out, ";", 0, 0) < 0)
+            out += nm + ";"
+        endif
+    endfor
+
+    if (strlen(out) == 0)
+        out = "Mualani;Gray;CyanHot;"
+    endif
+
+    menuRef = out
+
+    if (WhichListItem(pickRef, menuRef, ";", 0, 0) < 0)
+        pickRef = StringFromList(0, menuRef, ";")
+    endif
+
+    LJZ_CTP2_RebuildLibraryListWaves()
+
+    return 0
+End
+
+
+Function/S LJZ_CTP2_CTLIBPopupList()
+    LJZ_CTP2_RefreshLibraryList()
+    SVAR LibraryMenuList = $(LJZ_CTP2_BaseDF() + ":LibraryMenuList")
+    return LibraryMenuList
+End
+
+
+Function LJZ_CTP2_ChannelTo255(v)
+    Variable v
+
+    if (numtype(v) != 0)
+        return 0
+    endif
+
+    if (v > 255)
+        v = v / 257
+    endif
+
+    v = LJZ_CTP2_Clamp(v, 0, 255)
+    return round(v)
+End
+
+
+Function LJZ_CTP2_RGB255ToU16(v)
+    Variable v
+
+    v = LJZ_CTP2_Clamp(v, 0, 255)
+    return round(v * 257)
+End
+
+
+Function/S LJZ_CTP2_GetSelectedLibraryPath()
+    LJZ_CTP2_EnsureDF()
+    SVAR LibraryCTName = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
+    if (strlen(LibraryCTName) == 0)
+        return ""
+    endif
+    return LJZ_CTP2_CTLIB_DF_Colon() + LibraryCTName
+End
+
+
+Function LJZ_CTP2_LoadLibraryToCustom5()
+    LJZ_CTP2_EnsureDF()
+
+    String ctPath
+    ctPath = LJZ_CTP2_GetSelectedLibraryPath()
+
+    if (strlen(ctPath) == 0)
+        DoAlert 0, "No CTLIB palette selected."
+        return -1
+    endif
+
+    Wave/Z ct = $ctPath
+    if (!LJZ_CTP2_IsValidCTWave(ct))
+        DoAlert 0, "Selected CTLIB palette is not a valid N x 3 color-table wave."
+        return -1
+    endif
+
+    NVAR p0 = $(LJZ_CTP2_BaseDF() + ":p0")
+    NVAR p1 = $(LJZ_CTP2_BaseDF() + ":p1")
+    NVAR p2 = $(LJZ_CTP2_BaseDF() + ":p2")
+    NVAR p3 = $(LJZ_CTP2_BaseDF() + ":p3")
+    NVAR p4 = $(LJZ_CTP2_BaseDF() + ":p4")
+
+    NVAR r0 = $(LJZ_CTP2_BaseDF() + ":r0")
+    NVAR g0 = $(LJZ_CTP2_BaseDF() + ":g0")
+    NVAR b0 = $(LJZ_CTP2_BaseDF() + ":b0")
+
+    NVAR r1 = $(LJZ_CTP2_BaseDF() + ":r1")
+    NVAR g1 = $(LJZ_CTP2_BaseDF() + ":g1")
+    NVAR b1 = $(LJZ_CTP2_BaseDF() + ":b1")
+
+    NVAR r2 = $(LJZ_CTP2_BaseDF() + ":r2")
+    NVAR g2 = $(LJZ_CTP2_BaseDF() + ":g2")
+    NVAR b2 = $(LJZ_CTP2_BaseDF() + ":b2")
+
+    NVAR r3 = $(LJZ_CTP2_BaseDF() + ":r3")
+    NVAR g3 = $(LJZ_CTP2_BaseDF() + ":g3")
+    NVAR b3 = $(LJZ_CTP2_BaseDF() + ":b3")
+
+    NVAR r4 = $(LJZ_CTP2_BaseDF() + ":r4")
+    NVAR g4 = $(LJZ_CTP2_BaseDF() + ":g4")
+    NVAR b4 = $(LJZ_CTP2_BaseDF() + ":b4")
+
+    Variable n
+    Variable idx0
+    Variable idx1
+    Variable idx2
+    Variable idx3
+    Variable idx4
+
+    n = DimSize(ct, 0)
+    idx0 = 0
+    idx1 = round(0.25 * (n - 1))
+    idx2 = round(0.50 * (n - 1))
+    idx3 = round(0.75 * (n - 1))
+    idx4 = n - 1
+
+    p0 = 0
+    p1 = 0.25
+    p2 = 0.50
+    p3 = 0.75
+    p4 = 1
+
+    r0 = LJZ_CTP2_ChannelTo255(ct[idx0][0])
+    g0 = LJZ_CTP2_ChannelTo255(ct[idx0][1])
+    b0 = LJZ_CTP2_ChannelTo255(ct[idx0][2])
+
+    r1 = LJZ_CTP2_ChannelTo255(ct[idx1][0])
+    g1 = LJZ_CTP2_ChannelTo255(ct[idx1][1])
+    b1 = LJZ_CTP2_ChannelTo255(ct[idx1][2])
+
+    r2 = LJZ_CTP2_ChannelTo255(ct[idx2][0])
+    g2 = LJZ_CTP2_ChannelTo255(ct[idx2][1])
+    b2 = LJZ_CTP2_ChannelTo255(ct[idx2][2])
+
+    r3 = LJZ_CTP2_ChannelTo255(ct[idx3][0])
+    g3 = LJZ_CTP2_ChannelTo255(ct[idx3][1])
+    b3 = LJZ_CTP2_ChannelTo255(ct[idx3][2])
+
+    r4 = LJZ_CTP2_ChannelTo255(ct[idx4][0])
+    g4 = LJZ_CTP2_ChannelTo255(ct[idx4][1])
+    b4 = LJZ_CTP2_ChannelTo255(ct[idx4][2])
+
+    LJZ_CTP2_UpdatePreviewCustom()
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+    if (WinType(pName) != 0)
+        ControlUpdate/A/W=$pName
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_SaveCustom5ToLibrary()
+    LJZ_CTP2_EnsureDF()
+    LJZ_CTP2_BuildCustomCT()
+
+    SVAR SaveCustomName = $(LJZ_CTP2_BaseDF() + ":SaveCustomName")
+    SVAR LibraryCTName = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
+
+    String nm
+    nm = CleanupName(SaveCustomName, 0)
+
+    if (strlen(nm) == 0)
+        DoAlert 0, "Please enter a valid SaveName for the CTLIB palette."
+        return -1
+    endif
+
+    Wave/W/U custom = $(LJZ_CTP2_BaseDF() + ":CustomCT")
+    Duplicate/O custom, $(LJZ_CTP2_CTLIB_DF_Colon() + nm)
+
+    SaveCustomName = nm
+    LibraryCTName = nm
+
+    LJZ_CTP2_RefreshLibraryList()
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+    if (WinType(pName) != 0)
+        PopupMenu/Z pmLibCT, win=$pName, popvalue=LibraryCTName
+        ControlUpdate/A/W=$pName
+    endif
+
+    Print "LJZ_CTP2 saved Custom5 to CTLIB: " + LJZ_CTP2_CTLIB_DF_Colon() + nm
+    return 0
+End
+
+
+// ============================================================================
+//  Section 3. Custom 5 construction and swap
+// ============================================================================
+
+Function LJZ_CTP2_SanitizeCustomParams()
+    LJZ_CTP2_EnsureDF()
+
+    NVAR p0 = $(LJZ_CTP2_BaseDF() + ":p0")
+    NVAR p1 = $(LJZ_CTP2_BaseDF() + ":p1")
+    NVAR p2 = $(LJZ_CTP2_BaseDF() + ":p2")
+    NVAR p3 = $(LJZ_CTP2_BaseDF() + ":p3")
+    NVAR p4 = $(LJZ_CTP2_BaseDF() + ":p4")
+
+    NVAR r0 = $(LJZ_CTP2_BaseDF() + ":r0")
+    NVAR g0 = $(LJZ_CTP2_BaseDF() + ":g0")
+    NVAR b0 = $(LJZ_CTP2_BaseDF() + ":b0")
+
+    NVAR r1 = $(LJZ_CTP2_BaseDF() + ":r1")
+    NVAR g1 = $(LJZ_CTP2_BaseDF() + ":g1")
+    NVAR b1 = $(LJZ_CTP2_BaseDF() + ":b1")
+
+    NVAR r2 = $(LJZ_CTP2_BaseDF() + ":r2")
+    NVAR g2 = $(LJZ_CTP2_BaseDF() + ":g2")
+    NVAR b2 = $(LJZ_CTP2_BaseDF() + ":b2")
+
+    NVAR r3 = $(LJZ_CTP2_BaseDF() + ":r3")
+    NVAR g3 = $(LJZ_CTP2_BaseDF() + ":g3")
+    NVAR b3 = $(LJZ_CTP2_BaseDF() + ":b3")
+
+    NVAR r4 = $(LJZ_CTP2_BaseDF() + ":r4")
+    NVAR g4 = $(LJZ_CTP2_BaseDF() + ":g4")
+    NVAR b4 = $(LJZ_CTP2_BaseDF() + ":b4")
+
+    p0 = 0
+    p4 = 1
+
+    p1 = LJZ_CTP2_Clamp(p1, 0.001, 0.999)
+    p2 = LJZ_CTP2_Clamp(p2, 0.001, 0.999)
+    p3 = LJZ_CTP2_Clamp(p3, 0.001, 0.999)
+
+    if (p2 <= p1)
+        p2 = p1 + 0.001
+    endif
+
+    if (p3 <= p2)
+        p3 = p2 + 0.001
+    endif
+
+    if (p3 >= 1)
+        p3 = 0.999
+    endif
+
+    r0 = LJZ_CTP2_Clamp(r0, 0, 255)
+    g0 = LJZ_CTP2_Clamp(g0, 0, 255)
+    b0 = LJZ_CTP2_Clamp(b0, 0, 255)
+
+    r1 = LJZ_CTP2_Clamp(r1, 0, 255)
+    g1 = LJZ_CTP2_Clamp(g1, 0, 255)
+    b1 = LJZ_CTP2_Clamp(b1, 0, 255)
+
+    r2 = LJZ_CTP2_Clamp(r2, 0, 255)
+    g2 = LJZ_CTP2_Clamp(g2, 0, 255)
+    b2 = LJZ_CTP2_Clamp(b2, 0, 255)
+
+    r3 = LJZ_CTP2_Clamp(r3, 0, 255)
+    g3 = LJZ_CTP2_Clamp(g3, 0, 255)
+    b3 = LJZ_CTP2_Clamp(b3, 0, 255)
+
+    r4 = LJZ_CTP2_Clamp(r4, 0, 255)
+    g4 = LJZ_CTP2_Clamp(g4, 0, 255)
+    b4 = LJZ_CTP2_Clamp(b4, 0, 255)
+
+    return 0
+End
+
+
+Function LJZ_CTP2_Interp(v0, v1, f)
+    Variable v0
+    Variable v1
+    Variable f
+
+    return v0 + (v1 - v0) * f
+End
+
+
+Function LJZ_CTP2_BuildCustomCT()
+    LJZ_CTP2_SanitizeCustomParams()
+
+    NVAR p0 = $(LJZ_CTP2_BaseDF() + ":p0")
+    NVAR p1 = $(LJZ_CTP2_BaseDF() + ":p1")
+    NVAR p2 = $(LJZ_CTP2_BaseDF() + ":p2")
+    NVAR p3 = $(LJZ_CTP2_BaseDF() + ":p3")
+    NVAR p4 = $(LJZ_CTP2_BaseDF() + ":p4")
+
+    NVAR r0 = $(LJZ_CTP2_BaseDF() + ":r0")
+    NVAR g0 = $(LJZ_CTP2_BaseDF() + ":g0")
+    NVAR b0 = $(LJZ_CTP2_BaseDF() + ":b0")
+
+    NVAR r1 = $(LJZ_CTP2_BaseDF() + ":r1")
+    NVAR g1 = $(LJZ_CTP2_BaseDF() + ":g1")
+    NVAR b1 = $(LJZ_CTP2_BaseDF() + ":b1")
+
+    NVAR r2 = $(LJZ_CTP2_BaseDF() + ":r2")
+    NVAR g2 = $(LJZ_CTP2_BaseDF() + ":g2")
+    NVAR b2 = $(LJZ_CTP2_BaseDF() + ":b2")
+
+    NVAR r3 = $(LJZ_CTP2_BaseDF() + ":r3")
+    NVAR g3 = $(LJZ_CTP2_BaseDF() + ":g3")
+    NVAR b3 = $(LJZ_CTP2_BaseDF() + ":b3")
+
+    NVAR r4 = $(LJZ_CTP2_BaseDF() + ":r4")
+    NVAR g4 = $(LJZ_CTP2_BaseDF() + ":g4")
+    NVAR b4 = $(LJZ_CTP2_BaseDF() + ":b4")
+
+    Wave/W/U ct = $(LJZ_CTP2_BaseDF() + ":CustomCT")
+
+    Variable n
+    n = DimSize(ct, 0)
+
+    if (n <= 1)
+        Redimension/W/U/N=(256,3) ct
+        n = 256
+    endif
+
+    Variable i
+    Variable t
+    Variable f
+    Variable rr
+    Variable gg
+    Variable bb
+
+    for (i = 0; i < n; i += 1)
+        t = i / (n - 1)
+
+        if (t <= p1)
+            f = (t - p0) / (p1 - p0)
+            rr = LJZ_CTP2_Interp(r0, r1, f)
+            gg = LJZ_CTP2_Interp(g0, g1, f)
+            bb = LJZ_CTP2_Interp(b0, b1, f)
+        elseif (t <= p2)
+            f = (t - p1) / (p2 - p1)
+            rr = LJZ_CTP2_Interp(r1, r2, f)
+            gg = LJZ_CTP2_Interp(g1, g2, f)
+            bb = LJZ_CTP2_Interp(b1, b2, f)
+        elseif (t <= p3)
+            f = (t - p2) / (p3 - p2)
+            rr = LJZ_CTP2_Interp(r2, r3, f)
+            gg = LJZ_CTP2_Interp(g2, g3, f)
+            bb = LJZ_CTP2_Interp(b2, b3, f)
+        else
+            f = (t - p3) / (p4 - p3)
+            rr = LJZ_CTP2_Interp(r3, r4, f)
+            gg = LJZ_CTP2_Interp(g3, g4, f)
+            bb = LJZ_CTP2_Interp(b3, b4, f)
+        endif
+
+        ct[i][0] = LJZ_CTP2_RGB255ToU16(rr)
+        ct[i][1] = LJZ_CTP2_RGB255ToU16(gg)
+        ct[i][2] = LJZ_CTP2_RGB255ToU16(bb)
+    endfor
+
+    return 0
+End
+
+
+Function LJZ_CTP2_SwapTwoAnchorColors()
+    LJZ_CTP2_EnsureDF()
+
+    NVAR SwapA = $(LJZ_CTP2_BaseDF() + ":SwapA")
+    NVAR SwapB = $(LJZ_CTP2_BaseDF() + ":SwapB")
+
+    Variable ia
+    Variable ib
+
+    ia = round(SwapA)
+    ib = round(SwapB)
+
+    ia = LJZ_CTP2_Clamp(ia, 0, 4)
+    ib = LJZ_CTP2_Clamp(ib, 0, 4)
+
+    SwapA = ia
+    SwapB = ib
+
+    if (ia == ib)
+        DoAlert 0, "Swap A and Swap B are the same anchor."
+        return 0
+    endif
+
+    NVAR rA = $(LJZ_CTP2_BaseDF() + ":r" + num2str(ia))
+    NVAR gA = $(LJZ_CTP2_BaseDF() + ":g" + num2str(ia))
+    NVAR bA = $(LJZ_CTP2_BaseDF() + ":b" + num2str(ia))
+
+    NVAR rB = $(LJZ_CTP2_BaseDF() + ":r" + num2str(ib))
+    NVAR gB = $(LJZ_CTP2_BaseDF() + ":g" + num2str(ib))
+    NVAR bB = $(LJZ_CTP2_BaseDF() + ":b" + num2str(ib))
+
+    Variable tr
+    Variable tg
+    Variable tb
+
+    tr = rA
+    tg = gA
+    tb = bA
+
+    rA = rB
+    gA = gB
+    bA = bB
+
+    rB = tr
+    gB = tg
+    bB = tb
+
+    LJZ_CTP2_UpdatePreviewCustom()
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+    if (WinType(pName) != 0)
+        ControlUpdate/A/W=$pName
+    endif
+
+    return 0
+End
+
+
+// ============================================================================
+//  Section 4. Applying color tables
+// ============================================================================
+
+Function LJZ_CTP2_ApplyBuiltInToImage(gName, imgName)
+    String gName
+    String imgName
+
+    LJZ_CTP2_EnsureDF()
+
+    SVAR BuiltinCTName = $(LJZ_CTP2_BaseDF() + ":BuiltinCTName")
+    NVAR ReverseCT = $(LJZ_CTP2_BaseDF() + ":ReverseCT")
+    NVAR UseManualRange = $(LJZ_CTP2_BaseDF() + ":UseManualRange")
+    NVAR CMin = $(LJZ_CTP2_BaseDF() + ":CMin")
+    NVAR CMax = $(LJZ_CTP2_BaseDF() + ":CMax")
+
+    Variable rev
+    rev = round(ReverseCT)
+
+    String ctName
+    ctName = BuiltinCTName
+
+    if (strlen(gName) == 0 || strlen(imgName) == 0)
+        return -1
+    endif
+
+    if (strlen(ctName) == 0)
+        ctName = "Grays"
+        BuiltinCTName = ctName
+    endif
+
+    if (UseManualRange)
+        if (CMax == CMin)
+            DoAlert 0, "CMax equals CMin. Manual color range was not applied."
+            return -1
+        endif
+        ModifyImage/W=$gName $imgName ctab={CMin,CMax,$ctName,rev}
+    else
+        ModifyImage/W=$gName $imgName ctab={*,*,$ctName,rev}
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_ApplyLibraryToImage(gName, imgName)
+    String gName
+    String imgName
+
+    LJZ_CTP2_EnsureDF()
+
+    String ctPath
+    ctPath = LJZ_CTP2_GetSelectedLibraryPath()
+
+    if (strlen(gName) == 0 || strlen(imgName) == 0 || strlen(ctPath) == 0)
+        return -1
+    endif
+
+    Wave/Z ct = $ctPath
+    if (!LJZ_CTP2_IsValidCTWave(ct))
+        DoAlert 0, "Selected CTLIB palette is not a valid N x 3 color-table wave."
+        return -1
+    endif
+
+    NVAR ReverseCT = $(LJZ_CTP2_BaseDF() + ":ReverseCT")
+    NVAR UseManualRange = $(LJZ_CTP2_BaseDF() + ":UseManualRange")
+    NVAR CMin = $(LJZ_CTP2_BaseDF() + ":CMin")
+    NVAR CMax = $(LJZ_CTP2_BaseDF() + ":CMax")
+
+    Variable rev
+    rev = round(ReverseCT)
+
+    if (UseManualRange)
+        if (CMax == CMin)
+            DoAlert 0, "CMax equals CMin. Manual color range was not applied."
+            return -1
+        endif
+        ModifyImage/W=$gName $imgName ctab={CMin,CMax,ct,rev}
+    else
+        ModifyImage/W=$gName $imgName ctab={*,*,ct,rev}
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_ApplyCustomToImage(gName, imgName)
+    String gName
+    String imgName
+
+    LJZ_CTP2_EnsureDF()
+    LJZ_CTP2_BuildCustomCT()
+
+    Wave/W/U ct = $(LJZ_CTP2_BaseDF() + ":CustomCT")
+
+    NVAR ReverseCT = $(LJZ_CTP2_BaseDF() + ":ReverseCT")
+    NVAR UseManualRange = $(LJZ_CTP2_BaseDF() + ":UseManualRange")
+    NVAR CMin = $(LJZ_CTP2_BaseDF() + ":CMin")
+    NVAR CMax = $(LJZ_CTP2_BaseDF() + ":CMax")
+
+    Variable rev
+    rev = round(ReverseCT)
+
+    if (strlen(gName) == 0 || strlen(imgName) == 0)
+        return -1
+    endif
+
+    if (UseManualRange)
+        if (CMax == CMin)
+            DoAlert 0, "CMax equals CMin. Manual color range was not applied."
+            return -1
+        endif
+        ModifyImage/W=$gName $imgName ctab={CMin,CMax,ct,rev}
+    else
+        ModifyImage/W=$gName $imgName ctab={*,*,ct,rev}
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_ResetImageToGrays(gName, imgName)
+    String gName
+    String imgName
+
+    if (strlen(gName) == 0 || strlen(imgName) == 0)
+        return -1
+    endif
+
+    ModifyImage/W=$gName $imgName ctab={*,*,Grays,0}
+    return 0
+End
+
+
+Function LJZ_CTP2_ApplySelectedBuiltIn()
+    LJZ_CTP2_EnsureDF()
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    SVAR ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+
+    if (strlen(gName) == 0 || strlen(ExistingImageName) == 0)
+        DoAlert 0, "No graph or image selected."
+        return -1
+    endif
+
+    LJZ_CTP2_ApplyBuiltInToImage(gName, ExistingImageName)
+    DoWindow/F $gName
+    return 0
+End
+
+
+Function LJZ_CTP2_ApplySelectedLibrary()
+    LJZ_CTP2_EnsureDF()
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    SVAR ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+
+    if (strlen(gName) == 0 || strlen(ExistingImageName) == 0)
+        DoAlert 0, "No graph or image selected."
+        return -1
+    endif
+
+    LJZ_CTP2_ApplyLibraryToImage(gName, ExistingImageName)
+    DoWindow/F $gName
+    return 0
+End
+
+
+Function LJZ_CTP2_ApplySelectedCustom()
+    LJZ_CTP2_EnsureDF()
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    SVAR ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+
+    if (strlen(gName) == 0 || strlen(ExistingImageName) == 0)
+        DoAlert 0, "No graph or image selected."
+        return -1
+    endif
+
+    LJZ_CTP2_ApplyCustomToImage(gName, ExistingImageName)
+    DoWindow/F $gName
+    return 0
+End
+
+
+Function LJZ_CTP2_ResetSelected()
+    LJZ_CTP2_EnsureDF()
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    SVAR ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+
+    if (strlen(gName) == 0 || strlen(ExistingImageName) == 0)
+        DoAlert 0, "No graph or image selected."
+        return -1
+    endif
+
+    LJZ_CTP2_ResetImageToGrays(gName, ExistingImageName)
+    DoWindow/F $gName
+    return 0
+End
+
+
+Function LJZ_CTP2_ApplyAllBuiltIn()
+    LJZ_CTP2_EnsureDF()
+
+    NVAR ApplyToAllConfirm = $(LJZ_CTP2_BaseDF() + ":ApplyToAllConfirm")
+
+    if (!ApplyToAllConfirm)
+        DoAlert 0, "For safety, check Confirm all first."
+        return -1
+    endif
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    if (strlen(gName) == 0)
+        DoAlert 0, "No graph found."
+        return -1
+    endif
+
+    String imgs
+    imgs = ImageNameList(gName, ";")
+
+    Variable n
+    n = ItemsInList(imgs, ";")
+
+    Variable i
+    String im
+
+    for (i = 0; i < n; i += 1)
+        im = StringFromList(i, imgs, ";")
+        if (strlen(im) > 0)
+            LJZ_CTP2_ApplyBuiltInToImage(gName, im)
+        endif
+    endfor
+
+    DoWindow/F $gName
+    return 0
+End
+
+
+Function LJZ_CTP2_ResetAll()
+    LJZ_CTP2_EnsureDF()
+
+    NVAR ApplyToAllConfirm = $(LJZ_CTP2_BaseDF() + ":ApplyToAllConfirm")
+
+    if (!ApplyToAllConfirm)
+        DoAlert 0, "For safety, check Confirm all first."
+        return -1
+    endif
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    if (strlen(gName) == 0)
+        DoAlert 0, "No graph found."
+        return -1
+    endif
+
+    String imgs
+    imgs = ImageNameList(gName, ";")
+
+    Variable n
+    n = ItemsInList(imgs, ";")
+
+    Variable i
+    String im
+
+    for (i = 0; i < n; i += 1)
+        im = StringFromList(i, imgs, ";")
+        if (strlen(im) > 0)
+            LJZ_CTP2_ResetImageToGrays(gName, im)
+        endif
+    endfor
+
+    DoWindow/F $gName
+    return 0
+End
+
+
+// ============================================================================
+//  Section 5. Preview
+// ============================================================================
+
+Function LJZ_CTP2_CreatePreviewGraph()
+    LJZ_CTP2_EnsureDF()
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+
+    if (WinType(pName) == 0)
+        return -1
+    endif
+
+    String childName
+    childName = LJZ_CTP2_PreviewGraphName()
+
+    String graphPath
+    graphPath = LJZ_CTP2_PreviewGraphPath()
+
+    if (LJZ_CTP2_HasChildSubwindow(pName, childName))
+        KillWindow/Z $graphPath
+    endif
+
+    Wave prev = $(LJZ_CTP2_BaseDF() + ":PreviewImage")
+
+    // Child graph coords are relative to the panel content area.
+    // Preview GroupBox: pos={290,44}, size={492,72}
+    // Inset 6px on each side, 18px below group title.
+    Display/HOST=$pName/N=$childName/W=(296,62,780,112)
+    AppendImage/W=$graphPath prev
+
+    ModifyGraph/W=$graphPath margin(left)=2,margin(bottom)=2,margin(right)=2,margin(top)=2
+    ModifyGraph/W=$graphPath noLabel=2,axThick=0,standoff=0
+    ModifyGraph/W=$graphPath width=0,height=0
+    SetAxis/W=$graphPath bottom 0,255
+    SetAxis/W=$graphPath left 0,1
+
+    LJZ_CTP2_UpdatePreviewLibrary()
+    return 0
+End
+
+
+
+Function LJZ_CTP2_UpdatePreviewBuiltIn()
+    LJZ_CTP2_EnsureDF()
+
+    String graphPath
+    graphPath = LJZ_CTP2_PreviewGraphPath()
+
+    if (WinType(graphPath) == 0)
+        return -1
+    endif
+
+    SVAR BuiltinCTName = $(LJZ_CTP2_BaseDF() + ":BuiltinCTName")
+    NVAR ReverseCT = $(LJZ_CTP2_BaseDF() + ":ReverseCT")
+
+    Variable rev
+    rev = round(ReverseCT)
+
+    String ctName
+    ctName = BuiltinCTName
+
+    if (strlen(ctName) == 0)
+        ctName = "Grays"
+        BuiltinCTName = ctName
+    endif
+
+    ModifyImage/W=$graphPath PreviewImage ctab={*,*,$ctName,rev}
+    return 0
+End
+
+
+Function LJZ_CTP2_UpdatePreviewLibrary()
+    LJZ_CTP2_EnsureDF()
+
+    String graphPath
+    graphPath = LJZ_CTP2_PreviewGraphPath()
+
+    if (WinType(graphPath) == 0)
+        return -1
+    endif
+
+    String ctPath
+    ctPath = LJZ_CTP2_GetSelectedLibraryPath()
+
+    Wave/Z ct = $ctPath
+    if (!LJZ_CTP2_IsValidCTWave(ct))
+        return LJZ_CTP2_UpdatePreviewBuiltIn()
+    endif
+
+    NVAR ReverseCT = $(LJZ_CTP2_BaseDF() + ":ReverseCT")
+    Variable rev
+    rev = round(ReverseCT)
+
+    ModifyImage/W=$graphPath PreviewImage ctab={*,*,ct,rev}
+    return 0
+End
+
+
+Function LJZ_CTP2_UpdatePreviewCustom()
+    LJZ_CTP2_EnsureDF()
+    LJZ_CTP2_BuildCustomCT()
+
+    String graphPath
+    graphPath = LJZ_CTP2_PreviewGraphPath()
+
+    if (WinType(graphPath) == 0)
+        return -1
+    endif
+
+    Wave/W/U ct = $(LJZ_CTP2_BaseDF() + ":CustomCT")
+    NVAR ReverseCT = $(LJZ_CTP2_BaseDF() + ":ReverseCT")
+
+    Variable rev
+    rev = round(ReverseCT)
+
+    ModifyImage/W=$graphPath PreviewImage ctab={*,*,ct,rev}
+    return 0
+End
+
+
+// ============================================================================
+//  Section 6. Built-in/default CT fillers
+// ============================================================================
+
+Function LJZ_CTP2_FillGrayCT(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        ct[i][0] = round(t * 65535)
+        ct[i][1] = round(t * 65535)
+        ct[i][2] = round(t * 65535)
+    endfor
+
+    return 0
+End
+
+
+Function LJZ_CTP2_FillMualaniCT(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+    Variable r
+    Variable g
+    Variable b
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        if (t < 0.22)
+            r = 0.02 + 0.02 * (t / 0.22)
+            g = 0.02 + 0.18 * (t / 0.22)
+            b = 0.05 + 0.75 * (t / 0.22)
+        elseif (t < 0.48)
+            r = 0.04 + 0.02 * ((t - 0.22) / 0.26)
+            g = 0.20 + 0.70 * ((t - 0.22) / 0.26)
+            b = 0.80 + 0.18 * ((t - 0.22) / 0.26)
+        elseif (t < 0.72)
+            r = 0.06 + 0.88 * ((t - 0.48) / 0.24)
+            g = 0.90 + 0.08 * ((t - 0.48) / 0.24)
+            b = 0.98 - 0.82 * ((t - 0.48) / 0.24)
+        else
+            r = 0.94 + 0.06 * ((t - 0.72) / 0.28)
+            g = 0.98 + 0.02 * ((t - 0.72) / 0.28)
+            b = 0.16 + 0.84 * ((t - 0.72) / 0.28)
+        endif
+
+        ct[i][0] = round(LJZ_CTP2_Clamp(r, 0, 1) * 65535)
+        ct[i][1] = round(LJZ_CTP2_Clamp(g, 0, 1) * 65535)
+        ct[i][2] = round(LJZ_CTP2_Clamp(b, 0, 1) * 65535)
+    endfor
+
+    return 0
+End
+
+
+Function LJZ_CTP2_FillCyanHotCT(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+    Variable r
+    Variable g
+    Variable b
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        r = min(1, max(0, 1.8 * t - 0.25))
+        g = min(1, max(0, 2.0 * t))
+        b = min(1, max(0, 1.3 - 1.2 * t))
+
+        ct[i][0] = round(r * 65535)
+        ct[i][1] = round(g * 65535)
+        ct[i][2] = round(b * 65535)
+    endfor
+
+    return 0
+End
+
+
+// ============================================================================
+//  Section 7. Callbacks
+// ============================================================================
+
+Function LJZ_CTP2_ListBoxProc(lba) : ListBoxControl
+    STRUCT WMListboxAction &lba
+
+    if (lba.eventCode != 4)
+        return 0
+    endif
+
+    LJZ_CTP2_SetSelectedImage(lba.row)
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+
+    if (WinType(pName) != 0)
+        ControlUpdate/A/W=$pName
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_ButtonProc(ctrlName) : ButtonControl
+    String ctrlName
+
+    strswitch(ctrlName)
+        case "btRefreshImages":
+            LJZ_CTP2_RefreshImageList()
+            break
+
+        case "btRefreshLib":
+            LJZ_CTP2_RefreshLibraryList()
+            ControlUpdate/A/W=$(LJZ_CTP2_PanelName())
+            break
+
+        case "btPreviewBuiltin":
+            LJZ_CTP2_UpdatePreviewBuiltIn()
+            break
+
+        case "btPreviewLib":
+            LJZ_CTP2_UpdatePreviewLibrary()
+            break
+
+        case "btPreviewCustom":
+            LJZ_CTP2_UpdatePreviewCustom()
+            break
+
+        case "btApplyBuiltIn":
+            LJZ_CTP2_ApplySelectedBuiltIn()
+            break
+
+        case "btApplyLib":
+            LJZ_CTP2_ApplySelectedLibrary()
+            break
+
+        case "btApplyCustom":
+            LJZ_CTP2_ApplySelectedCustom()
+            break
+
+        case "btLoadLibToCustom":
+            LJZ_CTP2_LoadLibraryToCustom5()
+            break
+
+        case "btSaveCustomToLib":
+            LJZ_CTP2_SaveCustom5ToLibrary()
+            break
+
+        case "btSwapCustom":
+            LJZ_CTP2_SwapTwoAnchorColors()
+            break
+
+        case "btResetSelected":
+            LJZ_CTP2_ResetSelected()
+            break
+
+        case "btApplyAllBuiltIn":
+            LJZ_CTP2_ApplyAllBuiltIn()
+            break
+
+        case "btResetAll":
+            LJZ_CTP2_ResetAll()
+            break
+
+        case "btClose":
+            DoWindow/K $(LJZ_CTP2_PanelName())
+            break
+    endswitch
+
+    return 0
+End
+
+
+Function LJZ_CTP2_PopupProc(ctrlName, popNum, popStr) : PopupMenuControl
+    String ctrlName
+    Variable popNum
+    String popStr
+
+    if (CmpStr(ctrlName, "pmBuiltInCT") == 0)
+        SVAR BuiltinCTName = $(LJZ_CTP2_BaseDF() + ":BuiltinCTName")
+        BuiltinCTName = popStr
+        LJZ_CTP2_UpdatePreviewBuiltIn()
+    endif
+
+    if (CmpStr(ctrlName, "pmLibCT") == 0)
+        SVAR LibraryCTName = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
+        LibraryCTName = popStr
+        LJZ_CTP2_UpdatePreviewLibrary()
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_CheckProc(ctrlName, checked) : CheckBoxControl
+    String ctrlName
+    Variable checked
+
+    if (CmpStr(ctrlName, "ckReverse") == 0)
+        LJZ_CTP2_UpdatePreviewLibrary()
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_SetVarProc(ctrlName, varNum, varStr, varName) : SetVariableControl
+    String ctrlName
+    Variable varNum
+    String varStr
+    String varName
+
+    if (CmpStr(ctrlName, "svGraph") == 0)
+        LJZ_CTP2_RefreshImageList()
+    elseif (CmpStr(ctrlName, "svCMin") == 0)
+        // no automatic graph apply
+    elseif (CmpStr(ctrlName, "svCMax") == 0)
+        // no automatic graph apply
+    elseif (CmpStr(ctrlName, "svSaveName") == 0)
+        // save name only
+    else
+        LJZ_CTP2_UpdatePreviewCustom()
+    endif
+
+    return 0
+End
+
+
+// ============================================================================
+//  Section 8. Panel
+// ============================================================================
+
+
+Function LJZ_CTP2_OpenPanel()
+    LJZ_CTP2_EnsureDF()
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+
+    DoWindow/F $pName
+    if (V_flag)
+        LJZ_CTP2_RefreshImageList()
+        LJZ_CTP2_RefreshLibraryList()
+        LJZ_CTP2_CreatePreviewGraph()
+        return 0
+    endif
+
+    // ---- outer window: 796 wide x 594 tall ----
+    NewPanel/N=$pName /W=(80,70,876,570) as "LJZ ColorTable Panel v2.2"
+    ModifyPanel frameStyle=1
+    ModifyPanel cbRGB=(60000,60000,60000)
+    ModifyPanel fixedSize=1
+
+    // ---- header ----
+    TitleBox tbTitle,pos={10,8},size={260,16},title="LJZ ColorTable Panel v2.2",frame=0
+    TitleBox tbTitle,font="Arial",fSize=12,fStyle=1
+    TitleBox tbHint,pos={10,28},size={760,14},frame=0
+    TitleBox tbHint,title="Select image -> preview palette -> apply.   CTLIB = root:ARPES_LJZ:CTLUZ:CTLIB:"
+    TitleBox tbHint,font="Arial",fSize=9
+
+    // ========================================================
+    //  LEFT COLUMN   x 10-282
+    // ========================================================
+
+    // ---- 1. Graph / selected image  (y 44-208) ----
+    GroupBox gbGraph,pos={10,44},size={272,164},title="1. Graph / selected image"
+    GroupBox gbGraph,font="Arial",fSize=10,fStyle=1
+
+    SetVariable svGraph,pos={24,66},size={240,20},title="Graph"
+    SetVariable svGraph,value=$(LJZ_CTP2_BaseDF() + ":GraphName"),proc=LJZ_CTP2_SetVarProc,bodyWidth=192
+
+    Button btRefreshImages,pos={24,92},size={118,22},title="Refresh images",proc=LJZ_CTP2_ButtonProc
+
+    SetVariable svSelected,pos={24,120},size={240,18},title="Selected"
+    SetVariable svSelected,value=$(LJZ_CTP2_BaseDF() + ":ExistingImageName"),bodyWidth=184
+
+    ListBox lbImages,pos={24,144},size={240,52},listWave=$(LJZ_CTP2_BaseDF() + ":ImgList")
+    ListBox lbImages,selWave=$(LJZ_CTP2_BaseDF() + ":ImgSel"),mode=1,proc=LJZ_CTP2_ListBoxProc
+
+    // ---- 2. Your CTLIB palettes  (y 214-370) ----
+    GroupBox gbLib,pos={10,214},size={272,156},title="2. Your CTLIB palettes"
+    GroupBox gbLib,font="Arial",fSize=10,fStyle=1
+
+    ListBox lbLibCT,pos={24,234},size={240,72},listWave=$(LJZ_CTP2_BaseDF() + ":LibList")
+    ListBox lbLibCT,selWave=$(LJZ_CTP2_BaseDF() + ":LibSel"),mode=1,proc=LJZ_CTP2_LibListBoxProc
+
+    Button btRefreshLib,pos={24,312},size={56,22},title="Refresh",proc=LJZ_CTP2_ButtonProc
+    Button btPreviewLib,pos={86,312},size={56,22},title="Preview",proc=LJZ_CTP2_ButtonProc
+    Button btApplyLib,pos={148,312},size={56,22},title="Apply",proc=LJZ_CTP2_ButtonProc
+
+    Button btLoadLibToCustom,pos={24,340},size={126,22},title="Load to Custom5",proc=LJZ_CTP2_ButtonProc
+    TitleBox tbLibNote,pos={158,344},size={108,14},title="non-destructive",frame=0
+    TitleBox tbLibNote,font="Arial",fSize=9
+
+    // ========================================================
+    //  RIGHT COLUMN   x 290-782
+    // ========================================================
+
+    // ---- Preview strip  (y 44-116) ----
+    GroupBox gbPreview,pos={290,44},size={492,72},title="Preview"
+    GroupBox gbPreview,font="Arial",fSize=10,fStyle=1
+
+    // child subwindow – see LJZ_CTP2_CreatePreviewGraph()
+    // W=(296,62,780,112)
+
+    // ---- Custom 5-anchor table  (y 122-458) ----
+    GroupBox gbCustom,pos={290,122},size={492,248},title="Custom 5-anchor color table"
+    GroupBox gbCustom,font="Arial",fSize=10,fStyle=1
+
+    TitleBox tbP,pos={336,143},size={20,14},title="p",frame=0
+    TitleBox tbR,pos={418,143},size={16,14},title="R",frame=0
+    TitleBox tbG,pos={502,143},size={16,14},title="G",frame=0
+    TitleBox tbB,pos={586,143},size={16,14},title="B",frame=0
+
+    // --- row 0  y=162 ---
+    TitleBox tbRow0,pos={298,164},size={14,16},title="0",frame=0
+    SetVariable svP0,pos={314,160},size={82,20},title="",limits={0,1,0.01}
+    SetVariable svP0,value=$(LJZ_CTP2_BaseDF() + ":p0"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svR0,pos={398,160},size={82,20},title="",limits={0,255,1}
+    SetVariable svR0,value=$(LJZ_CTP2_BaseDF() + ":r0"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svG0,pos={482,160},size={82,20},title="",limits={0,255,1}
+    SetVariable svG0,value=$(LJZ_CTP2_BaseDF() + ":g0"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svB0,pos={566,160},size={82,20},title="",limits={0,255,1}
+    SetVariable svB0,value=$(LJZ_CTP2_BaseDF() + ":b0"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+
+    // --- row 1  y=186 ---
+    TitleBox tbRow1,pos={298,188},size={14,16},title="1",frame=0
+    SetVariable svP1,pos={314,184},size={82,20},title="",limits={0,1,0.01}
+    SetVariable svP1,value=$(LJZ_CTP2_BaseDF() + ":p1"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svR1,pos={398,184},size={82,20},title="",limits={0,255,1}
+    SetVariable svR1,value=$(LJZ_CTP2_BaseDF() + ":r1"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svG1,pos={482,184},size={82,20},title="",limits={0,255,1}
+    SetVariable svG1,value=$(LJZ_CTP2_BaseDF() + ":g1"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svB1,pos={566,184},size={82,20},title="",limits={0,255,1}
+    SetVariable svB1,value=$(LJZ_CTP2_BaseDF() + ":b1"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+
+    // --- row 2  y=210 ---
+    TitleBox tbRow2,pos={298,212},size={14,16},title="2",frame=0
+    SetVariable svP2,pos={314,208},size={82,20},title="",limits={0,1,0.01}
+    SetVariable svP2,value=$(LJZ_CTP2_BaseDF() + ":p2"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svR2,pos={398,208},size={82,20},title="",limits={0,255,1}
+    SetVariable svR2,value=$(LJZ_CTP2_BaseDF() + ":r2"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svG2,pos={482,208},size={82,20},title="",limits={0,255,1}
+    SetVariable svG2,value=$(LJZ_CTP2_BaseDF() + ":g2"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svB2,pos={566,208},size={82,20},title="",limits={0,255,1}
+    SetVariable svB2,value=$(LJZ_CTP2_BaseDF() + ":b2"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+
+    // --- row 3  y=234 ---
+    TitleBox tbRow3,pos={298,236},size={14,16},title="3",frame=0
+    SetVariable svP3,pos={314,232},size={82,20},title="",limits={0,1,0.01}
+    SetVariable svP3,value=$(LJZ_CTP2_BaseDF() + ":p3"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svR3,pos={398,232},size={82,20},title="",limits={0,255,1}
+    SetVariable svR3,value=$(LJZ_CTP2_BaseDF() + ":r3"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svG3,pos={482,232},size={82,20},title="",limits={0,255,1}
+    SetVariable svG3,value=$(LJZ_CTP2_BaseDF() + ":g3"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svB3,pos={566,232},size={82,20},title="",limits={0,255,1}
+    SetVariable svB3,value=$(LJZ_CTP2_BaseDF() + ":b3"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+
+    // --- row 4  y=258 ---
+    TitleBox tbRow4,pos={298,260},size={14,16},title="4",frame=0
+    SetVariable svP4,pos={314,256},size={82,20},title="",limits={0,1,0.01}
+    SetVariable svP4,value=$(LJZ_CTP2_BaseDF() + ":p4"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svR4,pos={398,256},size={82,20},title="",limits={0,255,1}
+    SetVariable svR4,value=$(LJZ_CTP2_BaseDF() + ":r4"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svG4,pos={482,256},size={82,20},title="",limits={0,255,1}
+    SetVariable svG4,value=$(LJZ_CTP2_BaseDF() + ":g4"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+    SetVariable svB4,pos={566,256},size={82,20},title="",limits={0,255,1}
+    SetVariable svB4,value=$(LJZ_CTP2_BaseDF() + ":b4"),proc=LJZ_CTP2_SetVarProc,bodyWidth=68
+
+    // --- swap row  y=286 ---
+    SetVariable svSwapA,pos={298,286},size={80,20},title="Swap A"
+    SetVariable svSwapA,limits={0,4,1},value=$(LJZ_CTP2_BaseDF() + ":SwapA"),proc=LJZ_CTP2_SetVarProc,bodyWidth=38
+    SetVariable svSwapB,pos={388,286},size={80,20},title="Swap B"
+    SetVariable svSwapB,limits={0,4,1},value=$(LJZ_CTP2_BaseDF() + ":SwapB"),proc=LJZ_CTP2_SetVarProc,bodyWidth=38
+    Button btSwapCustom,pos={478,284},size={96,24},title="Swap RGB",proc=LJZ_CTP2_ButtonProc
+
+    // --- action row  y=316 ---
+    Button btPreviewCustom,pos={298,316},size={114,24},title="Preview custom",proc=LJZ_CTP2_ButtonProc
+    Button btApplyCustom,pos={420,316},size={114,24},title="Apply custom",proc=LJZ_CTP2_ButtonProc
+    SetVariable svSaveName,pos={542,317},size={154,22},title="Save"
+    SetVariable svSaveName,value=$(LJZ_CTP2_BaseDF() + ":SaveCustomName"),proc=LJZ_CTP2_SetVarProc,bodyWidth=108
+    Button btSaveCustomToLib,pos={700,316},size={74,24},title="to CTLIB",proc=LJZ_CTP2_ButtonProc
+
+    // --- note row  y=348 ---
+    TitleBox tbCustomSafe,pos={298,348},size={478,16},frame=0
+    TitleBox tbCustomSafe,title="Swap changes only RGB anchors; p0..p4 kept. No lookup waves used."
+    TitleBox tbCustomSafe,font="Arial",fSize=9
+
+    // ========================================================
+    //  3. BUILT-IN IGOR COLOR TABLE
+    //  horizontal full-width row, below CTLIB and Custom5
+    // ========================================================
+
+GroupBox gbBuiltIn,pos={10,376},size={774,58},title="3. Built-in Igor color table"
+GroupBox gbBuiltIn,font="Arial",fSize=10,fStyle=1
+
+PopupMenu pmBuiltInCT,pos={24,398},size={180,20},title="Built-in"
+PopupMenu pmBuiltInCT,value="*COLORTABLEPOP*",proc=LJZ_CTP2_PopupProc
+
+CheckBox ckReverse,pos={214,400},size={74,18},title="Reverse"
+CheckBox ckReverse,variable=$(LJZ_CTP2_BaseDF() + ":ReverseCT"),proc=LJZ_CTP2_CheckProc
+
+CheckBox ckManual,pos={292,400},size={104,18},title="Manual range"
+CheckBox ckManual,variable=$(LJZ_CTP2_BaseDF() + ":UseManualRange")
+
+SetVariable svCMin,pos={402,398},size={82,20},title="CMin"
+SetVariable svCMin,value=$(LJZ_CTP2_BaseDF() + ":CMin"),proc=LJZ_CTP2_SetVarProc,bodyWidth=44
+
+SetVariable svCMax,pos={490,398},size={82,20},title="CMax"
+SetVariable svCMax,value=$(LJZ_CTP2_BaseDF() + ":CMax"),proc=LJZ_CTP2_SetVarProc,bodyWidth=44
+
+Button btPreviewBuiltin,pos={582,396},size={88,24},title="Preview",proc=LJZ_CTP2_ButtonProc
+Button btApplyBuiltIn,pos={680,396},size={90,24},title="Apply",proc=LJZ_CTP2_ButtonProc
+
+    // ========================================================
+    //  BOTTOM ROW   full-width   y 528-582
+    // ========================================================
+
+GroupBox gbSave,pos={10,440},size={774,54},title="Save-safe reset / all-image actions"
+GroupBox gbSave,font="Arial",fSize=10,fStyle=1
+
+Button btResetSelected,pos={24,462},size={108,24},title="Reset selected",proc=LJZ_CTP2_ButtonProc
+
+CheckBox ckConfirmAll,pos={144,466},size={88,18},title="Confirm all"
+CheckBox ckConfirmAll,variable=$(LJZ_CTP2_BaseDF() + ":ApplyToAllConfirm")
+
+Button btApplyAllBuiltIn,pos={242,462},size={118,24},title="Apply all built-in",proc=LJZ_CTP2_ButtonProc
+Button btResetAll,pos={368,462},size={108,24},title="Reset all Grays",proc=LJZ_CTP2_ButtonProc
+
+TitleBox tbSaveNote,pos={490,466},size={176,16},title="No lookup=lutWave applied.",frame=0
+TitleBox tbSaveNote,font="Arial",fSize=9
+
+Button btClose,pos={676,462},size={96,24},title="Close",proc=LJZ_CTP2_ButtonProc
+
+    LJZ_CTP2_RefreshLibraryList()
+    LJZ_CTP2_CreatePreviewGraph()
+    LJZ_CTP2_RefreshImageList()
+
+    return 0
+End
+
+// ============================================================================
+//  ProcLJZ_CTLUZ_Compat_v2.ipf
+//
+//  Compatibility shim for older LJZ procedures that call old ctluz_* functions.
+//
+//  Covers the dependencies seen in SliceGallery / AngleToKTransform:
+//    ctluz_ensure_folder()
+//    ctluz_refresh_ctlib_menu()
+//    root:ARPES_LJZ:CTLUZ:ct_table
+//    root:ARPES_LJZ:CTLUZ:ct_lut
+//    root:ARPES_LJZ:CTLUZ:ctlib_menu_list
+//    root:ARPES_LJZ:CTLUZ:CTLIB:<palette waves>
+//
+//  Important:
+//    Do not load this together with the original old ProcLJZ_ColorTablePanel.ipf
+//    if that file defines the same ctluz_* functions.
+// ============================================================================
+
+
+// ============================================================================
+//  Paths
+// ============================================================================
+
+Function/S ctluz_base_df()
+    return "root:ARPES_LJZ:CTLUZ"
+End
+
+
+Function/S ctluz_base_df_colon()
+    return "root:ARPES_LJZ:CTLUZ:"
+End
+
+
+Function/S ctluz_ctlib_df()
+    return "root:ARPES_LJZ:CTLUZ:CTLIB"
+End
+
+
+Function/S ctluz_ctlib_df_colon()
+    return "root:ARPES_LJZ:CTLUZ:CTLIB:"
+End
+
+
+Function/S ctluz_applied_df()
+    return "root:ARPES_LJZ:CTLUZ:APPLIED"
+End
+
+
+Function/S ctluz_applied_df_colon()
+    return "root:ARPES_LJZ:CTLUZ:APPLIED:"
+End
+
+
+// ============================================================================
+//  Folder and default-state construction
+// ============================================================================
 
 Function ctluz_ensure_folder()
     NewDataFolder/O root:ARPES_LJZ
@@ -22,1115 +1911,505 @@ Function ctluz_ensure_folder()
     NewDataFolder/O root:ARPES_LJZ:CTLUZ:CTLIB
     NewDataFolder/O root:ARPES_LJZ:CTLUZ:APPLIED
 
-    ctluz_install_builtin_ctlib()
-End
-
-Function ctluz_init_defaults_if_needed()
-    ctluz_ensure_folder()
-
-    String df0 = GetDataFolder(1)
-    SetDataFolder root:ARPES_LJZ:CTLUZ
-
-    // ---- positions (0..1) ----
-    NVAR/Z ct_p0 = root:ARPES_LJZ:CTLUZ:ct_p0
-    if (!NVAR_Exists(ct_p0))
-        Variable/G ct_p0 = 0
+    Wave/Z/W/U ct = root:ARPES_LJZ:CTLUZ:ct_table
+    if (!WaveExists(ct))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:ct_table
+        Wave/W/U ctNew = root:ARPES_LJZ:CTLUZ:ct_table
+        ctluz_fill_mualani_ct(ctNew)
     endif
 
-    NVAR/Z ct_p1 = root:ARPES_LJZ:CTLUZ:ct_p1
-    if (!NVAR_Exists(ct_p1))
-        Variable/G ct_p1 = 0.25
+    Wave/Z lut = root:ARPES_LJZ:CTLUZ:ct_lut
+    if (!WaveExists(lut))
+        Make/O/N=256 root:ARPES_LJZ:CTLUZ:ct_lut
+        Wave lutNew = root:ARPES_LJZ:CTLUZ:ct_lut
+        ctluz_fill_linear_lut(lutNew)
     endif
 
-    NVAR/Z ct_p2 = root:ARPES_LJZ:CTLUZ:ct_p2
-    if (!NVAR_Exists(ct_p2))
-        Variable/G ct_p2 = 0.50
+    SVAR/Z menuList = root:ARPES_LJZ:CTLUZ:ctlib_menu_list
+    if (!SVAR_Exists(menuList))
+        String/G root:ARPES_LJZ:CTLUZ:ctlib_menu_list = ""
     endif
 
-    NVAR/Z ct_p3 = root:ARPES_LJZ:CTLUZ:ct_p3
-    if (!NVAR_Exists(ct_p3))
-        Variable/G ct_p3 = 0.75
-    endif
-
-    NVAR/Z ct_p4 = root:ARPES_LJZ:CTLUZ:ct_p4
-    if (!NVAR_Exists(ct_p4))
-        Variable/G ct_p4 = 1
-    endif
-
-    // ---- colors (RGB 0..255) ----
-    NVAR/Z ct_rgb0_r = root:ARPES_LJZ:CTLUZ:ct_rgb0_r
-    if (!NVAR_Exists(ct_rgb0_r))
-        Variable/G ct_rgb0_r = 0
-        Variable/G ct_rgb0_g = 0
-        Variable/G ct_rgb0_b = 0
-
-        Variable/G ct_rgb1_r = 0
-        Variable/G ct_rgb1_g = 0
-        Variable/G ct_rgb1_b = 255
-
-        Variable/G ct_rgb2_r = 0
-        Variable/G ct_rgb2_g = 255
-        Variable/G ct_rgb2_b = 255
-
-        Variable/G ct_rgb3_r = 255
-        Variable/G ct_rgb3_g = 255
-        Variable/G ct_rgb3_b = 0
-
-        Variable/G ct_rgb4_r = 255
-        Variable/G ct_rgb4_g = 255
-        Variable/G ct_rgb4_b = 255
-    endif
-
-    // ---- swap points ----
-    NVAR/Z ct_swap_x = root:ARPES_LJZ:CTLUZ:ct_swap_x
-    if (!NVAR_Exists(ct_swap_x))
-        Variable/G ct_swap_x = 0
-    endif
-
-    NVAR/Z ct_swap_y = root:ARPES_LJZ:CTLUZ:ct_swap_y
-    if (!NVAR_Exists(ct_swap_y))
-        Variable/G ct_swap_y = 1
-    endif
-
-    // ---- output waves ----
-    Wave/Z/W/U ct_table = root:ARPES_LJZ:CTLUZ:ct_table
-    if (!WaveExists(ct_table))
-        Make/O/W/U/N=(65536,4) ct_table
-    endif
-
-    Wave/Z ct_lut = root:ARPES_LJZ:CTLUZ:ct_lut
-    if (!WaveExists(ct_lut))
-        Make/O/N=65536 ct_lut
-    endif
-
-    // ---- library UI state ----
-    SVAR/Z ct_save_name = root:ARPES_LJZ:CTLUZ:ct_save_name
-    if (!SVAR_Exists(ct_save_name))
-        String/G ct_save_name = ""
-    endif
-
-    SVAR/Z ct_pick_name = root:ARPES_LJZ:CTLUZ:ct_pick_name
-    if (!SVAR_Exists(ct_pick_name))
-        String/G ct_pick_name = "Mualani"
-    endif
-
-    SVAR/Z ctlib_menu_list = root:ARPES_LJZ:CTLUZ:ctlib_menu_list
-    if (!SVAR_Exists(ctlib_menu_list))
-        String/G ctlib_menu_list = "None;"
-    endif
-
-    SetDataFolder df0
-End
-
-
-// ============================================================
-// Entry
-// ============================================================
-
-Proc CTLUZ_LJZ()
-    ctluz_init_defaults_if_needed()
+    ctluz_ensure_builtin_library()
     ctluz_refresh_ctlib_menu()
-    ctluz_rebuild()
 
-    SetDataFolder root:
-    DoWindow/F CTLUZ_LJZ_P
-    if (V_flag == 0)
-        CTLUZ_LJZ_P()
-    endif
-
-    ctluz_sync_panel_state()
+    return 0
 End
 
 
-// ============================================================
-// Small helpers
-// ============================================================
+Function ctluz_ensure_builtin_library()
+    NewDataFolder/O root:ARPES_LJZ
+    NewDataFolder/O root:ARPES_LJZ:CTLUZ
+    NewDataFolder/O root:ARPES_LJZ:CTLUZ:CTLIB
 
-Function ctluz_clamp(v, lo, hi)
-    Variable v, lo, hi
-    if (v < lo)
-        return lo
+    Wave/Z/W/U wMualani = root:ARPES_LJZ:CTLUZ:CTLIB:Mualani
+    if (!WaveExists(wMualani))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:Mualani
+        Wave/W/U tmpMualani = root:ARPES_LJZ:CTLUZ:CTLIB:Mualani
+        ctluz_fill_mualani_ct(tmpMualani)
     endif
-    if (v > hi)
-        return hi
+
+    Wave/Z/W/U wDefault = root:ARPES_LJZ:CTLUZ:CTLIB:DefaultLJZ
+    if (!WaveExists(wDefault))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:DefaultLJZ
+        Wave/W/U tmpDefault = root:ARPES_LJZ:CTLUZ:CTLIB:DefaultLJZ
+        ctluz_fill_default_ct(tmpDefault)
     endif
+
+    Wave/Z/W/U wGray = root:ARPES_LJZ:CTLUZ:CTLIB:Gray
+    if (!WaveExists(wGray))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:Gray
+        Wave/W/U tmpGray = root:ARPES_LJZ:CTLUZ:CTLIB:Gray
+        ctluz_fill_gray_ct(tmpGray)
+    endif
+
+    Wave/Z/W/U wCyanHot = root:ARPES_LJZ:CTLUZ:CTLIB:CyanHot
+    if (!WaveExists(wCyanHot))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:CyanHot
+        Wave/W/U tmpCyanHot = root:ARPES_LJZ:CTLUZ:CTLIB:CyanHot
+        ctluz_fill_cyan_hot_ct(tmpCyanHot)
+    endif
+
+    return 0
+End
+
+
+// ============================================================================
+//  Missing old function: rebuild CT library menu
+// ============================================================================
+
+Function ctluz_refresh_ctlib_menu()
+    NewDataFolder/O root:ARPES_LJZ
+    NewDataFolder/O root:ARPES_LJZ:CTLUZ
+    NewDataFolder/O root:ARPES_LJZ:CTLUZ:CTLIB
+
+    ctluz_ensure_builtin_library()
+
+    SVAR/Z menuList = root:ARPES_LJZ:CTLUZ:ctlib_menu_list
+    if (!SVAR_Exists(menuList))
+        String/G root:ARPES_LJZ:CTLUZ:ctlib_menu_list = ""
+    endif
+    SVAR menuListRef = root:ARPES_LJZ:CTLUZ:ctlib_menu_list
+
+    String oldDF
+    oldDF = GetDataFolder(1)
+
+    SetDataFolder root:ARPES_LJZ:CTLUZ:CTLIB
+    String wl
+    wl = WaveList("*", ";", "")
+    SetDataFolder oldDF
+
+    String out
+    out = ""
+
+    Variable i
+    Variable n
+    String nm
+    n = ItemsInList(wl, ";")
+
+    for (i = 0; i < n; i += 1)
+        nm = StringFromList(i, wl, ";")
+        if (strlen(nm) == 0)
+            continue
+        endif
+
+        Wave/Z w = $("root:ARPES_LJZ:CTLUZ:CTLIB:" + nm)
+        if (!WaveExists(w))
+            continue
+        endif
+
+        if (DimSize(w, 0) <= 0 || DimSize(w, 1) < 3)
+            continue
+        endif
+
+        if (WaveType(w, 1) != 1)
+            continue
+        endif
+
+        out += nm + ";"
+    endfor
+
+    if (strlen(out) == 0)
+        out = "Mualani;DefaultLJZ;Gray;CyanHot;"
+    endif
+
+    menuListRef = out
+
+    return 0
+End
+
+
+// ============================================================================
+//  Fillers
+// ============================================================================
+
+Function ctluz_fill_linear_lut(lut)
+    Wave lut
+
+    Variable n
+    Variable i
+
+    n = numpnts(lut)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            lut[i] = i / (n - 1)
+        else
+            lut[i] = 0
+        endif
+    endfor
+
+    return 0
+End
+
+
+Function ctluz_clip01(v)
+    Variable v
+
+    if (v < 0)
+        return 0
+    endif
+
+    if (v > 1)
+        return 1
+    endif
+
     return v
 End
 
-Function/S ctluz_applied_df()
-    ctluz_ensure_folder()
-    return "root:ARPES_LJZ:CTLUZ:APPLIED:"
+
+Function ctluz_rgb_to_u16(v)
+    Variable v
+
+    v = ctluz_clip01(v)
+    return round(v * 65535)
 End
 
-Function/S ctluz_make_apply_key(graphName, imageName)
-    String graphName, imageName
-    return CleanupName(graphName + "__" + imageName, 0)
-End
 
-Function ctluz_sync_panel_state()
-    DoWindow CTLUZ_LJZ_P
-    if (V_flag == 0)
-        return 0
+Function ctluz_fill_gray_ct(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
     endif
 
-    SVAR ct_pick_name   = root:ARPES_LJZ:CTLUZ:ct_pick_name
-    SVAR ctlib_menu_list = root:ARPES_LJZ:CTLUZ:ctlib_menu_list
-
-    PopupMenu ctpm_saved,win=CTLUZ_LJZ_P,value=#"root:ARPES_LJZ:CTLUZ:ctlib_menu_list"
-
-    if (WhichListItem(ct_pick_name, ctlib_menu_list, ";", 0, 0) < 0)
-        if (WhichListItem("Mualani", ctlib_menu_list, ";", 0, 0) >= 0)
-            ct_pick_name = "Mualani"
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
         else
-            ct_pick_name = StringFromList(0, ctlib_menu_list, ";")
-        endif
-    endif
-
-    if (strlen(ct_pick_name) > 0)
-        PopupMenu ctpm_saved,win=CTLUZ_LJZ_P,popvalue=ct_pick_name
-    endif
-
-    ControlUpdate/W=CTLUZ_LJZ_P ctpm_saved
-    return 0
-End
-
-
-// ============================================================
-// Rebuild CT + LUT from current editor variables
-// ============================================================
-
-Function ctluz_rebuild()
-    ctluz_init_defaults_if_needed()
-    SetDataFolder root:ARPES_LJZ:CTLUZ
-
-    // ---- read vars ----
-    NVAR ct_p0 = root:ARPES_LJZ:CTLUZ:ct_p0
-    NVAR ct_p1 = root:ARPES_LJZ:CTLUZ:ct_p1
-    NVAR ct_p2 = root:ARPES_LJZ:CTLUZ:ct_p2
-    NVAR ct_p3 = root:ARPES_LJZ:CTLUZ:ct_p3
-    NVAR ct_p4 = root:ARPES_LJZ:CTLUZ:ct_p4
-
-    NVAR ct_rgb0_r = root:ARPES_LJZ:CTLUZ:ct_rgb0_r
-    NVAR ct_rgb0_g = root:ARPES_LJZ:CTLUZ:ct_rgb0_g
-    NVAR ct_rgb0_b = root:ARPES_LJZ:CTLUZ:ct_rgb0_b
-
-    NVAR ct_rgb1_r = root:ARPES_LJZ:CTLUZ:ct_rgb1_r
-    NVAR ct_rgb1_g = root:ARPES_LJZ:CTLUZ:ct_rgb1_g
-    NVAR ct_rgb1_b = root:ARPES_LJZ:CTLUZ:ct_rgb1_b
-
-    NVAR ct_rgb2_r = root:ARPES_LJZ:CTLUZ:ct_rgb2_r
-    NVAR ct_rgb2_g = root:ARPES_LJZ:CTLUZ:ct_rgb2_g
-    NVAR ct_rgb2_b = root:ARPES_LJZ:CTLUZ:ct_rgb2_b
-
-    NVAR ct_rgb3_r = root:ARPES_LJZ:CTLUZ:ct_rgb3_r
-    NVAR ct_rgb3_g = root:ARPES_LJZ:CTLUZ:ct_rgb3_g
-    NVAR ct_rgb3_b = root:ARPES_LJZ:CTLUZ:ct_rgb3_b
-
-    NVAR ct_rgb4_r = root:ARPES_LJZ:CTLUZ:ct_rgb4_r
-    NVAR ct_rgb4_g = root:ARPES_LJZ:CTLUZ:ct_rgb4_g
-    NVAR ct_rgb4_b = root:ARPES_LJZ:CTLUZ:ct_rgb4_b
-
-    Wave/W/U ct_table = root:ARPES_LJZ:CTLUZ:ct_table
-    Wave     ct_lut   = root:ARPES_LJZ:CTLUZ:ct_lut
-
-    // ---- sanitize rgb ----
-    ct_rgb0_r = ctluz_clamp(ct_rgb0_r, 0, 255)
-    ct_rgb0_g = ctluz_clamp(ct_rgb0_g, 0, 255)
-    ct_rgb0_b = ctluz_clamp(ct_rgb0_b, 0, 255)
-
-    ct_rgb1_r = ctluz_clamp(ct_rgb1_r, 0, 255)
-    ct_rgb1_g = ctluz_clamp(ct_rgb1_g, 0, 255)
-    ct_rgb1_b = ctluz_clamp(ct_rgb1_b, 0, 255)
-
-    ct_rgb2_r = ctluz_clamp(ct_rgb2_r, 0, 255)
-    ct_rgb2_g = ctluz_clamp(ct_rgb2_g, 0, 255)
-    ct_rgb2_b = ctluz_clamp(ct_rgb2_b, 0, 255)
-
-    ct_rgb3_r = ctluz_clamp(ct_rgb3_r, 0, 255)
-    ct_rgb3_g = ctluz_clamp(ct_rgb3_g, 0, 255)
-    ct_rgb3_b = ctluz_clamp(ct_rgb3_b, 0, 255)
-
-    ct_rgb4_r = ctluz_clamp(ct_rgb4_r, 0, 255)
-    ct_rgb4_g = ctluz_clamp(ct_rgb4_g, 0, 255)
-    ct_rgb4_b = ctluz_clamp(ct_rgb4_b, 0, 255)
-
-    // ---- sanitize positions ----
-    Variable loc_eps = 1e-4
-    ct_p0 = 0
-    ct_p4 = 1
-
-    ct_p1 = ctluz_clamp(ct_p1, loc_eps, 1-loc_eps)
-    ct_p2 = ctluz_clamp(ct_p2, loc_eps, 1-loc_eps)
-    ct_p3 = ctluz_clamp(ct_p3, loc_eps, 1-loc_eps)
-
-    if (ct_p1 > ct_p2 - loc_eps)
-        ct_p1 = ct_p2 - loc_eps
-    endif
-    if (ct_p2 < ct_p1 + loc_eps)
-        ct_p2 = ct_p1 + loc_eps
-    endif
-    if (ct_p2 > ct_p3 - loc_eps)
-        ct_p2 = ct_p3 - loc_eps
-    endif
-    if (ct_p3 < ct_p2 + loc_eps)
-        ct_p3 = ct_p2 + loc_eps
-    endif
-    if (ct_p3 > 1 - loc_eps)
-        ct_p3 = 1 - loc_eps
-    endif
-
-    // ---- build CT_Table in base space s in [0,1] ----
-    Variable loc_n = DimSize(ct_table, 0)
-    Variable loc_i, loc_seg
-    Variable loc_s, loc_u
-    Variable loc_r0, loc_g0, loc_b0, loc_r1, loc_g1, loc_b1
-
-    for (loc_i = 0; loc_i < loc_n; loc_i += 1)
-        loc_s = loc_i / (loc_n - 1.0)
-        loc_seg = floor(4 * loc_s)
-        if (loc_seg < 0)
-            loc_seg = 0
-        endif
-        if (loc_seg > 3)
-            loc_seg = 3
-        endif
-        loc_u = 4 * loc_s - loc_seg
-
-        if (loc_seg == 0)
-            loc_r0 = ct_rgb0_r * 257
-            loc_g0 = ct_rgb0_g * 257
-            loc_b0 = ct_rgb0_b * 257
-
-            loc_r1 = ct_rgb1_r * 257
-            loc_g1 = ct_rgb1_g * 257
-            loc_b1 = ct_rgb1_b * 257
-
-        elseif (loc_seg == 1)
-            loc_r0 = ct_rgb1_r * 257
-            loc_g0 = ct_rgb1_g * 257
-            loc_b0 = ct_rgb1_b * 257
-
-            loc_r1 = ct_rgb2_r * 257
-            loc_g1 = ct_rgb2_g * 257
-            loc_b1 = ct_rgb2_b * 257
-
-        elseif (loc_seg == 2)
-            loc_r0 = ct_rgb2_r * 257
-            loc_g0 = ct_rgb2_g * 257
-            loc_b0 = ct_rgb2_b * 257
-
-            loc_r1 = ct_rgb3_r * 257
-            loc_g1 = ct_rgb3_g * 257
-            loc_b1 = ct_rgb3_b * 257
-
-        else
-            loc_r0 = ct_rgb3_r * 257
-            loc_g0 = ct_rgb3_g * 257
-            loc_b0 = ct_rgb3_b * 257
-
-            loc_r1 = ct_rgb4_r * 257
-            loc_g1 = ct_rgb4_g * 257
-            loc_b1 = ct_rgb4_b * 257
+            t = 0
         endif
 
-        ct_table[loc_i][0] = round((1 - loc_u) * loc_r0 + loc_u * loc_r1)
-        ct_table[loc_i][1] = round((1 - loc_u) * loc_g0 + loc_u * loc_g1)
-        ct_table[loc_i][2] = round((1 - loc_u) * loc_b0 + loc_u * loc_b1)
-        ct_table[loc_i][3] = 65535
+        ct[i][0] = ctluz_rgb_to_u16(t)
+        ct[i][1] = ctluz_rgb_to_u16(t)
+        ct[i][2] = ctluz_rgb_to_u16(t)
     endfor
 
-    // ---- build lookup: desired t -> base s ----
-    Variable loc_t, loc_denom
-    for (loc_i = 0; loc_i < loc_n; loc_i += 1)
-        loc_t = loc_i / (loc_n - 1.0)
-
-        if (loc_t <= ct_p1)
-            loc_denom = (ct_p1 - ct_p0)
-            loc_u = (loc_denom <= 0) ? 0 : (loc_t - ct_p0) / loc_denom
-            ct_lut[loc_i] = 0 + 0.25 * loc_u
-
-        elseif (loc_t <= ct_p2)
-            loc_denom = (ct_p2 - ct_p1)
-            loc_u = (loc_denom <= 0) ? 0 : (loc_t - ct_p1) / loc_denom
-            ct_lut[loc_i] = 0.25 + 0.25 * loc_u
-
-        elseif (loc_t <= ct_p3)
-            loc_denom = (ct_p3 - ct_p2)
-            loc_u = (loc_denom <= 0) ? 0 : (loc_t - ct_p2) / loc_denom
-            ct_lut[loc_i] = 0.50 + 0.25 * loc_u
-
-        else
-            loc_denom = (ct_p4 - ct_p3)
-            loc_u = (loc_denom <= 0) ? 0 : (loc_t - ct_p3) / loc_denom
-            ct_lut[loc_i] = 0.75 + 0.25 * loc_u
-        endif
-
-        if (ct_lut[loc_i] < 0)
-            ct_lut[loc_i] = 0
-        endif
-        if (ct_lut[loc_i] > 1)
-            ct_lut[loc_i] = 1
-        endif
-    endfor
-
-    SetDataFolder root:
     return 0
 End
 
 
-// ============================================================
-// Get / set RGB
-// ============================================================
+Function ctluz_fill_default_ct(ct)
+    Wave/W/U ct
 
-Function ctluz_get_rgb8(loc_pt, loc_r, loc_g, loc_b)
-    Variable loc_pt
-    Variable &loc_r, &loc_g, &loc_b
+    Variable n
+    Variable i
+    Variable t
+    Variable r
+    Variable g
+    Variable b
 
-    switch (loc_pt)
-        case 0:
-            NVAR vR0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_r
-            NVAR vG0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_g
-            NVAR vB0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_b
-            loc_r = vR0; loc_g = vG0; loc_b = vB0
-            break
-
-        case 1:
-            NVAR vR1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_r
-            NVAR vG1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_g
-            NVAR vB1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_b
-            loc_r = vR1; loc_g = vG1; loc_b = vB1
-            break
-
-        case 2:
-            NVAR vR2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_r
-            NVAR vG2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_g
-            NVAR vB2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_b
-            loc_r = vR2; loc_g = vG2; loc_b = vB2
-            break
-
-        case 3:
-            NVAR vR3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_r
-            NVAR vG3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_g
-            NVAR vB3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_b
-            loc_r = vR3; loc_g = vG3; loc_b = vB3
-            break
-
-        default:
-            NVAR vR4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_r
-            NVAR vG4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_g
-            NVAR vB4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_b
-            loc_r = vR4; loc_g = vG4; loc_b = vB4
-            break
-    endswitch
-End
-
-Function ctluz_set_rgb8(loc_pt, loc_r, loc_g, loc_b)
-    Variable loc_pt, loc_r, loc_g, loc_b
-
-    loc_r = ctluz_clamp(loc_r, 0, 255)
-    loc_g = ctluz_clamp(loc_g, 0, 255)
-    loc_b = ctluz_clamp(loc_b, 0, 255)
-
-    switch (loc_pt)
-        case 0:
-            NVAR vR0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_r
-            NVAR vG0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_g
-            NVAR vB0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_b
-            vR0 = loc_r; vG0 = loc_g; vB0 = loc_b
-            break
-
-        case 1:
-            NVAR vR1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_r
-            NVAR vG1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_g
-            NVAR vB1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_b
-            vR1 = loc_r; vG1 = loc_g; vB1 = loc_b
-            break
-
-        case 2:
-            NVAR vR2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_r
-            NVAR vG2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_g
-            NVAR vB2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_b
-            vR2 = loc_r; vG2 = loc_g; vB2 = loc_b
-            break
-
-        case 3:
-            NVAR vR3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_r
-            NVAR vG3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_g
-            NVAR vB3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_b
-            vR3 = loc_r; vG3 = loc_g; vB3 = loc_b
-            break
-
-        default:
-            NVAR vR4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_r
-            NVAR vG4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_g
-            NVAR vB4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_b
-            vR4 = loc_r; vG4 = loc_g; vB4 = loc_b
-            break
-    endswitch
-End
-
-
-// ============================================================
-// Swap RGB between two control points
-// ============================================================
-
-Function ctluz_swap_pts_rgb()
-    NVAR ct_swap_x = root:ARPES_LJZ:CTLUZ:ct_swap_x
-    NVAR ct_swap_y = root:ARPES_LJZ:CTLUZ:ct_swap_y
-
-    Variable loc_x = round(ct_swap_x)
-    Variable loc_y = round(ct_swap_y)
-
-    loc_x = ctluz_clamp(loc_x, 0, 4)
-    loc_y = ctluz_clamp(loc_y, 0, 4)
-
-    ct_swap_x = loc_x
-    ct_swap_y = loc_y
-
-    if (loc_x == loc_y)
-        return 0
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
     endif
 
-    Variable rx, gx, bx, ry, gy, by
-    ctluz_get_rgb8(loc_x, rx, gx, bx)
-    ctluz_get_rgb8(loc_y, ry, gy, by)
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
 
-    ctluz_set_rgb8(loc_x, ry, gy, by)
-    ctluz_set_rgb8(loc_y, rx, gx, bx)
+        if (t < 0.25)
+            r = 0
+            g = 0
+            b = 4 * t
+        elseif (t < 0.50)
+            r = 0
+            g = 4 * (t - 0.25)
+            b = 1
+        elseif (t < 0.75)
+            r = 4 * (t - 0.50)
+            g = 1
+            b = 1 - 4 * (t - 0.50)
+        else
+            r = 1
+            g = 1
+            b = 4 * (t - 0.75)
+        endif
 
-    ctluz_rebuild()
+        ct[i][0] = ctluz_rgb_to_u16(r)
+        ct[i][1] = ctluz_rgb_to_u16(g)
+        ct[i][2] = ctluz_rgb_to_u16(b)
+    endfor
+
     return 0
 End
 
-Function CTLUZ_btn_swappts(ctrlName) : ButtonControl
-    String ctrlName
-    ctluz_swap_pts_rgb()
+
+Function ctluz_fill_mualani_ct(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+    Variable r
+    Variable g
+    Variable b
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        // dark navy -> blue -> cyan-green -> yellow-orange -> white
+        if (t < 0.22)
+            r = 0.02 + 0.02 * (t / 0.22)
+            g = 0.02 + 0.18 * (t / 0.22)
+            b = 0.05 + 0.75 * (t / 0.22)
+        elseif (t < 0.48)
+            r = 0.04 + 0.02 * ((t - 0.22) / 0.26)
+            g = 0.20 + 0.70 * ((t - 0.22) / 0.26)
+            b = 0.80 + 0.18 * ((t - 0.22) / 0.26)
+        elseif (t < 0.72)
+            r = 0.06 + 0.88 * ((t - 0.48) / 0.24)
+            g = 0.90 + 0.08 * ((t - 0.48) / 0.24)
+            b = 0.98 - 0.82 * ((t - 0.48) / 0.24)
+        else
+            r = 0.94 + 0.06 * ((t - 0.72) / 0.28)
+            g = 0.98 + 0.02 * ((t - 0.72) / 0.28)
+            b = 0.16 + 0.84 * ((t - 0.72) / 0.28)
+        endif
+
+        ct[i][0] = ctluz_rgb_to_u16(r)
+        ct[i][1] = ctluz_rgb_to_u16(g)
+        ct[i][2] = ctluz_rgb_to_u16(b)
+    endfor
+
     return 0
 End
 
 
-// ============================================================
-// CTLIB menu
-// ============================================================
+Function ctluz_fill_cyan_hot_ct(ct)
+    Wave/W/U ct
 
-Function ctluz_refresh_ctlib_menu()
+    Variable n
+    Variable i
+    Variable t
+    Variable r
+    Variable g
+    Variable b
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        r = min(1, max(0, 1.8 * t - 0.25))
+        g = min(1, max(0, 2.0 * t))
+        b = min(1, max(0, 1.3 - 1.2 * t))
+
+        ct[i][0] = ctluz_rgb_to_u16(r)
+        ct[i][1] = ctluz_rgb_to_u16(g)
+        ct[i][2] = ctluz_rgb_to_u16(b)
+    endfor
+
+    return 0
+End
+
+
+// ============================================================================
+//  Convenience and compatibility helpers
+// ============================================================================
+
+Function/S ctluz_default_ct_path()
+    ctluz_ensure_folder()
+    return "root:ARPES_LJZ:CTLUZ:ct_table"
+End
+
+
+Function/S ctluz_default_lut_path()
+    ctluz_ensure_folder()
+    return "root:ARPES_LJZ:CTLUZ:ct_lut"
+End
+
+
+Function ctluz_set_current_ct_from_library(ctName)
+    String ctName
+
     ctluz_ensure_folder()
 
-    String loc_df0 = GetDataFolder(1)
-    SetDataFolder root:ARPES_LJZ:CTLUZ:CTLIB
+    if (strlen(ctName) == 0)
+        return -1
+    endif
 
-    String allList = WaveList("*", ";", "DIMS:2")
+    Wave/Z/W/U src = $("root:ARPES_LJZ:CTLUZ:CTLIB:" + ctName)
+    if (!WaveExists(src))
+        return -1
+    endif
 
-    String prefList = "Mualani;NavyBurgundy;Nilou;Mavuika;Citlali;Kinich;Varesa;Zhongli;Kirara;KujouSara;Chasca;Xilonen;Xiangling;Keqing;NeonClash;CyberPunk;ToxicHeat;"
-    String finalList = ""
-    Variable i, n
+    Duplicate/O src, root:ARPES_LJZ:CTLUZ:ct_table
+    return 0
+End
+
+
+Function ctluz_rgb16_at_t(t, r16, g16, b16)
+    Variable t
+    Variable &r16
+    Variable &g16
+    Variable &b16
+
+    ctluz_ensure_folder()
+
+    Wave/W/U ct = root:ARPES_LJZ:CTLUZ:ct_table
+
+    Variable n
+    Variable idx
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        r16 = 0
+        g16 = 0
+        b16 = 0
+        return -1
+    endif
+
+    if (t < 0)
+        t = 0
+    endif
+    if (t > 1)
+        t = 1
+    endif
+
+    idx = round(t * (n - 1))
+
+    if (idx < 0)
+        idx = 0
+    endif
+    if (idx > n - 1)
+        idx = n - 1
+    endif
+
+    r16 = ct[idx][0]
+    g16 = ct[idx][1]
+    b16 = ct[idx][2]
+
+    return 0
+End
+
+Function LJZ_CTP2_RebuildLibraryListWaves()
+    LJZ_CTP2_EnsureCTLIB()
+
+    SVAR LibraryMenuList = $(LJZ_CTP2_BaseDF() + ":LibraryMenuList")
+    SVAR LibraryCTName = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
+
+    Wave/T LibList = $(LJZ_CTP2_BaseDF() + ":LibList")
+    Wave LibSel = $(LJZ_CTP2_BaseDF() + ":LibSel")
+
+    Variable n
+    Variable i
+    Variable row
     String nm
 
-    n = ItemsInList(prefList, ";")
+    n = ItemsInList(LibraryMenuList, ";")
+    Redimension/N=(n) LibList
+    Redimension/N=(n) LibSel
+    LibSel = 0
+
+    row = -1
+
     for (i = 0; i < n; i += 1)
-        nm = StringFromList(i, prefList, ";")
-        if (strlen(nm) == 0)
-            continue
-        endif
+        nm = StringFromList(i, LibraryMenuList, ";")
+        LibList[i] = nm
 
-        if (WaveExists($nm))
-            if (WhichListItem(nm, finalList, ";", 0, 0) < 0)
-                finalList += nm + ";"
-            endif
+        if (CmpStr(nm, LibraryCTName) == 0)
+            row = i
         endif
     endfor
 
-    n = ItemsInList(allList, ";")
-    for (i = 0; i < n; i += 1)
-        nm = StringFromList(i, allList, ";")
-        if (strlen(nm) == 0)
-            continue
+    if (n > 0)
+        if (row < 0)
+            row = 0
+            LibraryCTName = LibList[0]
         endif
-
-        if (WhichListItem(nm, finalList, ";", 0, 0) < 0)
-            finalList += nm + ";"
-        endif
-    endfor
-
-    if (strlen(finalList) == 0)
-        finalList = "None;"
-    endif
-
-    SetDataFolder root:ARPES_LJZ:CTLUZ
-    SVAR ctlib_menu_list = root:ARPES_LJZ:CTLUZ:ctlib_menu_list
-    ctlib_menu_list = finalList
-
-    SetDataFolder loc_df0
-
-    ctluz_sync_panel_state()
-    return 0
-End
-
-
-// ============================================================
-// Save current editor CT into CTLIB
-// NOTE: saves ct_table only; current ct_lut remains workspace state
-// ============================================================
-
-Function ctluz_save_current_ct()
-    ctluz_init_defaults_if_needed()
-
-    SVAR ct_save_name = root:ARPES_LJZ:CTLUZ:ct_save_name
-    String loc_name = CleanupName(ct_save_name, 0)
-
-    if (strlen(loc_name) == 0)
-        Abort "Save name is empty."
-    endif
-
-    Wave/W/U loc_src = root:ARPES_LJZ:CTLUZ:ct_table
-    Duplicate/O loc_src, $("root:ARPES_LJZ:CTLUZ:CTLIB:" + loc_name)
-
-    ctluz_refresh_ctlib_menu()
-
-    SVAR ct_pick_name = root:ARPES_LJZ:CTLUZ:ct_pick_name
-    ct_pick_name = loc_name
-
-    ctluz_sync_panel_state()
-    return 0
-End
-
-
-// ============================================================
-// Popup proc
-// ============================================================
-
-Function CTLUZ_pm_ctlib_proc(ctrlName, popNum, popStr) : PopupMenuControl
-    String ctrlName
-    Variable popNum
-    String popStr
-
-    SVAR ct_pick_name = root:ARPES_LJZ:CTLUZ:ct_pick_name
-    if (StringMatch(popStr, "None"))
-        ct_pick_name = ""
-    else
-        ct_pick_name = popStr
-    endif
-    return 0
-End
-
-
-// ============================================================
-// Load 5-point RGB parameters from a saved CT wave
-// Assumes 4 equal linear segments in base space
-// ============================================================
-
-Function ctluz_load_params_from_ct_wave(loc_ct)
-    Wave/W/U loc_ct
-
-    Variable loc_n = DimSize(loc_ct, 0)
-    if (loc_n <= 1)
-        Abort "CT wave has invalid size."
-    endif
-
-    Variable loc_i0 = 0
-    Variable loc_i1 = round(0.25 * (loc_n - 1))
-    Variable loc_i2 = round(0.50 * (loc_n - 1))
-    Variable loc_i3 = round(0.75 * (loc_n - 1))
-    Variable loc_i4 = loc_n - 1
-
-    Variable loc_r, loc_g, loc_b
-
-    loc_r = round(loc_ct[loc_i0][0] / 257)
-    loc_g = round(loc_ct[loc_i0][1] / 257)
-    loc_b = round(loc_ct[loc_i0][2] / 257)
-    NVAR vR0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_r
-    NVAR vG0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_g
-    NVAR vB0 = root:ARPES_LJZ:CTLUZ:ct_rgb0_b
-    vR0 = ctluz_clamp(loc_r, 0, 255)
-    vG0 = ctluz_clamp(loc_g, 0, 255)
-    vB0 = ctluz_clamp(loc_b, 0, 255)
-
-    loc_r = round(loc_ct[loc_i1][0] / 257)
-    loc_g = round(loc_ct[loc_i1][1] / 257)
-    loc_b = round(loc_ct[loc_i1][2] / 257)
-    NVAR vR1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_r
-    NVAR vG1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_g
-    NVAR vB1 = root:ARPES_LJZ:CTLUZ:ct_rgb1_b
-    vR1 = ctluz_clamp(loc_r, 0, 255)
-    vG1 = ctluz_clamp(loc_g, 0, 255)
-    vB1 = ctluz_clamp(loc_b, 0, 255)
-
-    loc_r = round(loc_ct[loc_i2][0] / 257)
-    loc_g = round(loc_ct[loc_i2][1] / 257)
-    loc_b = round(loc_ct[loc_i2][2] / 257)
-    NVAR vR2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_r
-    NVAR vG2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_g
-    NVAR vB2 = root:ARPES_LJZ:CTLUZ:ct_rgb2_b
-    vR2 = ctluz_clamp(loc_r, 0, 255)
-    vG2 = ctluz_clamp(loc_g, 0, 255)
-    vB2 = ctluz_clamp(loc_b, 0, 255)
-
-    loc_r = round(loc_ct[loc_i3][0] / 257)
-    loc_g = round(loc_ct[loc_i3][1] / 257)
-    loc_b = round(loc_ct[loc_i3][2] / 257)
-    NVAR vR3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_r
-    NVAR vG3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_g
-    NVAR vB3 = root:ARPES_LJZ:CTLUZ:ct_rgb3_b
-    vR3 = ctluz_clamp(loc_r, 0, 255)
-    vG3 = ctluz_clamp(loc_g, 0, 255)
-    vB3 = ctluz_clamp(loc_b, 0, 255)
-
-    loc_r = round(loc_ct[loc_i4][0] / 257)
-    loc_g = round(loc_ct[loc_i4][1] / 257)
-    loc_b = round(loc_ct[loc_i4][2] / 257)
-    NVAR vR4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_r
-    NVAR vG4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_g
-    NVAR vB4 = root:ARPES_LJZ:CTLUZ:ct_rgb4_b
-    vR4 = ctluz_clamp(loc_r, 0, 255)
-    vG4 = ctluz_clamp(loc_g, 0, 255)
-    vB4 = ctluz_clamp(loc_b, 0, 255)
-
-    return 0
-End
-
-
-// ============================================================
-// Snapshot apply helpers
-// Each graph/image gets its own frozen CT/LUT copy
-// ============================================================
-
-Function ctluz_apply_snapshot_to_image(graphName, imageName, srcCT, srcLUT, useLookup)
-    String graphName, imageName
-    Wave/W/U srcCT
-    Wave srcLUT
-    Variable useLookup
-
-    String baseDF = ctluz_applied_df()
-    String key = ctluz_make_apply_key(graphName, imageName)
-
-    String ctPath  = baseDF + key + "_ct"
-    String lutPath = baseDF + key + "_lut"
-
-    Duplicate/O srcCT, $ctPath
-    Wave/W/U ctLocal = $ctPath
-
-    if (useLookup && WaveExists(srcLUT))
-        Duplicate/O srcLUT, $lutPath
-        Wave lutLocal = $lutPath
-        ModifyImage/W=$graphName $imageName ctab={*,*,ctLocal,0}, lookup=lutLocal
-    else
-        ModifyImage/W=$graphName $imageName ctab={*,*,ctLocal,0}
+        LibSel[row] = 1
     endif
 
     return 0
 End
 
+Function LJZ_CTP2_SetSelectedLibrary(row)
+    Variable row
 
-// ============================================================
-// Apply selected saved CT to top graph (safe snapshot)
-// Still uses current ct_lut workspace
-// ============================================================
+    Wave/T LibList = $(LJZ_CTP2_BaseDF() + ":LibList")
+    Wave LibSel = $(LJZ_CTP2_BaseDF() + ":LibSel")
+    SVAR LibraryCTName = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
 
-Function ctluz_apply_picked_ct()
-    ctluz_init_defaults_if_needed()
+    LibSel = 0
 
-    SVAR ct_pick_name = root:ARPES_LJZ:CTLUZ:ct_pick_name
-    if (strlen(ct_pick_name) == 0)
-        Abort "No saved CT selected."
+    if (numpnts(LibList) <= 0)
+        LibraryCTName = ""
+        return -1
     endif
 
-    Wave/Z/W/U loc_ct = $("root:ARPES_LJZ:CTLUZ:CTLIB:" + ct_pick_name)
-    if (!WaveExists(loc_ct))
-        Abort "Selected CT wave not found in CTLIB."
+    if (row < 0 || row >= numpnts(LibList))
+        row = 0
     endif
 
-    Wave/Z loc_lut = root:ARPES_LJZ:CTLUZ:ct_lut
-
-    String loc_g = WinName(0, 1)
-    if (strlen(loc_g) == 0)
-        Abort "No graph window found."
-    endif
-
-    String loc_imgs = ImageNameList(loc_g, ";")
-    Variable loc_nimg = ItemsInList(loc_imgs, ";")
-    if (loc_nimg <= 0)
-        Abort "Top graph has no images."
-    endif
-
-    Variable loc_i
-    for (loc_i = 0; loc_i < loc_nimg; loc_i += 1)
-        String loc_im = StringFromList(loc_i, loc_imgs, ";")
-        ctluz_apply_snapshot_to_image(loc_g, loc_im, loc_ct, loc_lut, 1)
-    endfor
-
-    // also load palette anchors back into editor workspace
-    ctluz_load_params_from_ct_wave(loc_ct)
+    LibSel[row] = 1
+    LibraryCTName = LibList[row]
 
     return 0
 End
 
+Function LJZ_CTP2_LibListBoxProc(lba) : ListBoxControl
+    STRUCT WMListboxAction &lba
 
-// ============================================================
-// Apply current editor workspace CT to top graph (safe snapshot)
-// ============================================================
-
-Function ctluz_apply_to_top_graph()
-    ctluz_init_defaults_if_needed()
-
-    String loc_g = WinName(0, 1)
-    if (strlen(loc_g) == 0)
-        Abort "No graph window found."
+    if (lba.eventCode != 4)
+        return 0
     endif
 
-    String loc_imgs = ImageNameList(loc_g, ";")
-    Variable loc_nimg = ItemsInList(loc_imgs, ";")
-    if (loc_nimg <= 0)
-        Abort "Top graph has no images."
+    LJZ_CTP2_SetSelectedLibrary(lba.row)
+    LJZ_CTP2_UpdatePreviewLibrary()
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+    if (WinType(pName) != 0)
+        ControlUpdate/A/W=$pName
     endif
 
-    Wave/W/U loc_ct = root:ARPES_LJZ:CTLUZ:ct_table
-    Wave loc_lut = root:ARPES_LJZ:CTLUZ:ct_lut
-
-    Variable loc_i
-    for (loc_i = 0; loc_i < loc_nimg; loc_i += 1)
-        String loc_im = StringFromList(loc_i, loc_imgs, ";")
-        ctluz_apply_snapshot_to_image(loc_g, loc_im, loc_ct, loc_lut, 1)
-    endfor
-
-    return 0
-End
-
-
-// ============================================================
-// Buttons
-// ============================================================
-
-Function CTLUZ_btn_rebuild(ctrlName) : ButtonControl
-    String ctrlName
-    ctluz_rebuild()
-    return 0
-End
-
-Function CTLUZ_btn_apply(ctrlName) : ButtonControl
-    String ctrlName
-    ctluz_rebuild()
-    ctluz_apply_to_top_graph()
-    return 0
-End
-
-Function CTLUZ_btn_close(ctrlName) : ButtonControl
-    String ctrlName
-    DoWindow/K CTLUZ_LJZ_P
-    return 0
-End
-
-Function CTLUZ_btn_refreshlib(ctrlName) : ButtonControl
-    String ctrlName
-    ctluz_refresh_ctlib_menu()
-    return 0
-End
-
-Function CTLUZ_btn_save(ctrlName) : ButtonControl
-    String ctrlName
-    ctluz_rebuild()
-    ctluz_save_current_ct()
-    return 0
-End
-
-Function CTLUZ_btn_apply_saved(ctrlName) : ButtonControl
-    String ctrlName
-    ctluz_apply_picked_ct()
-    return 0
-End
-
-
-// ============================================================
-// Panel
-// ============================================================
-
-Window CTLUZ_LJZ_P() : Panel
-	PauseUpdate; Silent 1		// building window...
-	NewPanel /W=(887.4,343.2,1360.2,760.8) as "CTLUZ_LJZ (CT + LUT + Apply)"
-	ModifyPanel frameStyle=1
-	ShowTools/A
-	TitleBox ctt0,pos={13.80,12.60},size={307.80,11.40},title="5-point ColorTable (RGB 0..255) + Positions (0..1)  |  Safe Snapshot Apply"
-	TitleBox ctt0,font="Times New Roman",fSize=10,frame=0
-
-	TitleBox cth0,pos={12.00,30.00},size={11.40,18.00},title="Pt",frame=0
-	TitleBox cth1,pos={51.00,30.00},size={7.20,18.00},title="p",frame=0
-	TitleBox cth2,pos={168.00,30.00},size={7.80,18.00},title="R",frame=0
-	TitleBox cth3,pos={270.00,30.00},size={8.40,18.00},title="G",frame=0
-	TitleBox cth4,pos={369.00,30.00},size={7.20,18.00},title="B",frame=0
-
-	TitleBox ctpt0,pos={12.00,51.00},size={6.60,18.00},title="0",frame=0
-	SetVariable ctsv_p0,pos={51.00,51.00},size={108.00,19.80}
-	SetVariable ctsv_p0,limits={0,1,0.001},value= root:ARPES_LJZ:CTLUZ:ct_p0
-	SetVariable ctsv_r0,pos={168.00,51.00},size={90.00,19.80}
-	SetVariable ctsv_r0,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb0_r
-	SetVariable ctsv_g0,pos={270.00,51.00},size={90.00,19.80}
-	SetVariable ctsv_g0,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb0_g
-	SetVariable ctsv_b0,pos={369.00,51.00},size={90.00,19.80}
-	SetVariable ctsv_b0,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb0_b
-
-	TitleBox ctpt1,pos={12.00,78.00},size={6.60,18.00},title="1",frame=0
-	SetVariable ctsv_p1,pos={51.00,78.00},size={108.00,19.80}
-	SetVariable ctsv_p1,limits={0,1,0.001},value= root:ARPES_LJZ:CTLUZ:ct_p1
-	SetVariable ctsv_r1,pos={168.00,78.00},size={90.00,19.80}
-	SetVariable ctsv_r1,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb1_r
-	SetVariable ctsv_g1,pos={270.00,78.00},size={90.00,19.80}
-	SetVariable ctsv_g1,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb1_g
-	SetVariable ctsv_b1,pos={369.00,78.00},size={90.00,19.80}
-	SetVariable ctsv_b1,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb1_b
-
-	TitleBox ctpt2,pos={12.00,102.00},size={6.60,18.00},title="2",frame=0
-	SetVariable ctsv_p2,pos={51.00,102.00},size={108.00,19.80}
-	SetVariable ctsv_p2,limits={0,1,0.001},value= root:ARPES_LJZ:CTLUZ:ct_p2
-	SetVariable ctsv_r2,pos={168.00,102.00},size={90.00,19.80}
-	SetVariable ctsv_r2,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb2_r
-	SetVariable ctsv_g2,pos={270.00,102.00},size={90.00,19.80}
-	SetVariable ctsv_g2,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb2_g
-	SetVariable ctsv_b2,pos={369.00,102.00},size={90.00,19.80}
-	SetVariable ctsv_b2,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb2_b
-
-	TitleBox ctpt3,pos={12.00,129.00},size={6.60,18.00},title="3",frame=0
-	SetVariable ctsv_p3,pos={51.00,129.00},size={108.00,19.80}
-	SetVariable ctsv_p3,limits={0,1,0.001},value= root:ARPES_LJZ:CTLUZ:ct_p3
-	SetVariable ctsv_r3,pos={168.00,129.00},size={90.00,19.80}
-	SetVariable ctsv_r3,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb3_r
-	SetVariable ctsv_g3,pos={270.00,129.00},size={90.00,19.80}
-	SetVariable ctsv_g3,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb3_g
-	SetVariable ctsv_b3,pos={369.00,129.00},size={90.00,19.80}
-	SetVariable ctsv_b3,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb3_b
-
-	TitleBox ctpt4,pos={12.00,156.00},size={6.60,18.00},title="4",frame=0
-	SetVariable ctsv_p4,pos={51.00,156.00},size={108.00,19.80}
-	SetVariable ctsv_p4,limits={0,1,0.001},value= root:ARPES_LJZ:CTLUZ:ct_p4
-	SetVariable ctsv_r4,pos={168.00,156.00},size={90.00,19.80}
-	SetVariable ctsv_r4,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb4_r
-	SetVariable ctsv_g4,pos={270.00,156.00},size={90.00,19.80}
-	SetVariable ctsv_g4,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb4_g
-	SetVariable ctsv_b4,pos={369.00,156.00},size={90.00,19.80}
-	SetVariable ctsv_b4,limits={0,255,1},value= root:ARPES_LJZ:CTLUZ:ct_rgb4_b
-
-	TitleBox ctnote,pos={12.00,189.00},size={430.20,18.00},title="Note: p0 forced to 0 and p4 forced to 1; p1<p2<p3 enforced with epsilon."
-	TitleBox ctnote,frame=0
-
-	Button ctbtn_rebuild,pos={12.00,219.00},size={120.00,24.00},proc=CTLUZ_btn_rebuild,title="Rebuild"
-	Button ctbtn_apply,pos={150.00,219.00},size={168.00,24.00},proc=CTLUZ_btn_apply,title="Apply (Top Graph)"
-	Button ctbtn_close,pos={339.00,219.00},size={90.00,24.00},proc=CTLUZ_btn_close,title="Close"
-
-	TitleBox ctlib_t0,pos={12.00,249.00},size={181.80,18.00},title="Save current CT to CTLIB (name):"
-	TitleBox ctlib_t0,frame=0
-	SetVariable ctsv_savename,pos={219.00,246.00},size={180.00,19.80}
-	SetVariable ctsv_savename,value= root:ARPES_LJZ:CTLUZ:ct_save_name
-	Button ctbtn_save,pos={189.00,276.00},size={144.00,39.00},proc=CTLUZ_btn_save,title="Save"
-	Button ctbtn_refreshlib,pos={354.00,273.00},size={102.00,42.00},proc=CTLUZ_btn_refreshlib,title="Refresh CT list"
-
-	TitleBox ctlib_t1,pos={12.00,279.00},size={88.20,18.00},title="Apply saved CT:"
-	TitleBox ctlib_t1,frame=0
-	PopupMenu ctpm_saved,pos={120.00,276.00},size={58.20,20.40},proc=CTLUZ_pm_ctlib_proc
-	PopupMenu ctpm_saved,mode=1,popvalue="Mualani",value= #"root:ARPES_LJZ:CTLUZ:ctlib_menu_list"
-	Button ctbtn_apply_saved,pos={339.00,321.00},size={117.00,48.00},proc=CTLUZ_btn_apply_saved,title="Apply Saved (Top)"
-
-	TitleBox ctout0,pos={12.00,303.00},size={48.00,18.00},title="Outputs:",frame=0
-	TitleBox ctout1,pos={12.00,327.00},size={292.20,18.00},title="root:ARPES_LJZ:CTLUZ:ct_table  (65536x4 U16 RGBA)"
-	TitleBox ctout1,frame=0
-	TitleBox ctout2,pos={12.00,351.00},size={264.60,18.00},title="root:ARPES_LJZ:CTLUZ:ct_lut    (65536 float 0..1)"
-	TitleBox ctout2,frame=0
-
-	TitleBox ctswap_t0,pos={12.00,381.00},size={148.20,18.00},title="Swap RGB between points:"
-	TitleBox ctswap_t0,frame=0
-	SetVariable ctsv_swapx,pos={171.00,379.80},size={69.00,19.80},title="x"
-	SetVariable ctsv_swapx,limits={0,4,1},value= root:ARPES_LJZ:CTLUZ:ct_swap_x
-	SetVariable ctsv_swapy,pos={244.80,379.80},size={69.00,19.80},title="y"
-	SetVariable ctsv_swapy,limits={0,4,1},value= root:ARPES_LJZ:CTLUZ:ct_swap_y
-	Button ctbtn_swappts,pos={318.60,381.00},size={138.00,21.00},proc=CTLUZ_btn_swappts,title="Swap RGB (x<->y)"
-EndMacro
-
-
-// ============================================================
-// Build a 5-point linear CT into a given 65536x4 U16 wave
-// inputs are 8-bit RGB (0..255)
-// ============================================================
-
-Function ctluz_make_ct_from_5rgb(dest, c0r,c0g,c0b, c1r,c1g,c1b, c2r,c2g,c2b, c3r,c3g,c3b, c4r,c4g,c4b)
-    Wave/W/U dest
-    Variable c0r,c0g,c0b, c1r,c1g,c1b, c2r,c2g,c2b, c3r,c3g,c3b, c4r,c4g,c4b
-
-    Variable nn = DimSize(dest, 0)
-    if (nn <= 1)
-        Abort "dest CT wave has invalid size."
-    endif
-
-    Variable ii, seg, uu, ss
-    Variable a0r16, a0g16, a0b16, a1r16, a1g16, a1b16
-
-    c0r = ctluz_clamp(c0r, 0, 255)
-    c0g = ctluz_clamp(c0g, 0, 255)
-    c0b = ctluz_clamp(c0b, 0, 255)
-
-    c1r = ctluz_clamp(c1r, 0, 255)
-    c1g = ctluz_clamp(c1g, 0, 255)
-    c1b = ctluz_clamp(c1b, 0, 255)
-
-    c2r = ctluz_clamp(c2r, 0, 255)
-    c2g = ctluz_clamp(c2g, 0, 255)
-    c2b = ctluz_clamp(c2b, 0, 255)
-
-    c3r = ctluz_clamp(c3r, 0, 255)
-    c3g = ctluz_clamp(c3g, 0, 255)
-    c3b = ctluz_clamp(c3b, 0, 255)
-
-    c4r = ctluz_clamp(c4r, 0, 255)
-    c4g = ctluz_clamp(c4g, 0, 255)
-    c4b = ctluz_clamp(c4b, 0, 255)
-
-    for (ii = 0; ii < nn; ii += 1)
-        ss = ii / (nn - 1.0)
-        seg = floor(4 * ss)
-        if (seg < 0)
-            seg = 0
-        endif
-        if (seg > 3)
-            seg = 3
-        endif
-        uu = 4 * ss - seg
-
-        if (seg == 0)
-            a0r16 = c0r * 257; a0g16 = c0g * 257; a0b16 = c0b * 257
-            a1r16 = c1r * 257; a1g16 = c1g * 257; a1b16 = c1b * 257
-
-        elseif (seg == 1)
-            a0r16 = c1r * 257; a0g16 = c1g * 257; a0b16 = c1b * 257
-            a1r16 = c2r * 257; a1g16 = c2g * 257; a1b16 = c2b * 257
-
-        elseif (seg == 2)
-            a0r16 = c2r * 257; a0g16 = c2g * 257; a0b16 = c2b * 257
-            a1r16 = c3r * 257; a1g16 = c3g * 257; a1b16 = c3b * 257
-
-        else
-            a0r16 = c3r * 257; a0g16 = c3g * 257; a0b16 = c3b * 257
-            a1r16 = c4r * 257; a1g16 = c4g * 257; a1b16 = c4b * 257
-        endif
-
-        dest[ii][0] = round((1 - uu) * a0r16 + uu * a1r16)
-        dest[ii][1] = round((1 - uu) * a0g16 + uu * a1g16)
-        dest[ii][2] = round((1 - uu) * a0b16 + uu * a1b16)
-        dest[ii][3] = 65535
-    endfor
-
-    return 0
-End
-
-
-// ============================================================
-// install built-in palettes into CTLIB (only if missing)
-// unified "light-background" family
-// saved as English names under root:ARPES_LJZ:CTLUZ:CTLIB
-// ============================================================
-
-Function ctluz_install_builtin_ctlib()
-
-    String df0 = GetDataFolder(1)
-    SetDataFolder root:ARPES_LJZ:CTLUZ:CTLIB
-
-    // Nilou
-    if (!WaveExists($("Nilou")))
-        Make/O/W/U/N=(65536,4) Nilou
-        ctluz_make_ct_from_5rgb(Nilou, 246,248,250, 188,221,230, 92,156,186, 228,126,102, 76,98,128)
-    endif
-
-    // KujouSara
-    if (!WaveExists($("KujouSara")))
-        Make/O/W/U/N=(65536,4) KujouSara
-        ctluz_make_ct_from_5rgb(KujouSara, 245,244,246, 206,196,216, 131,104,152, 208,170,92, 82,78,106)
-    endif
-
-    // Xiangling
-    if (!WaveExists($("Xiangling")))
-        Make/O/W/U/N=(65536,4) Xiangling
-        ctluz_make_ct_from_5rgb(Xiangling, 249,246,238, 245,212,150, 222,133,73, 122,168,104, 82,96,120)
-    endif
-
-    // Zhongli
-    if (!WaveExists($("Zhongli")))
-        Make/O/W/U/N=(65536,4) Zhongli
-        ctluz_make_ct_from_5rgb(Zhongli, 248,244,236, 228,205,160, 196,140,78, 252,208,110, 106,98,116)
-    endif
-
-    // Kirara
-    if (!WaveExists($("Kirara")))
-        Make/O/W/U/N=(65536,4) Kirara
-        ctluz_make_ct_from_5rgb(Kirara, 246,248,244, 202,228,214, 124,182,176, 220,194,118, 92,142,92)
-    endif
-
-    // Keqing
-    if (!WaveExists($("Keqing")))
-        Make/O/W/U/N=(65536,4) Keqing
-        ctluz_make_ct_from_5rgb(Keqing, 249,244,244, 230,198,214, 180,136,186, 228,124,110, 108,86,120)
-    endif
-
-    // NavyBurgundy
-    if (!WaveExists($("NavyBurgundy")))
-        Make/O/W/U/N=(65536,4) NavyBurgundy
-        ctluz_make_ct_from_5rgb(NavyBurgundy, 246,247,249, 203,220,238, 112,138,182, 186,98,98, 72,84,118)
-    endif
-
-    // Chasca
-    if (!WaveExists($("Chasca")))
-        Make/O/W/U/N=(65536,4) Chasca
-        ctluz_make_ct_from_5rgb(Chasca, 249,245,242, 192,225,228, 96,116,184, 176,84,116, 72,72,110)
-    endif
-
-    // Xilonen
-    if (!WaveExists($("Xilonen")))
-        Make/O/W/U/N=(65536,4) Xilonen
-        ctluz_make_ct_from_5rgb(Xilonen, 250,246,238, 244,215,176, 238,138,64, 171,224,197, 88,108,100)
-    endif
-
-    // Mualani
-    if (!WaveExists($("Mualani")))
-        Make/O/W/U/N=(65536,4) Mualani
-        ctluz_make_ct_from_5rgb(Mualani, 246,247,249, 198,222,238, 82,122,204, 90,188,196, 232,188,74)
-    endif
-
-    // Mavuika
-    if (!WaveExists($("Mavuika")))
-        Make/O/W/U/N=(65536,4) Mavuika
-        ctluz_make_ct_from_5rgb(Mavuika, 252,240,230, 244,192,176, 232,92,62, 205,114,118, 96,82,86)
-    endif
-
-    // Kinich
-    if (!WaveExists($("Kinich")))
-        Make/O/W/U/N=(65536,4) Kinich
-        ctluz_make_ct_from_5rgb(Kinich, 246,243,228, 216,234,176, 110,188,144, 72,126,136, 76,88,66)
-    endif
-
-    // Citlali
-    if (!WaveExists($("Citlali")))
-        Make/O/W/U/N=(65536,4) Citlali
-        ctluz_make_ct_from_5rgb(Citlali, 252,244,242, 233,204,226, 150,136,204, 236,118,170, 86,74,116)
-    endif
-
-    // Varesa
-    if (!WaveExists($("Varesa")))
-        Make/O/W/U/N=(65536,4) Varesa
-        ctluz_make_ct_from_5rgb(Varesa, 250,240,236, 244,204,206, 118,208,196, 250,226,154, 156,122,186)
-    endif
-
-    // NeonClash
-    if (!WaveExists($("NeonClash")))
-        Make/O/W/U/N=(65536,4) NeonClash
-        ctluz_make_ct_from_5rgb(NeonClash, 248,244,248, 236,138,162, 176,74,170, 88,92,224, 28,126,220)
-    endif
-
-    // CyberPunk
-    if (!WaveExists($("CyberPunk")))
-        Make/O/W/U/N=(65536,4) CyberPunk
-        ctluz_make_ct_from_5rgb(CyberPunk, 248,244,249, 240,150,212, 176,92,210, 82,112,226, 48,210,210)
-    endif
-
-    // ToxicHeat
-    if (!WaveExists($("ToxicHeat")))
-        Make/O/W/U/N=(65536,4) ToxicHeat
-        ctluz_make_ct_from_5rgb(ToxicHeat, 246,248,238, 188,220,118, 228,190,64, 232,112,48, 182,42,38)
-    endif
-
-    SetDataFolder df0
     return 0
 End
