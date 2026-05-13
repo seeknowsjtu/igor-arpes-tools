@@ -1129,11 +1129,11 @@ Window LJZ_MDCWB_Panel() : Panel
     Button btnAutoInit,       pos={628,55}, size={62,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoInit", fSize=10
     Button btnAutoDetect,     pos={696,55}, size={72,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoDetect", fSize=10
     Button btnSaveEdit,       pos={774,55}, size={68,20}, proc=LJZ_MDCWB_ButtonProc, title="SaveEdit", fSize=10
-    Button btnGuess,          pos={848,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Guess", fSize=10
-    Button btnFit,            pos={904,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Fit", fSize=10
-    CheckBox cbCsr,           pos={964,58}, size={92,16}, proc=LJZ_MDCWB_CheckProc, title="cursor ROI", fSize=10
+    Button btnGuess,          pos={848,55}, size={58,20}, proc=LJZ_MDCWB_ButtonProc, title="Preview", fSize=10
+    Button btnFit,            pos={912,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Fit", fSize=10
+    CheckBox cbCsr,           pos={972,58}, size={92,16}, proc=LJZ_MDCWB_CheckProc, title="cursor ROI", fSize=10
     CheckBox cbCsr,           value=1
-    CheckBox cbCarryFit,      pos={1048,58}, size={72,16}, proc=LJZ_MDCWB_CheckProc, title="Carry fit", fSize=10
+    CheckBox cbCarryFit,      pos={1056,58}, size={72,16}, proc=LJZ_MDCWB_CheckProc, title="Carry fit", fSize=10
     CheckBox cbCarryFit,      variable=$(LJZ_MDCWB_BaseDF() + ":UI_carryFitToNext")
 
     // ---- left wave list ----
@@ -1553,7 +1553,9 @@ Function LJZ_MDCWB_ButtonProc(ba) : ButtonControl
         if (!WaveExists(cw2))
             return 0
         endif
-        LJZ_MDCWB_AutoInitFromData(cw2)
+        if (LJZ_MDCWB_AutoInitFromData(cw2) == 0)
+            LJZ_MDCWB_SetLastError("AutoInit: one peak initialized from ROI.")
+        endif
         LJZ_MDCWB_RefreshAll()
         return 0
     endif
@@ -1565,7 +1567,11 @@ Function LJZ_MDCWB_ButtonProc(ba) : ButtonControl
             return 0
         endif
         LJZ_MDCWB_PullROIFromCursorsIfWanted()
-        LJZ_MDCWB_AutoDetectPeaks(cw3, 4)
+        if (LJZ_MDCWB_AutoDetectPeaks(cw3, 4) == 0)
+            String adMsg
+            sprintf adMsg, "AutoDetect: %d peaks initialized from ROI.", LJZ_MDCWB_WorkNumPeaks()
+            LJZ_MDCWB_SetLastError(adMsg)
+        endif
         LJZ_MDCWB_RefreshAll()
         return 0
     endif
@@ -1588,8 +1594,11 @@ Function LJZ_MDCWB_ButtonProc(ba) : ButtonControl
             return 0
         endif
         LJZ_MDCWB_PullROIFromCursorsIfWanted()
-        LJZ_MDCWB_BuildGuess(cw5)
-        LJZ_MDCWB_RefreshAll()
+        LJZ_MDCWB_SanitizeWorkState()
+        LJZ_MDCWB_MarkDirty(1)
+        LJZ_MDCWB_RefreshPreviewGraph()
+        LJZ_MDCWB_SetLastError("Preview rebuilt from current Work parameters.")
+        LJZ_MDCWB_RefreshMetricBoxes()
         return 0
     endif
 

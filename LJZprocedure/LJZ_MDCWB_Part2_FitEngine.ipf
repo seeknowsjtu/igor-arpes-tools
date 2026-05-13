@@ -1143,6 +1143,9 @@ Function LJZ_MDCWB_EstimateBaselineInROI(dataWave, roiLo, roiHi)
     return sum / cnt
 End
 
+// AutoInit is a destructive Work-state initializer:
+// it replaces the current peak list with one peak estimated from the ROI.
+// It does not save edit-state and does not run FuncFit.
 // AutoInit: replace peaks with a single best-guess peak; refresh BG and
 // keep user ROI / resH if already set. Marks Dirty (Part 3 will refresh UI).
 Function LJZ_MDCWB_AutoInitFromData(wData)
@@ -1308,12 +1311,10 @@ Function LJZ_MDCWB_AutoDetectPeaks(wData, detectMax)
         LJZ_MDCWB_WorkDeletePeak(kp)
     endfor
 
-    Variable nFound = 0
+    Make/FREE/N=(n) candX = NaN, candH = NaN, candW = NaN
+    Variable nCand = 0
     Variable i, v0, v1, v2
     for (i = 1; i < n - 1; i += 1)
-        if (nFound >= detectMax)
-            break
-        endif
         v0 = seg[i - 1]
         v1 = seg[i]
         v2 = seg[i + 1]
@@ -1350,16 +1351,31 @@ Function LJZ_MDCWB_AutoDetectPeaks(wData, detectMax)
             endif
         while (1)
 
-        Variable wid = max(2 * dx, (jR - jL) * dx * 0.5)
-        Variable cx = x0Axis + i * dx
-        Variable amp = v1
-        if (numtype(amp) != 0 || amp <= 0)
-            amp = 1
-        endif
-
-        LJZ_MDCWB_AddPeak(t, cx, wid, amp)
-        nFound += 1
+        candW[nCand] = max(2 * dx, (jR - jL) * dx * 0.5)
+        candX[nCand] = x0Axis + i * dx
+        candH[nCand] = max(1, v1)
+        nCand += 1
     endfor
+
+    Variable nFound = 0
+    if (nCand > 0)
+        Make/FREE/N=(nCand) pickIdx = p
+        Sort/R candH, candH, pickIdx
+        Variable nTake = min(detectMax, nCand)
+        Make/FREE/N=(nTake) selX, selH, selW
+        Variable kk
+        for (kk = 0; kk < nTake; kk += 1)
+            Variable src = pickIdx[kk]
+            selX[kk] = candX[src]
+            selH[kk] = candH[kk]
+            selW[kk] = candW[src]
+        endfor
+        Sort selX, selX, selH, selW
+        for (kk = 0; kk < nTake; kk += 1)
+            LJZ_MDCWB_AddPeak(t, selX[kk], selW[kk], selH[kk])
+            nFound += 1
+        endfor
+    endif
 
     if (nFound == 0)
         // Fallback: single peak at ROI center.
@@ -1476,6 +1492,9 @@ End
 // ============================================================================
 //  Section 9. Guess generation
 //
+//  BuildGuess is an internal cache writer used before RunFit.
+//  It is not an automatic parameter estimator.
+//  The panel preview uses LJZ_MDCWB_BuildPreviewGuess instead.
 //  Critical: BuildGuess writes a CACHED guess wave on disk (<wname>_guess)
 //  but DOES NOT write the edit-state. The cached guess is a derived artifact;
 //  the edit-state is the user's intent and is written only by
