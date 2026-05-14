@@ -1125,7 +1125,7 @@ Window LJZ_MDCWB_Panel() : Panel
     Button btnReject,         pos={888,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Reject", fSize=11
     Button btnClear,          pos={946,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Clear", fSize=11
     Button btnExport,         pos={1004,27}, size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Export", fSize=11
-    Button btnExportATKT,     pos={1062,27}, size={70,22}, proc=LJZ_MDCWB_ButtonProc, title="Exp->ATKT", fSize=11
+    Button btnExportATKT,     pos={1040,27}, size={70,22}, proc=LJZ_MDCWB_ButtonProc, title="Exp->ATKT", fSize=11
 
     Button btnAutoInit,       pos={628,55}, size={62,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoInit", fSize=10
     Button btnAutoDetect,     pos={696,55}, size={72,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoDetect", fSize=10
@@ -1717,6 +1717,10 @@ Function LJZ_MDCWB_NotifyATKT()
 
     SVAR target = $(LJZ_MDCWB_BaseDF() + ":TargetDF")
     String df = LJZ_MDCWB_NormDFPath(target)
+    if (strlen(df) == 0)
+        DoAlert 0, "NotifyATKT: Target DF is invalid."
+        return -1
+    endif
     String fitHP = RemoveEnding(df, ":") + ":FIT_HP:"
 
     if (!DataFolderExists(fitHP))
