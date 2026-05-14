@@ -859,6 +859,215 @@ Function LJZ_A2K1D_Run_Sigma(peakPathStr, sigmaPathStr, baseName, degPerPix, the
     return 0
 End
 
+Static Function a2k1d_angle_to_k(angle, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC)
+    Variable angle, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC
+
+    Variable Ek = hv + energyE - workFunc
+    if (numtype(Ek) != 0 || Ek <= 0)
+        return NaN
+    endif
+
+    Variable scale = (degPerPix == 0) ? 1 : degPerPix
+    Variable constantV = 0.5118
+    Variable unitFactor = 1
+    if (LC != 0)
+        unitFactor = LC / pi
+    endif
+
+    Variable A = constantV * sqrt(Ek) * unitFactor
+    return A * sin((angle * scale + thetaOffset) * pi / 180) - kShift
+End
+
+Static Function a2k1d_sigma_angle_to_k(angle, sigma_angle, degPerPix, thetaOffset, hv, workFunc, energyE, LC)
+    Variable angle, sigma_angle, degPerPix, thetaOffset, hv, workFunc, energyE, LC
+
+    if (numtype(sigma_angle) != 0 || sigma_angle < 0)
+        return NaN
+    endif
+
+    Variable Ek = hv + energyE - workFunc
+    if (numtype(Ek) != 0 || Ek <= 0)
+        return NaN
+    endif
+
+    Variable scale = (degPerPix == 0) ? 1 : degPerPix
+    Variable constantV = 0.5118
+    Variable unitFactor = 1
+    if (LC != 0)
+        unitFactor = LC / pi
+    endif
+
+    Variable A = constantV * sqrt(Ek) * unitFactor
+    return abs(A * cos((angle * scale + thetaOffset) * pi / 180) * scale * pi / 180) * sigma_angle
+End
+
+Function LJZ_A2K1D_TransformLongTable(fitHPDF)
+    String fitHPDF
+
+    String fdf = a2k1d_df_with_colon(fitHPDF)
+    if (!a2k1d_df_exists(fdf))
+        DoAlert 0, "A2K1D LongTable: fitHP data folder not found."
+        return -1
+    endif
+
+    Wave/Z wAngle = $(fdf + "Long_PeakAngle")
+    if (!WaveExists(wAngle))
+        DoAlert 0, "A2K1D LongTable: Long_PeakAngle is required."
+        return -1
+    endif
+
+    Variable nRows = DimSize(wAngle, 0)
+    Wave/Z wK0 = $(fdf + "Long_PeakK")
+    if (!WaveExists(wK0))
+        Make/O/N=(nRows) $(fdf + "Long_PeakK") = NaN
+    endif
+    Wave wK = $(fdf + "Long_PeakK")
+
+    Wave/Z wSigmaK0 = $(fdf + "Long_SigmaK")
+    if (!WaveExists(wSigmaK0))
+        Make/O/N=(nRows) $(fdf + "Long_SigmaK") = NaN
+    endif
+    Wave wSigmaK = $(fdf + "Long_SigmaK")
+
+    Wave/Z wSigmaAngle = $(fdf + "Long_SigmaAngle")
+    Variable hasSigmaAngle = WaveExists(wSigmaAngle)
+
+    NVAR/Z degPerPix = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
+    NVAR/Z thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
+    NVAR/Z hv = root:ARPES_LJZ:A2K1D:a2k1d_hv
+    NVAR/Z workFunc = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
+    NVAR/Z energyE = root:ARPES_LJZ:A2K1D:a2k1d_energyE
+    NVAR/Z kShift = root:ARPES_LJZ:A2K1D:a2k1d_kShift
+    NVAR/Z LC = root:ARPES_LJZ:A2K1D:a2k1d_LC
+
+    if (!NVAR_Exists(degPerPix) || !NVAR_Exists(thetaOffset) || !NVAR_Exists(hv) || !NVAR_Exists(workFunc) || !NVAR_Exists(energyE) || !NVAR_Exists(kShift) || !NVAR_Exists(LC))
+        DoAlert 0, "A2K1D LongTable: required ATKT panel parameters are missing."
+        return -1
+    endif
+
+    Variable Ek = hv + energyE - workFunc
+    if (numtype(Ek) != 0 || Ek <= 0)
+        DoAlert 0, "A2K1D LongTable: Ek = hv + EnergyE - WorkFunc must be > 0."
+        return -1
+    endif
+
+    Variable i, angleV, kV, sigmaV
+    Variable converted = 0
+    Variable skipped = 0
+    Variable failed = 0
+    Variable scale = (degPerPix == 0) ? 1 : degPerPix
+
+    for (i = 0; i < nRows; i += 1)
+        angleV = wAngle[i]
+        if (numtype(angleV) != 0)
+            wK[i] = NaN
+            wSigmaK[i] = NaN
+            skipped += 1
+            continue
+        endif
+
+        kV = a2k1d_angle_to_k(angleV, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC)
+        if (numtype(kV) != 0)
+            wK[i] = NaN
+            wSigmaK[i] = NaN
+            failed += 1
+            continue
+        endif
+
+        wK[i] = kV
+        converted += 1
+
+        if (hasSigmaAngle)
+            sigmaV = a2k1d_sigma_angle_to_k(angleV, wSigmaAngle[i], degPerPix, thetaOffset, hv, workFunc, energyE, LC)
+            wSigmaK[i] = sigmaV
+        else
+            wSigmaK[i] = NaN
+        endif
+    endfor
+
+    Note/K wK
+    String noteK = ""
+    noteK += "A2K1D LongTable PeakAngle->PeakK\r"
+    noteK += "degPerPix=" + num2str(degPerPix) + "\r"
+    noteK += "scale=" + num2str(scale) + "\r"
+    noteK += "thetaOffset=" + num2str(thetaOffset) + "\r"
+    noteK += "hv=" + num2str(hv) + "\r"
+    noteK += "workFunc=" + num2str(workFunc) + "\r"
+    noteK += "energyE=" + num2str(energyE) + "\r"
+    noteK += "kShift=" + num2str(kShift) + "\r"
+    noteK += "LC=" + num2str(LC) + "\r"
+    noteK += "Ek=" + num2str(Ek) + "\r"
+    noteK += "formulaVersion=LJZ_A2K1D_Run_equivalent_v1\r"
+    Note wK, noteK
+
+    Note/K wSigmaK
+    String noteSigma = ""
+    noteSigma += "A2K1D LongTable SigmaAngle->SigmaK\r"
+    noteSigma += "degPerPix=" + num2str(degPerPix) + "\r"
+    noteSigma += "scale=" + num2str(scale) + "\r"
+    noteSigma += "thetaOffset=" + num2str(thetaOffset) + "\r"
+    noteSigma += "hv=" + num2str(hv) + "\r"
+    noteSigma += "workFunc=" + num2str(workFunc) + "\r"
+    noteSigma += "energyE=" + num2str(energyE) + "\r"
+    noteSigma += "kShift=" + num2str(kShift) + "\r"
+    noteSigma += "LC=" + num2str(LC) + "\r"
+    noteSigma += "Ek=" + num2str(Ek) + "\r"
+    noteSigma += "formulaVersion=LJZ_A2K1D_RunSigma_equivalent_v1\r"
+    Note wSigmaK, noteSigma
+
+    LJZ_A2K1D_SyncAllTableFromLong(fdf)
+    DoAlert 0, "A2K1D LongTable done. converted=" + num2str(converted) + ", skipped=" + num2str(skipped) + ", failed=" + num2str(failed)
+    return 0
+End
+
+Function LJZ_A2K1D_SyncAllTableFromLong(fdf)
+    String fdf
+
+    String df = a2k1d_df_with_colon(fdf)
+    Wave/Z wRow = $(df + "Long_MDCRow")
+    Wave/Z wRank = $(df + "Long_PeakRank")
+    Wave/Z wK = $(df + "Long_PeakK")
+    Wave/Z wSigmaK = $(df + "Long_SigmaK")
+    Wave/Z wPeakAll = $(df + "PeakK_All")
+    Wave/Z wSigmaAll = $(df + "SigmaK_All")
+
+    if (!WaveExists(wPeakAll))
+        return -1
+    endif
+    if (!WaveExists(wRow) || !WaveExists(wRank) || !WaveExists(wK))
+        return -1
+    endif
+
+    wPeakAll = NaN
+    if (WaveExists(wSigmaAll))
+        wSigmaAll = NaN
+    endif
+
+    Variable nRows = DimSize(wRow, 0)
+    Variable i, rr, cc
+    for (i = 0; i < nRows; i += 1)
+        if (numtype(wRow[i]) != 0 || numtype(wRank[i]) != 0)
+            continue
+        endif
+        rr = trunc(wRow[i])
+        cc = trunc(wRank[i]) - 1
+        if (rr < 0 || cc < 0)
+            continue
+        endif
+        if (rr >= DimSize(wPeakAll, 0) || cc >= DimSize(wPeakAll, 1))
+            continue
+        endif
+        wPeakAll[rr][cc] = wK[i]
+        if (WaveExists(wSigmaAll) && WaveExists(wSigmaK))
+            if (i < DimSize(wSigmaK, 0))
+                wSigmaAll[rr][cc] = wSigmaK[i]
+            endif
+        endif
+    endfor
+
+    return 0
+End
+
 //============================================================
 // Delta-k transform
 // Given: peak1k_k and peak2k_k
