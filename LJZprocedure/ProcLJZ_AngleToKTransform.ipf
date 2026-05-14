@@ -1,4 +1,4 @@
-﻿#pragma TextEncoding = "UTF-8"
+#pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 
 
@@ -626,75 +626,103 @@ Function a2k1d_btn_help(ctrlName) : ButtonControl
 End
 
 Window A2K1D_LJZ_P() : Panel
-	PauseUpdate; Silent 1		// building window...
-	NewPanel /W=(420,60,982.2,680.0) as "Angle->k (Value & Spectra) (LJZ)"
+	PauseUpdate; Silent 1
+	NewPanel /W=(420,60,982.2,700.0) as "Angle->k (Value & Spectra) (LJZ)"
 	ModifyPanel frameStyle=1
 	ShowTools/A
-	TitleBox a2k1d_t0,pos={12.00,9.00},size={226.80,18.00},title="Transform: Value or Spectra Interpolation"
-	TitleBox a2k1d_t0,frame=0
-	TitleBox a2k1d_status,pos={12.00,27.00},size={88.80,18.00},title="Selected: (none)"
-	TitleBox a2k1d_status,frame=0
-	TitleBox a2k1d_runstat,pos={12.00,45.00},size={60.00,18.00},title="Status: idle"
-	TitleBox a2k1d_runstat,frame=0
-	TitleBox a2k1d_tdf,pos={12.00,69.00},size={47.40,18.00},title="Base DF:",frame=0
-	SetVariable a2k1d_sv_df,pos={84.00,66.00},size={240.00,19.80},proc=a2k1d_sv_df_proc
+
+	// --- Status bar ---
+	TitleBox a2k1d_t0,pos={12,9},size={312,18},title="Transform: Value or Spectra Interpolation",frame=0
+	TitleBox a2k1d_status,pos={12,27},size={312,18},title="Selected: (none)",frame=0
+	TitleBox a2k1d_runstat,pos={12,45},size={312,18},title="Status: idle",frame=0
+
+	// --- Base DF row ---
+	TitleBox a2k1d_tdf,pos={12,69},size={48,18},title="Base DF:",frame=0
+	SetVariable a2k1d_sv_df,pos={64,66},size={260,19.80},proc=a2k1d_sv_df_proc
 	SetVariable a2k1d_sv_df,value= root:ARPES_LJZ:A2K1D:a2k1d_baseDF
-	CheckBox a2k1d_ck_rec,pos={336.00,69.00},size={63.60,18.00},title="Recursive"
+	CheckBox a2k1d_ck_rec,pos={336,69},size={80,18},title="Recursive"
 	CheckBox a2k1d_ck_rec,variable= root:ARPES_LJZ:A2K1D:a2k1d_recursive
-	Button a2k1d_btn_scan,pos={426.00,66.00},size={72.00,21.00},proc=a2k1d_btn_scan,title="Scan"
-	ListBox a2k1d_lb,pos={12.00,96.00},size={312.00,360.00},proc=a2k1d_lb_proc
+	Button a2k1d_btn_scan,pos={432,66},size={72,21},proc=a2k1d_btn_scan,title="Scan"
+
+	// --- Left: ListBox ---
+	ListBox a2k1d_lb,pos={12,96},size={312,348},proc=a2k1d_lb_proc
 	ListBox a2k1d_lb,listWave=root:ARPES_LJZ:A2K1D:LB_Items
-	ListBox a2k1d_lb,selWave=root:ARPES_LJZ:A2K1D:LB_Sel,mode= 1,selRow= 0
-	TitleBox a2k1d_tp,pos={336.00,96.00},size={64.80,18.00},title="Parameters:"
-	TitleBox a2k1d_tp,frame=0
-	SetVariable a2k1d_sv_bn,pos={336.00,120.00},size={204.00,19.80},title="BaseName"
-	SetVariable a2k1d_sv_bn,value= root:ARPES_LJZ:A2K1D:a2k1d_baseName
-	SetVariable a2k1d_sv_deg,pos={336.00,144.00},size={204.00,19.80},title="DegPerPix"
-	SetVariable a2k1d_sv_deg,limits={-999,999,0.001},value= root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
-	SetVariable a2k1d_sv_th,pos={336.00,168.00},size={204.00,19.80},title="ThetaOff"
+	ListBox a2k1d_lb,selWave=root:ARPES_LJZ:A2K1D:LB_Sel,mode=1,selRow=0
+
+	// --- Right: Physics params ---
+	TitleBox a2k1d_tp,pos={336,96},size={204,18},title="-- Physics --",frame=0
+
+	SetVariable a2k1d_sv_th,pos={336,116},size={98,19.80},title="ThetaOff"
 	SetVariable a2k1d_sv_th,limits={-360,360,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-	SetVariable a2k1d_sv_hv,pos={336.00,192.00},size={204.00,19.80},title="hv(eV)"
+	SetVariable a2k1d_sv_hv,pos={438,116},size={102,19.80},title="hv(eV)"
 	SetVariable a2k1d_sv_hv,limits={0,1e+06,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_hv
-	SetVariable a2k1d_sv_wf,pos={336.00,216.00},size={204.00,19.80},title="WorkFunc"
+
+	SetVariable a2k1d_sv_wf,pos={336,140},size={98,19.80},title="WorkFunc"
 	SetVariable a2k1d_sv_wf,limits={0,100,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-	SetVariable a2k1d_sv_e,pos={336.00,240.00},size={204.00,19.80},title="EnergyE"
+	SetVariable a2k1d_sv_e,pos={438,140},size={102,19.80},title="EnergyE"
 	SetVariable a2k1d_sv_e,limits={-100000,100000,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_energyE
-	SetVariable a2k1d_sv_ksh,pos={336.00,264.00},size={204.00,19.80},title="kShift"
+
+	SetVariable a2k1d_sv_ksh,pos={336,164},size={98,19.80},title="kShift"
 	SetVariable a2k1d_sv_ksh,limits={-100000,100000,0.0001},value= root:ARPES_LJZ:A2K1D:a2k1d_kShift
-	SetVariable a2k1d_sv_lc,pos={336.00,288.00},size={204.00,19.80},title="LC(a)"
+	SetVariable a2k1d_sv_lc,pos={438,164},size={102,19.80},title="LC(a)"
 	SetVariable a2k1d_sv_lc,limits={0,1e+06,0.0001},value= root:ARPES_LJZ:A2K1D:a2k1d_LC
-	SetVariable a2k1d_sv_n,pos={336.00,312.00},size={204.00,19.80},title="OutN"
+
+	// --- Right: Single-wave ---
+	TitleBox a2k1d_tp_single,pos={336,192},size={204,18},title="-- Single wave --",frame=0
+
+	SetVariable a2k1d_sv_bn,pos={336,212},size={204,19.80},title="BaseName"
+	SetVariable a2k1d_sv_bn,value= root:ARPES_LJZ:A2K1D:a2k1d_baseName
+
+	SetVariable a2k1d_sv_deg,pos={336,236},size={98,19.80},title="DegPerPix"
+	SetVariable a2k1d_sv_deg,limits={-999,999,0.001},value= root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
+	SetVariable a2k1d_sv_n,pos={438,236},size={102,19.80},title="OutN"
 	SetVariable a2k1d_sv_n,limits={0,1e+07,1},value= root:ARPES_LJZ:A2K1D:a2k1d_outN
-	Button a2k1d_btn_run,pos={336.00,348.00},size={204.00,21.00},proc=a2k1d_btn_run,title="Run Value Trans (Y=Angle)"
-	Button a2k1d_btn_spec,pos={336.00,372.00},size={204.00,21.00},proc=a2k1d_btn_spec_run,title="Run Spectra (X=Angle->k Interp)"
-	Button a2k1d_btn_batch_layer,pos={336.00,399.00},size={204.00,21.00},proc=a2k1d_btn_batch_layers_interp,title="Batch: layer_xx Spectra->k"
-	Button a2k1d_btn_batch_peak,pos={336.00,426.00},size={204.00,21.00},proc=a2k1d_btn_batch_peaks_valuetrans,title="Batch: peak/sigmap Value->k"
-	Button a2k1d_btn_table_peak_k,pos={336.00,451.00},size={204.00,21.00},proc=a2k1d_btn_table_peak_k,title="Table Peak->K"
-	Button a2k1d_btn_abort,pos={336.00,476.00},size={204.00,30.00},proc=a2k1d_btn_abort,title="Abort"
-	Button a2k1d_btn_help,pos={336.60,510.00},size={99.00,30.00},proc=a2k1d_btn_help,title="Help"
-	Button a2k1d_btn_close,pos={441.00,510.00},size={99.00,30.00},proc=a2k1d_btn_close,title="Close"
-	Button a2k1d_btn_plot_peaks,pos={144.00,465.00},size={85.80,24.00},proc=a2k1d_btn_plot_peaks_err,title="Plot Peaks"
-	Button a2k1d_btn_plot_delta,pos={237.60,465.00},size={85.80,24.00},proc=a2k1d_btn_plot_delta_err,title="Plot Δk12"
-	SetVariable a2k1d_sv_kvary,pos={12.00,498.00},size={120.00,19.80},title="kVary"
+
+	Button a2k1d_btn_run,pos={336,260},size={204,22},proc=a2k1d_btn_run,title="Run Value Trans (Y=Angle)"
+	Button a2k1d_btn_spec,pos={336,284},size={204,22},proc=a2k1d_btn_spec_run,title="Run Spectra (X=Angle->k Interp)"
+
+	// --- Right: Batch ---
+	TitleBox a2k1d_tp_batch,pos={336,314},size={204,18},title="-- Batch --",frame=0
+
+	Button a2k1d_btn_batch_layer,pos={336,334},size={204,22},proc=a2k1d_btn_batch_layers_interp,title="Batch: layer_xx Spectra->k"
+	Button a2k1d_btn_batch_peak,pos={336,358},size={204,22},proc=a2k1d_btn_batch_peaks_valuetrans,title="Batch: peak/sigmap Value->k"
+	Button a2k1d_btn_table_peak_k,pos={336,382},size={204,22},proc=a2k1d_btn_table_peak_k,title="Table Peak->K"
+
+	Button a2k1d_btn_abort,pos={336,412},size={204,28},proc=a2k1d_btn_abort,title="Abort"
+	Button a2k1d_btn_help,pos={336,450},size={98,28},proc=a2k1d_btn_help,title="Help"
+	Button a2k1d_btn_close,pos={442,450},size={98,28},proc=a2k1d_btn_close,title="Close"
+
+	// --- Bottom: Plot / Visualization ---
+
+	// Row 1: peak plots | kVary | stack
+	Button a2k1d_btn_plot_peaks,pos={12,490},size={90,22},proc=a2k1d_btn_plot_peaks_err,title="Plot Peaks"
+	Button a2k1d_btn_plot_delta,pos={108,490},size={90,22},proc=a2k1d_btn_plot_delta_err,title="Plot Dk12"
+	SetVariable a2k1d_sv_kvary,pos={210,492},size={108,19.80},title="kVary"
 	SetVariable a2k1d_sv_kvary,limits={-1e+06,1e+06,0.001},value= root:ARPES_LJZ:A2K1D:a2k1d_kvary
-	Button a2k1d_btn_plot_layers,pos={144.00,495.00},size={180.00,24.00},proc=a2k1d_btn_plot_layers_stack,title="Plot: stack layer_*_k_spec"
-	CheckBox a2k1d_ck_useCT,pos={12.00,528.00},size={67.20,18.00},title="GradColor"
+	Button a2k1d_btn_plot_layers,pos={324,490},size={216,22},proc=a2k1d_btn_plot_layers_stack,title="Plot: stack layer_*_k_spec"
+
+	// Row 2: color table | heatmap
+	CheckBox a2k1d_ck_useCT,pos={12,518},size={72,18},title="GradColor"
 	CheckBox a2k1d_ck_useCT,variable= root:ARPES_LJZ:A2K1D:a2k1d_useCT
-	CheckBox a2k1d_ck_invCT,pos={96.00,528.00},size={43.20,18.00},title="Invert"
+	CheckBox a2k1d_ck_invCT,pos={88,518},size={52,18},title="Invert"
 	CheckBox a2k1d_ck_invCT,variable= root:ARPES_LJZ:A2K1D:a2k1d_ctInvert
-	TitleBox a2k1d_tb_ct_current,pos={168.00,528.00},size={81.60,18.00},title="CT: NeonClash"
-	TitleBox a2k1d_tb_ct_current,frame=0
-	Button a2k1d_btn_browse_ct,pos={264.00,525.00},size={48.00,18.60},proc=a2k1d_btn_open_ct_browser,title="..."
-	SetVariable a2k1d_sv_hmY0,pos={12.00,558.00},size={120.00,19.80},title="HM y0"
+	TitleBox a2k1d_tb_ct_current,pos={144,518},size={88,18},title="CT: NeonClash",frame=0
+	Button a2k1d_btn_browse_ct,pos={236,516},size={38,20},proc=a2k1d_btn_open_ct_browser,title="..."
+	Button a2k1d_btn_plot_heat,pos={282,514},size={258,24},proc=a2k1d_btn_plot_layers_heatmap,title="Plot: 2D Heatmap"
+
+	// Row 3: heatmap axis params
+	SetVariable a2k1d_sv_hmY0,pos={12,544},size={116,19.80},title="HM y0"
 	SetVariable a2k1d_sv_hmY0,limits={-1e+09,1e+09,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_hmY0
-	SetVariable a2k1d_sv_hmDY,pos={144.00,558.00},size={120.00,19.80},title="HM dY"
+	SetVariable a2k1d_sv_hmDY,pos={132,544},size={116,19.80},title="HM dY"
 	SetVariable a2k1d_sv_hmDY,limits={-1e+09,1e+09,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_hmDY
-	SetVariable a2k1d_sv_hmMul,pos={438.60,558.00},size={120.00,19.80},title="HM mul"
-	SetVariable a2k1d_sv_hmMul,limits={-1e+09,1e+09,0.0001},value= root:ARPES_LJZ:A2K1D:a2k1d_hmYMul
-	PopupMenu a2k1d_pm_hmUnit,pos={271.20,558.00},size={160.20,20.40},proc=a2k1d_pm_hm_unit_proc,title="HM Unit"
+	PopupMenu a2k1d_pm_hmUnit,pos={252,544},size={152,20.40},proc=a2k1d_pm_hm_unit_proc,title="HM Unit"
 	PopupMenu a2k1d_pm_hmUnit,mode=3,popvalue="Fluence(uJ/cm^2)",value= #"\"Delay(ps);Temperature(K);Fluence(uJ/cm^2);Frame Index\""
-	Button a2k1d_btn_plot_heat,pos={385.80,523.20},size={132.00,24.00},proc=a2k1d_btn_plot_layers_heatmap,title="Plot: 2D Heatmap"
+	SetVariable a2k1d_sv_hmMul,pos={408,544},size={132,19.80},title="HM mul"
+	SetVariable a2k1d_sv_hmMul,limits={-1e+09,1e+09,0.0001},value= root:ARPES_LJZ:A2K1D:a2k1d_hmYMul
+
 EndMacro
+
+
 
 
 
