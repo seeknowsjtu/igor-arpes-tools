@@ -1905,7 +1905,11 @@ Function LJZ_MDCWB_ExportSummary()
     Make/O/N=(n) AreaSum123K = NaN, AreaSumAllK = NaN
     Make/O/N=(n) SigmaP1K = NaN, SigmaP2K = NaN, SigmaP3K = NaN
     Make/O/N=(n) Sep12K = NaN, Sep13K = NaN, Sep23K = NaN
-    Make/O/N=(n) BG_c0 = NaN, BG_c1 = NaN, BG_c2 = NaN
+    Make/O/N=(n) BG_c0 = NaN, BG_c1 = NaN, BG_c2 = NaN, BG_XRef = NaN
+    Note/K BG_c0, "BG convention=centered at ROI center"
+    Note/K BG_c1, "BG convention=centered at ROI center"
+    Note/K BG_c2, "BG convention=centered at ROI center"
+    Note/K BG_XRef, "BG convention=centered at ROI center;meaning=fixed ROI center xRef used for dx=x-xRef"
 
     // ------------------------------------------------------------------------
     // New wide all-peak waves.
@@ -2026,6 +2030,9 @@ Function LJZ_MDCWB_ExportSummary()
         BG_c0[i] = coefW[0]
         BG_c1[i] = coefW[1]
         BG_c2[i] = coefW[2]
+        if (numpnts(infoW) > 3 && numtype(infoW[2]) == 0 && numtype(infoW[3]) == 0)
+            BG_XRef[i] = 0.5 * (infoW[2] + infoW[3])
+        endif
 
         Variable resH = abs(coefW[3])
         NPeaksK[i] = np

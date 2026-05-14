@@ -1080,7 +1080,9 @@ Function/S LJZ_MDCWB_FitInfoSchemaNote()
     s += "fitinfo[8]=maxAbsRes;"
     s += "fitinfo[9]=nROI;"
     s += "fitinfo[10]=fitQuitReason;"
-    s += "fitinfo[11]=fitNumIters"
+    s += "fitinfo[11]=fitNumIters;"
+    s += "BG_convention=centered_at_ROI_center(dx=x-xRef);"
+    s += "BG_XRef=0.5*(fitinfo[2]+fitinfo[3])"
     return s
 End
 
