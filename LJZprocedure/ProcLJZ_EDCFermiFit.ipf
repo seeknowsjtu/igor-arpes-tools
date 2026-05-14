@@ -2067,7 +2067,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
     endif
 
     LJZ_EDCFermiFit_MakeFitParamsPhysical(pwFit)
-    Print "EDCFermiFit sanitized start Te=", pwFit[2], "K, sigma=", pwFit[4], "eV, Res=", LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pwFit[4]), "meV"
+//    Print "EDCFermiFit sanitized start Te=", pwFit[2], "K, sigma=", pwFit[4], "eV, Res=", LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pwFit[4]), "meV"
 
     Make/FREE/D/N=7 pwStartUsed
     for (i = 0; i < 7; i += 1)
@@ -2154,10 +2154,10 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
 
     SetDataFolder oldDF
 
-    Print "EDCFermiFit 7p FuncFit: wave=", NameOfWave($wPath), " holdStr=", fitHoldStr, " V_FitError=", fitErr, " V_chisq=", chiSq
-    Print "  startPW=", startPW[0], startPW[1], startPW[2], startPW[3], startPW[4], startPW[5], startPW[6]
-    Print "  usedStart=", pwStartUsed[0], pwStartUsed[1], pwStartUsed[2], pwStartUsed[3], pwStartUsed[4], pwStartUsed[5], pwStartUsed[6]
-    Print "  pw_fit =", pwFit[0], pwFit[1], pwFit[2], pwFit[3], pwFit[4], pwFit[5], pwFit[6]
+//    Print "EDCFermiFit 7p FuncFit: wave=", NameOfWave($wPath), " holdStr=", fitHoldStr, " V_FitError=", fitErr, " V_chisq=", chiSq
+//    Print "  startPW=", startPW[0], startPW[1], startPW[2], startPW[3], startPW[4], startPW[5], startPW[6]
+//    Print "  usedStart=", pwStartUsed[0], pwStartUsed[1], pwStartUsed[2], pwStartUsed[3], pwStartUsed[4], pwStartUsed[5], pwStartUsed[6]
+//    Print "  pw_fit =", pwFit[0], pwFit[1], pwFit[2], pwFit[3], pwFit[4], pwFit[5], pwFit[6]
 
     LJZ_EDCFermiFit_MakeFitParamsPhysical(pwFit)
 
@@ -2167,7 +2167,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
         endif
     endif
 
-    Print "EDCFermiFit physical final Te=", pwFit[2], "K, sigma=", pwFit[4], "eV, Res=", LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pwFit[4]), "meV"
+//    Print "EDCFermiFit physical final Te=", pwFit[2], "K, sigma=", pwFit[4], "eV, Res=", LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pwFit[4]), "meV"
 
     Make/FREE/D/N=(n) xFullRMS
     Make/FREE/D/N=(n) modelStart
@@ -2189,7 +2189,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
         endif
     endif
 
-    Print "  RMS start=", startResidRMS, " RMS fit=", fitResidRMS, " paramsUnchanged=", paramsUnchanged, " rmsImproved=", rmsImproved
+//    Print "  RMS start=", startResidRMS, " RMS fit=", fitResidRMS, " paramsUnchanged=", paramsUnchanged, " rmsImproved=", rmsImproved
 
     // FuncFit can report singular matrix after reaching a visually useful minimum.
     // If the model improved and free parameters moved, keep it as a soft result.
@@ -2214,7 +2214,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
         Print "EDCFermiFit: FuncFit returned with all free parameters unchanged — treating as failed fit."
         LJZ_EDCFermiFit_ClearResultForWave(wPath)
         if (doAlertOnFail)
-            DoAlert 0, "拟合参数未发生变化（可能初始值在边界处）。请检查 Te / Res 初始值是否合理，或尝试 Guess 重新估计初始值。"
+            DoAlert 0, "拟合参数未发生变化（可能初始值在边界处）。请检查 Te / Res 初始值是否合理，或尝试 Guess 重新估计初始值。"
         endif
         return -1
     endif
