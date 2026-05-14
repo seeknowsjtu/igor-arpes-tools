@@ -783,6 +783,161 @@ Function LJZ_MDCWB_BuildInfoWave(infoWave, bgOrderInput, roiXLoInput, roiXHiInpu
 End
 
 
+
+Function LJZ_MDCWB_DefaultWMin()
+    return 0.5
+End
+
+Function LJZ_MDCWB_DefaultWMax()
+    return 10
+End
+
+Function LJZ_MDCWB_DefaultHMin()
+    return 0
+End
+
+Function LJZ_MDCWB_DefaultEtaMin()
+    return 0
+End
+
+Function LJZ_MDCWB_DefaultEtaMax()
+    return 1
+End
+
+Function LJZ_MDCWB_DefaultAsymRatioMax()
+    return 3
+End
+
+Function LJZ_MDCWB_AppendConstraintLine(consW, nCons, line)
+    Wave/T consW
+    Variable &nCons
+    String line
+
+    if (nCons >= numpnts(consW))
+        Redimension/N=(max(8, 2 * numpnts(consW))) consW
+    endif
+    consW[nCons] = line
+    nCons += 1
+    return 0
+End
+
+Function LJZ_MDCWB_BuildFitConstraints(flatCoef, flatHold, slotMap, consW)
+    Wave flatCoef, flatHold, slotMap
+    Wave/T consW
+
+    String base = LJZ_MDCWB_BaseDF()
+    Wave wPN = $(base + ":Work_peaks_num")
+
+    Variable nPeak = DimSize(wPN, 0)
+    Variable wMin = LJZ_MDCWB_DefaultWMin()
+    Variable wMax = LJZ_MDCWB_DefaultWMax()
+    Variable hMin = LJZ_MDCWB_DefaultHMin()
+    Variable etaMin = LJZ_MDCWB_DefaultEtaMin()
+    Variable etaMax = LJZ_MDCWB_DefaultEtaMax()
+    Variable asymRatioMax = LJZ_MDCWB_DefaultAsymRatioMax()
+
+    Make/T/FREE/N=8 tmpCons
+    Duplicate/O/T tmpCons, consW
+    Variable nCons = 0
+    Variable ip, t, s
+    String cLine
+
+    for (ip = 0; ip < nPeak; ip += 1)
+        t = round(wPN[ip][0])
+        s = slotMap[ip]
+
+        if (t == LJZ_MDCWB_PeakTypeAsymPV())
+            if (flatHold[s + 1] == 0)
+                sprintf cLine, "K%d >= %g", s + 1, wMin
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+                sprintf cLine, "K%d <= %g", s + 1, wMax
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+            endif
+            if (flatHold[s + 2] == 0)
+                sprintf cLine, "K%d >= %g", s + 2, wMin
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+                sprintf cLine, "K%d <= %g", s + 2, wMax
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+            endif
+            sprintf cLine, "K%d <= %g*K%d", s + 2, asymRatioMax, s + 1
+            LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+            sprintf cLine, "K%d <= %g*K%d", s + 1, asymRatioMax, s + 2
+            LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+
+            if (flatHold[s + 3] == 0)
+                sprintf cLine, "K%d >= %g", s + 3, hMin
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+            endif
+            if (flatHold[s + 4] == 0)
+                sprintf cLine, "K%d >= %g", s + 4, etaMin
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+                sprintf cLine, "K%d <= %g", s + 4, etaMax
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+            endif
+        else
+            if (flatHold[s + 1] == 0)
+                sprintf cLine, "K%d >= %g", s + 1, wMin
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+                sprintf cLine, "K%d <= %g", s + 1, wMax
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+            endif
+            if (flatHold[s + 2] == 0)
+                sprintf cLine, "K%d >= %g", s + 2, hMin
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+            endif
+            if (t == LJZ_MDCWB_PeakTypePV() && flatHold[s + 3] == 0)
+                sprintf cLine, "K%d >= %g", s + 3, etaMin
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+                sprintf cLine, "K%d <= %g", s + 3, etaMax
+                LJZ_MDCWB_AppendConstraintLine(consW, nCons, cLine)
+            endif
+        endif
+    endfor
+
+    Redimension/N=(nCons) consW
+    return 0
+End
+
+Function LJZ_MDCWB_AnyFitConstraintBoundaryHit(flatCoef, slotMap)
+    Wave flatCoef, slotMap
+
+    String base = LJZ_MDCWB_BaseDF()
+    Wave wPN = $(base + ":Work_peaks_num")
+    Variable nPeak = DimSize(wPN, 0)
+
+    Variable wMin = LJZ_MDCWB_DefaultWMin()
+    Variable wMax = LJZ_MDCWB_DefaultWMax()
+    Variable asymRatioMax = LJZ_MDCWB_DefaultAsymRatioMax()
+    Variable tolWMin = wMin * 1.05
+    Variable tolWMax = wMax * 0.95
+    Variable tolRatio = asymRatioMax * 0.95
+
+    Variable ip, t, s, wL, wR
+    for (ip = 0; ip < nPeak; ip += 1)
+        t = round(wPN[ip][0])
+        s = slotMap[ip]
+
+        if (t == LJZ_MDCWB_PeakTypeAsymPV())
+            wL = flatCoef[s + 1]
+            wR = flatCoef[s + 2]
+            if (wL <= tolWMin || wL >= tolWMax || wR <= tolWMin || wR >= tolWMax)
+                return 1
+            endif
+            if (wL > 0 && wR > 0)
+                if ((wR / wL) >= tolRatio || (wL / wR) >= tolRatio)
+                    return 1
+                endif
+            endif
+        else
+            if (flatCoef[s + 1] <= tolWMin || flatCoef[s + 1] >= tolWMax)
+                return 1
+            endif
+        endif
+    endfor
+
+    return 0
+End
+
 // ============================================================================
 //  Section 5. Flat parameter assembly / distribution
 //
@@ -1516,8 +1671,10 @@ Function LJZ_MDCWB_BuildGuess(wData)
     endif
 
     Make/FREE/N=1 flatCoef, flatHold, slotMap
+    Make/T/FREE/N=1 fitConstraints
     String holdMask = ""
     LJZ_MDCWB_AssembleFitParams(flatCoef, flatHold, slotMap, holdMask)
+    LJZ_MDCWB_BuildFitConstraints(flatCoef, flatHold, slotMap, fitConstraints)
     LJZ_MDCWB_CopyActiveLayoutFromWork(slotMap)
 
     Duplicate/FREE wData, guessW
@@ -1587,8 +1744,10 @@ Function LJZ_MDCWB_RunFit(wData)
     endif
 
     Make/FREE/N=1 flatCoef, flatHold, slotMap
+    Make/T/FREE/N=1 fitConstraints
     String holdMask = ""
     LJZ_MDCWB_AssembleFitParams(flatCoef, flatHold, slotMap, holdMask)
+    LJZ_MDCWB_BuildFitConstraints(flatCoef, flatHold, slotMap, fitConstraints)
     LJZ_MDCWB_CopyActiveLayoutFromWork(slotMap)
 
     if (LJZ_MDCWB_HasFreeAsymPVWidthWithFreeResH())
@@ -1642,7 +1801,7 @@ Function LJZ_MDCWB_RunFit(wData)
     KillWaves/Z W_sigma
 
     try
-        FuncFit/H=holdMask LJZ_MDCWB_MultiPeakModel, flatCoef, roiData
+        FuncFit/H=holdMask/C=fitConstraints LJZ_MDCWB_MultiPeakModel, flatCoef, roiData
         AbortOnRTE
     catch
         fitCaughtError = 1
@@ -1721,7 +1880,11 @@ Function LJZ_MDCWB_RunFit(wData)
     endif
 
     LJZ_MDCWB_MarkDirty(0)
-    LJZ_MDCWB_ClearLastError()
+    if (LJZ_MDCWB_AnyFitConstraintBoundaryHit(flatCoef, slotMap))
+        LJZ_MDCWB_SetLastError("Warning: peak width/asymmetry hit constraint; fit may be background-like.")
+    else
+        LJZ_MDCWB_ClearLastError()
+    endif
     return 0
 End
 
