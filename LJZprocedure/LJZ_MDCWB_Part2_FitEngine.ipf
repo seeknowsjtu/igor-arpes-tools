@@ -1801,7 +1801,7 @@ Function LJZ_MDCWB_RunFit(wData)
     KillWaves/Z W_sigma
 
     try
-        FuncFit/H=holdMask/C=fitConstraints LJZ_MDCWB_MultiPeakModel, flatCoef, roiData
+        FuncFit/H=holdMask LJZ_MDCWB_MultiPeakModel, flatCoef, roiData /C=fitConstraints
         AbortOnRTE
     catch
         fitCaughtError = 1
