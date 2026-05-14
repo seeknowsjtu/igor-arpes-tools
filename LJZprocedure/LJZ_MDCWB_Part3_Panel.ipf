@@ -771,9 +771,9 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
 
     // ---- main preview ----
     LJZ_MDCWB_ClearGraphTraces(pvPath)
-    AppendToGraph/W=$pvPath/TN=rawData wData
+    AppendToGraph/W=$pvPath wData/TN=rawData
     if (previewOK && WaveExists(guessW))
-        AppendToGraph/W=$pvPath/TN=guessData guessW
+        AppendToGraph/W=$pvPath guessW/TN=guessData
     endif
     Variable hasCleanFit = 0
     if (LJZ_MDCWB_HasFitRecord(wData) && LJZ_MDCWB_ReadFitOK(wData))
@@ -781,7 +781,7 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     endif
 
     if (hasCleanFit && WaveExists(fitW))
-        AppendToGraph/W=$pvPath/TN=fitData fitW
+        AppendToGraph/W=$pvPath fitW/TN=fitData
     endif
 
     ModifyGraph/W=$pvPath mode=0, lsize=1.5
@@ -794,7 +794,7 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     endif
 
     SetAxis/W=$pvPath bottom showLo, showHi
-    SetAxis/W=$pvPath/A left
+    SetAxis/W=$pvPath/A=2 left
 
     if (!previewOK)
         TextBox/W=$pvPath/C/N=pvStatus/F=0/A=RT/X=-2/Y=2 "\\Z11Preview unavailable"
@@ -808,7 +808,7 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     LJZ_MDCWB_ClearGraphTraces(rsPath)
     TextBox/W=$rsPath/K/N=rsStatus
     if (hasCleanFit && WaveExists(resW))
-        AppendToGraph/W=$rsPath/TN=residualData resW
+        AppendToGraph/W=$rsPath resW/TN=residualData
         ModifyGraph/W=$rsPath mode=0, lsize=1.2
         ModifyGraph/W=$rsPath rgb(residualData)=(30000,30000,30000)
     else
@@ -1108,7 +1108,7 @@ Window LJZ_MDCWB_Panel() : Panel
     PauseUpdate; Silent 1
 
     // Compact panel height. Old version was /W=(70,40,1180,760).
-    NewPanel /W=(70,40,1180,715) /N=MDCIFit_LJZ_Panel as "MDC Workbench"
+    NewPanel /W=(70,40,1240,715) /N=MDCIFit_LJZ_Panel as "MDC Workbench"
     ModifyPanel frameStyle=1
 
     // ---- target DF ----
@@ -1118,24 +1118,24 @@ Window LJZ_MDCWB_Panel() : Panel
     Button btnRebuild, pos={522,27}, size={80,22}, proc=LJZ_MDCWB_ButtonProc, title="Refresh", fSize=11
 
     // ---- top buttons ----
-    Button btnPrev,           pos={628,27},  size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Prev", fSize=11
-    Button btnNext,           pos={680,27},  size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Next", fSize=11
-    Button btnNextUnchecked,  pos={732,27},  size={92,22}, proc=LJZ_MDCWB_ButtonProc, title="Next Unchecked", fSize=11
-    Button btnAccept,         pos={830,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Accept", fSize=11
-    Button btnReject,         pos={888,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Reject", fSize=11
-    Button btnClear,          pos={946,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Clear", fSize=11
-    Button btnExport,         pos={1004,27}, size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Export", fSize=11
-    Button btnExportATKT,     pos={1040,27}, size={70,22}, proc=LJZ_MDCWB_ButtonProc, title="Exp->ATKT", fSize=11
+Button btnPrev,           pos={628,27},  size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Prev", fSize=11
+Button btnNext,           pos={680,27},  size={48,22}, proc=LJZ_MDCWB_ButtonProc, title="Next", fSize=11
+Button btnNextUnchecked,  pos={732,27},  size={92,22}, proc=LJZ_MDCWB_ButtonProc, title="Next Unchecked", fSize=11
+Button btnAccept,         pos={830,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Accept", fSize=11
+Button btnReject,         pos={888,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Reject", fSize=11
+Button btnClear,          pos={946,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Clear", fSize=11
+Button btnExport,         pos={1004,27}, size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Export", fSize=11
+Button btnExportATKT,     pos={1064,27}, size={82,22}, proc=LJZ_MDCWB_ButtonProc, title="Exp->ATKT", fSize=10
 
-    Button btnAutoInit,       pos={628,55}, size={62,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoInit", fSize=10
-    Button btnAutoDetect,     pos={696,55}, size={72,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoDetect", fSize=10
-    Button btnSaveEdit,       pos={774,55}, size={68,20}, proc=LJZ_MDCWB_ButtonProc, title="SaveEdit", fSize=10
-    Button btnGuess,          pos={848,55}, size={58,20}, proc=LJZ_MDCWB_ButtonProc, title="Preview", fSize=10
-    Button btnFit,            pos={912,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Fit", fSize=10
-    CheckBox cbCsr,           pos={972,58}, size={92,16}, proc=LJZ_MDCWB_CheckProc, title="cursor ROI", fSize=10
-    CheckBox cbCsr,           value=1
-    CheckBox cbCarryFit,      pos={1056,58}, size={72,16}, proc=LJZ_MDCWB_CheckProc, title="Carry fit", fSize=10
-    CheckBox cbCarryFit,      variable=$(LJZ_MDCWB_BaseDF() + ":UI_carryFitToNext")
+Button btnAutoInit,       pos={628,55}, size={62,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoInit", fSize=10
+Button btnAutoDetect,     pos={696,55}, size={72,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoDetect", fSize=10
+Button btnSaveEdit,       pos={774,55}, size={68,20}, proc=LJZ_MDCWB_ButtonProc, title="SaveEdit", fSize=10
+Button btnGuess,          pos={848,55}, size={58,20}, proc=LJZ_MDCWB_ButtonProc, title="Preview", fSize=10
+Button btnFit,            pos={912,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Fit", fSize=10
+CheckBox cbCsr,           pos={972,58}, size={82,16}, proc=LJZ_MDCWB_CheckProc, title="cursor ROI", fSize=10
+CheckBox cbCsr,           value=1
+CheckBox cbCarryFit,      pos={1060,58}, size={76,16}, proc=LJZ_MDCWB_CheckProc, title="Carry fit", fSize=10
+CheckBox cbCarryFit,      variable=$(LJZ_MDCWB_BaseDF() + ":UI_carryFitToNext")
 
     // ---- left wave list ----
     ListBox lbMDC, pos={12,58}, size={280,590}, proc=LJZ_MDCWB_LBProc, fSize=11
