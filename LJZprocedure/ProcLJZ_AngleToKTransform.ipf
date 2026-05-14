@@ -423,6 +423,30 @@ Function a2k1d_btn_abort(ctrlName) : ButtonControl
     return 0
 End
 
+
+Function a2k1d_btn_table_peak_k(ctrlName) : ButtonControl
+    String ctrlName
+
+    a2k1d_init_defaults_if_needed()
+
+    SVAR a2k1d_baseDF = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
+    String fdf = a2k1d_df_with_colon(a2k1d_baseDF)
+
+    if (DataFolderExists(fdf) && (WaveExists($(fdf + "Long_PeakAngle"))))
+        LJZ_A2K1D_TransformLongTable(fdf)
+        return 0
+    endif
+
+    String candidate = RemoveEnding(fdf, ":") + ":FIT_HP:"
+    if (DataFolderExists(candidate) && (WaveExists($(candidate + "Long_PeakAngle"))))
+        LJZ_A2K1D_TransformLongTable(candidate)
+        return 0
+    endif
+
+    DoAlert 0, "Table Peak->K: Long_PeakAngle not found in checked folders:\r1) " + fdf + "\r2) " + candidate + "\rPlease point Base DF to FIT_HP or run MDCWB Export first."
+    return 0
+End
+
 //============================================================
 // Helper: forbid using result waves as input
 //============================================================
@@ -601,7 +625,7 @@ End
 
 Window A2K1D_LJZ_P() : Panel
 	PauseUpdate; Silent 1		// building window...
-	NewPanel /W=(420,60,982.2,647.4) as "Angle->k (Value & Spectra) (LJZ)"
+	NewPanel /W=(420,60,982.2,680.0) as "Angle->k (Value & Spectra) (LJZ)"
 	ModifyPanel frameStyle=1
 	ShowTools/A
 	TitleBox a2k1d_t0,pos={12.00,9.00},size={226.80,18.00},title="Transform: Value or Spectra Interpolation"
@@ -643,9 +667,10 @@ Window A2K1D_LJZ_P() : Panel
 	Button a2k1d_btn_spec,pos={336.00,372.00},size={204.00,21.00},proc=a2k1d_btn_spec_run,title="Run Spectra (X=Angle->k Interp)"
 	Button a2k1d_btn_batch_layer,pos={336.00,399.00},size={204.00,21.00},proc=a2k1d_btn_batch_layers_interp,title="Batch: layer_xx Spectra->k"
 	Button a2k1d_btn_batch_peak,pos={336.00,426.00},size={204.00,21.00},proc=a2k1d_btn_batch_peaks_valuetrans,title="Batch: peak/sigmap Value->k"
-	Button a2k1d_btn_abort,pos={336.00,451.80},size={204.00,30.00},proc=a2k1d_btn_abort,title="Abort"
-	Button a2k1d_btn_help,pos={336.60,485.40},size={99.00,30.00},proc=a2k1d_btn_help,title="Help"
-	Button a2k1d_btn_close,pos={441.00,484.80},size={99.00,30.00},proc=a2k1d_btn_close,title="Close"
+	Button a2k1d_btn_table_peak_k,pos={336.00,451.00},size={204.00,21.00},proc=a2k1d_btn_table_peak_k,title="Table Peak->K"
+	Button a2k1d_btn_abort,pos={336.00,476.00},size={204.00,30.00},proc=a2k1d_btn_abort,title="Abort"
+	Button a2k1d_btn_help,pos={336.60,510.00},size={99.00,30.00},proc=a2k1d_btn_help,title="Help"
+	Button a2k1d_btn_close,pos={441.00,510.00},size={99.00,30.00},proc=a2k1d_btn_close,title="Close"
 	Button a2k1d_btn_plot_peaks,pos={144.00,465.00},size={85.80,24.00},proc=a2k1d_btn_plot_peaks_err,title="Plot Peaks"
 	Button a2k1d_btn_plot_delta,pos={237.60,465.00},size={85.80,24.00},proc=a2k1d_btn_plot_delta_err,title="Plot Δk12"
 	SetVariable a2k1d_sv_kvary,pos={12.00,498.00},size={120.00,19.80},title="kVary"
