@@ -1125,6 +1125,7 @@ Window LJZ_MDCWB_Panel() : Panel
     Button btnReject,         pos={888,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Reject", fSize=11
     Button btnClear,          pos={946,27},  size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Clear", fSize=11
     Button btnExport,         pos={1004,27}, size={54,22}, proc=LJZ_MDCWB_ButtonProc, title="Export", fSize=11
+    Button btnExportATKT,     pos={1062,27}, size={70,22}, proc=LJZ_MDCWB_ButtonProc, title="Exp->ATKT", fSize=11
 
     Button btnAutoInit,       pos={628,55}, size={62,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoInit", fSize=10
     Button btnAutoDetect,     pos={696,55}, size={72,20}, proc=LJZ_MDCWB_ButtonProc, title="AutoDetect", fSize=10
@@ -1661,6 +1662,20 @@ Function LJZ_MDCWB_ButtonProc(ba) : ButtonControl
         return 0
     endif
 
+    if (StringMatch(c, "btnExportATKT"))
+        if (LJZ_MDCWB_IsDirty())
+            DoAlert 1, "Preview is dirty. Export uses the last clean saved fit records, not the dirty preview. Continue?"
+            if (V_flag != 1)
+                return 0
+            endif
+        endif
+        Variable exRc = LJZ_MDCWB_ExportSummary()
+        if (exRc == 0)
+            LJZ_MDCWB_NotifyATKT()
+        endif
+        return 0
+    endif
+
     return 0
 End
 
@@ -1694,6 +1709,34 @@ Function LJZ_MDCWB_ActionAddPeak(wData)
 
     Variable wWidth = LJZ_MDCWB_DefaultPeakWidthFromData(wData)
     LJZ_MDCWB_AddPeak(defType, cx, wWidth, H)
+    return 0
+End
+
+Function LJZ_MDCWB_NotifyATKT()
+    LJZ_MDCWB_EnsurePanelState()
+
+    SVAR target = $(LJZ_MDCWB_BaseDF() + ":TargetDF")
+    String df = LJZ_MDCWB_NormDFPath(target)
+    String fitHP = RemoveEnding(df, ":") + ":FIT_HP:"
+
+    if (!DataFolderExists(fitHP))
+        DoAlert 0, "FIT_HP folder was not found. Please run Export first."
+        return -1
+    endif
+
+    Wave/Z wPeak = $(fitHP + "Long_PeakAngle")
+    if (!WaveExists(wPeak))
+        DoAlert 0, "FIT_HP is missing Long_PeakAngle. Please rerun Export."
+        return -1
+    endif
+
+    a2k1d_ensure_folder()
+    SVAR a2kBase = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
+    a2kBase = fitHP
+    a2k1d_rebuild_lb()
+
+    Print "LJZ MDCWB: ATKT baseDF set to " + fitHP
+    DoAlert 0, "Export done. ATKT baseDF -> FIT_HP. Set parameters and click Table Peak->K."
     return 0
 End
 
