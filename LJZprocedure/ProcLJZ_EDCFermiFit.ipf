@@ -1522,25 +1522,35 @@ Function LJZ_EDCFermiFit_GuessParamsFromWave(w, x1, x2, outPW)
     Variable x90 = LJZ_EDCFermiFit_FindLevelCrossing(ySm, 0, spanN - 1, y90)
 
     Variable kB = 8.617333262e-5
-    Variable teGuess = 18
     Variable totalWidth = NaN
     if (numtype(x10) == 0 && numtype(x90) == 0)
         totalWidth = abs(x90 - x10)
-        if (totalWidth > 0)
-            teGuess = totalWidth / (4.39444915467 * kB)
-        endif
     endif
-    teGuess = max(4, min(220, teGuess))
 
     NVAR Res = $(LJZ_EDCFermiFit_BaseDF() + ":Res")
     Variable resGuessMeV = 14
     if (numtype(Res) == 0 && abs(Res) >= 2 && abs(Res) <= 80)
         resGuessMeV = abs(Res)
-    elseif (numtype(totalWidth) == 0 && totalWidth > 0)
-        Variable thermal1090 = 4.39444915467 * kB * teGuess
-        Variable instrWidthEV = sqrt(max(totalWidth^2 - thermal1090^2, 0))
-        resGuessMeV = max(4, min(60, instrWidthEV * 1000))
     endif
+
+    Variable teGuess = 18
+    if (numtype(totalWidth) == 0 && totalWidth > 0)
+        Variable resSigmaEV = LJZ_EDCFermiFit_FWHMMeV_to_SigmaEV(resGuessMeV)
+        Variable resFWHMEV = resSigmaEV * (2 * sqrt(2 * ln(2)))
+        Variable thermalWidthSq = max(totalWidth^2 - resFWHMEV^2, 0)
+        if (thermalWidthSq > 0)
+            teGuess = sqrt(thermalWidthSq) / (4.39444915467 * kB)
+        else
+            teGuess = 4
+        endif
+
+        if (!(numtype(Res) == 0 && abs(Res) >= 2 && abs(Res) <= 80))
+            Variable thermal1090 = 4.39444915467 * kB * teGuess
+            Variable instrWidthEV = sqrt(max(totalWidth^2 - thermal1090^2, 0))
+            resGuessMeV = max(4, min(60, instrWidthEV * 1000))
+        endif
+    endif
+    teGuess = max(4, min(220, teGuess))
 
     Variable sbGuess = max(0, min(0.35 * abs(height), max(0, hiLevel - LJZ_EDCFermiFit_WindowMean(ySm, spanN - max(3, round(spanN * 0.08)), spanN - 1))))
     Variable xLeft = pnt2x(w, pLo)
@@ -2100,8 +2110,10 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
 
     if (numtype(fitErr) != 0 || fitErr != 0)
         if (CmpStr(fitHoldStr, "0010111") != 0)
-            Print "EDCFermiFit: first FuncFit failed; retrying with stable holdStr=0010111 (Height, EF, BG free only; SB=0, OccSlope=0)."
-            fitHoldStr = "0010111"
+            Print "EDCFermiFit: first FuncFit failed; retrying with user holdStr + SB/OccSlope held."
+            fitHoldStr = holdStr
+            fitHoldStr[5,5] = "1"
+            fitHoldStr[6,6] = "1"
             for (i = 0; i < 7; i += 1)
                 pwFit[i] = startPW[i]
             endfor
