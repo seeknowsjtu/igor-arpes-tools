@@ -1753,7 +1753,8 @@ End
 //      PeakK_All[row][rank]
 //      WeffP_All[row][rank]
 //      AreaP_All[row][rank]
-//      SigmaX_All[row][rank]
+//      SigmaAngle_All[row][rank]
+//      SigmaK_All[row][rank]
 //      H_All[row][rank]
 //      Eta_All[row][rank]
 //      WidthL_All[row][rank]
@@ -1766,10 +1767,12 @@ End
 //      Long_MDCIndex
 //      Long_PeakRank
 //      Long_SourcePeakIndex
+//      Long_PeakAngle
 //      Long_PeakK
 //      Long_Weff
 //      Long_Area
-//      Long_SigmaX
+//      Long_SigmaAngle
+//      Long_SigmaK
 //      Long_H
 //      Long_Eta
 //      Long_WidthL
@@ -1860,10 +1863,12 @@ Function LJZ_MDCWB_ExportSummary()
     // New wide all-peak waves.
     // Rows correspond to MDC waves. Columns correspond to sorted peak rank.
     // ------------------------------------------------------------------------
+    Make/O/N=(n, nPeakCols) PeakAngle_All = NaN
     Make/O/N=(n, nPeakCols) PeakK_All = NaN
+    Make/O/N=(n, nPeakCols) SigmaAngle_All = NaN
+    Make/O/N=(n, nPeakCols) SigmaK_All = NaN
     Make/O/N=(n, nPeakCols) WeffP_All = NaN
     Make/O/N=(n, nPeakCols) AreaP_All = NaN
-    Make/O/N=(n, nPeakCols) SigmaX_All = NaN
     Make/O/N=(n, nPeakCols) H_All = NaN
     Make/O/N=(n, nPeakCols) Eta_All = NaN
     Make/O/N=(n, nPeakCols) WidthL_All = NaN
@@ -1881,10 +1886,12 @@ Function LJZ_MDCWB_ExportSummary()
     Make/O/N=(nLongRows) Long_MDCIndex = NaN
     Make/O/N=(nLongRows) Long_PeakRank = NaN
     Make/O/N=(nLongRows) Long_SourcePeakIndex = NaN
+    Make/O/N=(nLongRows) Long_PeakAngle = NaN
     Make/O/N=(nLongRows) Long_PeakK = NaN
+    Make/O/N=(nLongRows) Long_SigmaAngle = NaN
+    Make/O/N=(nLongRows) Long_SigmaK = NaN
     Make/O/N=(nLongRows) Long_Weff = NaN
     Make/O/N=(nLongRows) Long_Area = NaN
-    Make/O/N=(nLongRows) Long_SigmaX = NaN
     Make/O/N=(nLongRows) Long_H = NaN
     Make/O/N=(nLongRows) Long_Eta = NaN
     Make/O/N=(nLongRows) Long_WidthL = NaN
@@ -1892,6 +1899,15 @@ Function LJZ_MDCWB_ExportSummary()
     Make/O/N=(nLongRows) Long_Type = NaN
     Make/O/T/N=(nLongRows) Long_WaveName = ""
     Make/O/T/N=(nLongRows) Long_PeakTypeName = ""
+
+    Note/K Long_PeakAngle, "source=LJZ_MDCWB_ExportSummary;meaning=raw fitted angle values (x0)"
+    Note/K Long_PeakK, "source=LJZ_MDCWB_ExportSummary;meaning=ATKT output placeholders (converted k), initially NaN"
+    Note/K Long_SigmaAngle, "source=LJZ_MDCWB_ExportSummary;meaning=raw fitted x uncertainty (sigma in angle/raw units)"
+    Note/K Long_SigmaK, "source=LJZ_MDCWB_ExportSummary;meaning=ATKT propagated uncertainty placeholders (sigma_k), initially NaN"
+    Note/K PeakAngle_All, "source=LJZ_MDCWB_ExportSummary;meaning=raw fitted angle values (x0)"
+    Note/K PeakK_All, "source=LJZ_MDCWB_ExportSummary;meaning=ATKT output placeholders (converted k), initially NaN"
+    Note/K SigmaAngle_All, "source=LJZ_MDCWB_ExportSummary;meaning=raw fitted x uncertainty (sigma in angle/raw units)"
+    Note/K SigmaK_All, "source=LJZ_MDCWB_ExportSummary;meaning=ATKT propagated uncertainty placeholders (sigma_k), initially NaN"
 
     Variable skipped = 0
     Variable longRow = 0
@@ -2043,10 +2059,12 @@ Function LJZ_MDCWB_ExportSummary()
             Variable rank = j + 1
             Variable xSorted = cx[j]
 
-            PeakK_All[i][j] = xSorted
+            PeakAngle_All[i][j] = xSorted
+            PeakK_All[i][j] = NaN
             WeffP_All[i][j] = cwid[srcIdx]
             AreaP_All[i][j] = carea[srcIdx]
-            SigmaX_All[i][j] = csigX[srcIdx]
+            SigmaAngle_All[i][j] = csigX[srcIdx]
+            SigmaK_All[i][j] = NaN
             H_All[i][j] = cH[srcIdx]
             Eta_All[i][j] = cEta[srcIdx]
             WidthL_All[i][j] = cwL[srcIdx]
@@ -2084,10 +2102,12 @@ Function LJZ_MDCWB_ExportSummary()
                 Long_MDCIndex[longRow] = kIdx
                 Long_PeakRank[longRow] = rank
                 Long_SourcePeakIndex[longRow] = srcIdx
-                Long_PeakK[longRow] = xSorted
+                Long_PeakAngle[longRow] = xSorted
+                Long_PeakK[longRow] = NaN
                 Long_Weff[longRow] = cwid[srcIdx]
                 Long_Area[longRow] = carea[srcIdx]
-                Long_SigmaX[longRow] = csigX[srcIdx]
+                Long_SigmaAngle[longRow] = csigX[srcIdx]
+                Long_SigmaK[longRow] = NaN
                 Long_H[longRow] = cH[srcIdx]
                 Long_Eta[longRow] = cEta[srcIdx]
                 Long_WidthL[longRow] = cwL[srcIdx]
