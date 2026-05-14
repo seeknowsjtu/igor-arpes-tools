@@ -1735,7 +1735,8 @@ Function LJZ_MDCWB_NotifyATKT()
     a2kBase = fitHP
     a2k1d_rebuild_lb()
 
-    Print "LJZ MDCWB: ATKT baseDF set to " + fitHP
+    Print "LJZ MDCWB Export->ATKT: FIT_HP ready at " + fitHP
+    Print "LJZ MDCWB Export->ATKT: ATKT list refreshed via a2k1d_rebuild_lb()"
     DoAlert 0, "Export done. ATKT baseDF -> FIT_HP. Set parameters and click Table Peak->K."
     return 0
 End

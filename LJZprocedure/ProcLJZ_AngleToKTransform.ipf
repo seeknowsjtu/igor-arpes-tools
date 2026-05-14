@@ -433,12 +433,14 @@ Function a2k1d_btn_table_peak_k(ctrlName) : ButtonControl
     String fdf = a2k1d_df_with_colon(a2k1d_baseDF)
 
     if (DataFolderExists(fdf) && (WaveExists($(fdf + "Long_PeakAngle"))))
+        Print "A2K1D Table Peak->K: using baseDF " + fdf
         LJZ_A2K1D_TransformLongTable(fdf)
         return 0
     endif
 
     String candidate = RemoveEnding(fdf, ":") + ":FIT_HP:"
     if (DataFolderExists(candidate) && (WaveExists($(candidate + "Long_PeakAngle"))))
+        Print "A2K1D Table Peak->K: baseDF had no Long_PeakAngle, falling back to " + candidate
         LJZ_A2K1D_TransformLongTable(candidate)
         return 0
     endif
@@ -1040,7 +1042,8 @@ Function LJZ_A2K1D_TransformLongTable(fitHPDF)
     noteSigma += "formulaVersion=LJZ_A2K1D_RunSigma_equivalent_v1\r"
     Note wSigmaK, noteSigma
 
-    LJZ_A2K1D_SyncAllTableFromLong(fdf)
+    Variable syncRc = LJZ_A2K1D_SyncAllTableFromLong(fdf)
+    Printf "A2K1D LongTable: converted=%d skipped=%d failed=%d syncRc=%d (DF=%s)\r", converted, skipped, failed, syncRc, fdf
     DoAlert 0, "A2K1D LongTable done. converted=" + num2str(converted) + ", skipped=" + num2str(skipped) + ", failed=" + num2str(failed)
     return 0
 End
