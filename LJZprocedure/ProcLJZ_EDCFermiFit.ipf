@@ -1068,6 +1068,72 @@ Function LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(sigEV)
     return abs(sigEV) * (2 * sqrt(2 * ln(2))) * 1000
 End
 
+Function LJZ_EDCFermiFit_SoftPlusScaled(z, s)
+    Variable z, s
+
+    if (numtype(z) != 0)
+        return NaN
+    endif
+    if (numtype(s) != 0 || s <= 0)
+        s = 1
+    endif
+
+    Variable u = z / s
+    if (u > 50)
+        return z
+    elseif (u < -50)
+        return s * exp(u)
+    endif
+    return s * ln(1 + exp(u))
+End
+
+Function LJZ_EDCFermiFit_SoftBound(v, lo, hi, s)
+    Variable v, lo, hi, s
+
+    if (numtype(v) != 0)
+        return NaN
+    endif
+    if (hi <= lo)
+        return v
+    endif
+    if (numtype(s) != 0 || s <= 0)
+        s = 0.01 * abs(hi - lo)
+    endif
+
+    // Smooth lower bound.
+    Variable y = lo + LJZ_EDCFermiFit_SoftPlusScaled(v - lo, s)
+
+    // Smooth upper bound. For y << hi this returns y; for y >> hi this approaches hi.
+    y = hi - LJZ_EDCFermiFit_SoftPlusScaled(hi - y, s)
+
+    return y
+End
+
+Function LJZ_EDCFermiFit_MakeFitParamsPhysical(pw)
+    Wave pw
+
+    if (numpnts(pw) < 7)
+        return -1
+    endif
+
+    if (numtype(pw[2]) != 0)
+        pw[2] = 20
+    endif
+    pw[2] = LJZ_EDCFermiFit_SoftBound(pw[2], 0.2, 1000, 1.0)
+
+    if (numtype(pw[4]) != 0)
+        pw[4] = LJZ_EDCFermiFit_FWHMMeV_to_SigmaEV(12)
+    endif
+    // sigma is in eV. Use a small softness scale so normal meV resolutions are not distorted.
+    pw[4] = LJZ_EDCFermiFit_SoftBound(pw[4], 1e-4, 0.20, 5e-5)
+
+    if (numtype(pw[5]) != 0)
+        pw[5] = 0
+    endif
+
+    return 0
+End
+
 Function/S LJZ_EDCFermiFit_HoldString()
     NVAR HHeight = $(LJZ_EDCFermiFit_BaseDF() + ":HHeight")
     NVAR HEF = $(LJZ_EDCFermiFit_BaseDF() + ":HEF")
@@ -1647,22 +1713,12 @@ Function LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
     if (numtype(T) != 0)
         T = 20
     endif
-    if (T < 0.2)
-        T = 0.2
-    endif
-    if (T > 1000)
-        T = 1000
-    endif
+    T = LJZ_EDCFermiFit_SoftBound(T, 0.2, 1000, 1.0)
 
     if (numtype(sig) != 0)
-        sig = 0.005
+        sig = LJZ_EDCFermiFit_FWHMMeV_to_SigmaEV(12)
     endif
-    if (sig < 1e-8)
-        sig = 1e-8
-    endif
-    if (sig > 0.20)
-        sig = 0.20
-    endif
+    sig = LJZ_EDCFermiFit_SoftBound(sig, 1e-4, 0.20, 5e-5)
 
     if (numtype(SB) != 0)
         SB = 0
@@ -2000,6 +2056,9 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
         endif
     endif
 
+    LJZ_EDCFermiFit_MakeFitParamsPhysical(pwFit)
+    Print "EDCFermiFit sanitized start Te=", pwFit[2], "K, sigma=", pwFit[4], "eV, Res=", LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pwFit[4]), "meV"
+
     Make/FREE/D/N=7 pwStartUsed
     for (i = 0; i < 7; i += 1)
         pwStartUsed[i] = pwFit[i]
@@ -2049,6 +2108,7 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
 
             pwFit[5] = 0
             pwFit[6] = 0
+            LJZ_EDCFermiFit_MakeFitParamsPhysical(pwFit)
 
             for (i = 0; i < 7; i += 1)
                 pwStartUsed[i] = pwFit[i]
@@ -2087,17 +2147,15 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
     Print "  usedStart=", pwStartUsed[0], pwStartUsed[1], pwStartUsed[2], pwStartUsed[3], pwStartUsed[4], pwStartUsed[5], pwStartUsed[6]
     Print "  pw_fit =", pwFit[0], pwFit[1], pwFit[2], pwFit[3], pwFit[4], pwFit[5], pwFit[6]
 
-    if (numtype(pwFit[2]) == 0)
-        pwFit[2] = abs(pwFit[2])
-    endif
-    if (numtype(pwFit[4]) == 0)
-        pwFit[4] = abs(pwFit[4])
-    endif
+    LJZ_EDCFermiFit_MakeFitParamsPhysical(pwFit)
+
     if (numtype(pwFit[5]) == 0)
         if (pwFit[5] < 0)
             pwFit[5] = 0
         endif
     endif
+
+    Print "EDCFermiFit physical final Te=", pwFit[2], "K, sigma=", pwFit[4], "eV, Res=", LJZ_EDCFermiFit_SigmaEV_to_FWHMMeV(pwFit[4]), "meV"
 
     Make/FREE/D/N=(n) xFullRMS
     Make/FREE/D/N=(n) modelStart
@@ -2141,7 +2199,12 @@ Function LJZ_EDCFermiFit_FitWaveByPath(wPath, startPW, holdStr, updateUI, doAler
     endif
 
     if (paramsUnchanged && !softAccept)
-        Print "WARNING: FuncFit returned but all free parameters are unchanged."
+        Print "EDCFermiFit: FuncFit returned with all free parameters unchanged — treating as failed fit."
+        LJZ_EDCFermiFit_ClearResultForWave(wPath)
+        if (doAlertOnFail)
+            DoAlert 0, "拟合参数未发生变化（可能初始值在边界处）。请检查 Te / Res 初始值是否合理，或尝试 Guess 重新估计初始值。"
+        endif
+        return -1
     endif
 
     LJZ_EDCFermiFit_ResultPWToStorePW(pwFit, pwStore7)
