@@ -344,7 +344,7 @@ Function LJZ_MDCWB_SanitizeWorkState()
         wBG[4] = bgMaskClamped
         changed = 1
     endif
-    if (numtype(wBG[5]) == 0)
+    if (numtype(wBG[5]) != 0)
         wBG[5] = NaN
         changed = 1
     endif
@@ -386,6 +386,19 @@ Function LJZ_MDCWB_SanitizeWorkState()
     endif
 
     return changed
+End
+
+Function LJZ_MDCWB_UpdateBGXRefFromROI()
+    LJZ_MDCWB_EnsureBaseDF()
+    Variable xLo, xHi
+    LJZ_MDCWB_WorkGetROI(xLo, xHi)
+    if (numtype(xLo) != 0 || numtype(xHi) != 0)
+        return -1
+    endif
+    Variable xRef = 0.5 * (xLo + xHi)
+    Wave wBG = $(LJZ_MDCWB_BaseDF() + ":Work_bg")
+    wBG[5] = xRef
+    return 0
 End
 
 
@@ -1213,7 +1226,13 @@ Function LJZ_MDCWB_MultiPeakModel(w, x) : FitFunc
     Variable c2 = w[2]
     Variable resH = max(LJZ_MDCWB_MinResH(), abs(w[3]))
 
-    Variable y = c0 + c1 * x + c2 * x * x
+    Wave/Z wBG = root:Packages:ARPES_LJZ:MDCWB:Work_bg
+    Variable xRef = 0
+    if (WaveExists(wBG) && numpnts(wBG) >= 6 && numtype(wBG[5]) == 0)
+        xRef = wBG[5]
+    endif
+    Variable dx = x - xRef
+    Variable y = c0 + c1 * dx + c2 * dx * dx
     Variable ip, s, t, etaUse
 
     for (ip = 0; ip < nPeak; ip += 1)
@@ -1247,6 +1266,7 @@ Function LJZ_MDCWB_EvaluateModelWave(dataWave, coefW, outWave)
         Redimension/N=(numpnts(dataWave)) outWave
     endif
     SetScale/P x, DimOffset(dataWave, 0), DimDelta(dataWave, 0), outWave
+    LJZ_MDCWB_UpdateBGXRefFromROI()
     outWave = LJZ_MDCWB_MultiPeakModel(coefW, x)
     return 0
 End
@@ -1729,6 +1749,7 @@ Function LJZ_MDCWB_RunFit(wData)
 
     Variable xLo, xHi
     LJZ_MDCWB_WorkGetROI(xLo, xHi)
+    LJZ_MDCWB_UpdateBGXRefFromROI()
 
     Variable roiLo, roiHi
     if (LJZ_MDCWB_GetROIIndexRange(wData, xLo, xHi, roiLo, roiHi) != 0)
