@@ -199,6 +199,36 @@ Function a2k1d_init_defaults_if_needed()
     if (!NVAR_Exists(a2k1d_hmYMul))
         Variable/G root:ARPES_LJZ:A2K1D:a2k1d_hmYMul = 1
     endif
+
+    NVAR/Z a2k1d_hmDisplayMode = root:ARPES_LJZ:A2K1D:a2k1d_hmDisplayMode
+    if (!NVAR_Exists(a2k1d_hmDisplayMode))
+        Variable/G root:ARPES_LJZ:A2K1D:a2k1d_hmDisplayMode = 1
+    endif
+
+    NVAR/Z a2k1d_hmLoFrac = root:ARPES_LJZ:A2K1D:a2k1d_hmLoFrac
+    if (!NVAR_Exists(a2k1d_hmLoFrac))
+        Variable/G root:ARPES_LJZ:A2K1D:a2k1d_hmLoFrac = 0.02
+    endif
+
+    NVAR/Z a2k1d_hmHiFrac = root:ARPES_LJZ:A2K1D:a2k1d_hmHiFrac
+    if (!NVAR_Exists(a2k1d_hmHiFrac))
+        Variable/G root:ARPES_LJZ:A2K1D:a2k1d_hmHiFrac = 0.995
+    endif
+
+    NVAR/Z a2k1d_hmGamma = root:ARPES_LJZ:A2K1D:a2k1d_hmGamma
+    if (!NVAR_Exists(a2k1d_hmGamma))
+        Variable/G root:ARPES_LJZ:A2K1D:a2k1d_hmGamma = 0.80
+    endif
+
+    NVAR/Z a2k1d_hmBgSmooth = root:ARPES_LJZ:A2K1D:a2k1d_hmBgSmooth
+    if (!NVAR_Exists(a2k1d_hmBgSmooth))
+        Variable/G root:ARPES_LJZ:A2K1D:a2k1d_hmBgSmooth = 11
+    endif
+
+    NVAR/Z a2k1d_hmCTWhiteMix = root:ARPES_LJZ:A2K1D:a2k1d_hmCTWhiteMix
+    if (!NVAR_Exists(a2k1d_hmCTWhiteMix))
+        Variable/G root:ARPES_LJZ:A2K1D:a2k1d_hmCTWhiteMix = 0.25
+    endif
     
     SetDataFolder df0
 End
@@ -2982,21 +3012,43 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     endfor
 
     //================================================
-    // 3.5) make display wave guided by peak1/peak2/peak3
+    // 3.5) make display wave by selected heatmap mode
     //================================================
-    Variable dispWid1      = 0.006
-    Variable dispWid2      = 0.009
-    Variable dispWid3      = 0.012
+    NVAR a2k1d_hmDisplayMode = root:ARPES_LJZ:A2K1D:a2k1d_hmDisplayMode
+    NVAR a2k1d_hmLoFrac      = root:ARPES_LJZ:A2K1D:a2k1d_hmLoFrac
+    NVAR a2k1d_hmHiFrac      = root:ARPES_LJZ:A2K1D:a2k1d_hmHiFrac
+    NVAR a2k1d_hmGamma       = root:ARPES_LJZ:A2K1D:a2k1d_hmGamma
+    NVAR a2k1d_hmBgSmooth    = root:ARPES_LJZ:A2K1D:a2k1d_hmBgSmooth
 
-    Variable dispGain1     = 1.00
-    Variable dispGain2     = 1.25
-    Variable dispGain3     = 1.55      // peak3 往往更弱，给更高 gain
+    String imgDispPath = ""
 
-    Variable dispBgSmooth  = 17
-    Variable dispBaseFrac  = 0.85      // 提高背景保留，避免只剩 peak1/2
-    Variable dispPeakThresh = 0.10     // 太弱的局部增强仍留在背景带
+    if (a2k1d_hmDisplayMode == 3)
+        Variable dispWid1      = 0.006
+        Variable dispWid2      = 0.009
+        Variable dispWid3      = 0.012
+        Variable dispGain1     = 1.00
+        Variable dispGain2     = 1.25
+        Variable dispGain3     = 1.55
+        Variable dispBgSmooth  = 17
+        Variable dispBaseFrac  = 0.85
+        Variable dispPeakThresh = 0.10
 
-    Wave imgDisp = a2k1d_make_peak_guided_display_wave(img, hmP1X, hmP2X, hmP3X, dispWid1, dispWid2, dispWid3, dispGain1, dispGain2, dispGain3, dispBgSmooth, dispBaseFrac, dispPeakThresh)
+        Wave imgDispLegacy = a2k1d_make_peak_guided_display_wave(img, hmP1X, hmP2X, hmP3X, dispWid1, dispWid2, dispWid3, dispGain1, dispGain2, dispGain3, dispBgSmooth, dispBaseFrac, dispPeakThresh)
+        imgDispPath = GetWavesDataFolder(imgDispLegacy, 2)
+    else
+        Variable doBgSub = 0
+        if (a2k1d_hmDisplayMode == 2)
+            doBgSub = 1
+        endif
+
+        Wave imgDispSoft = a2k1d_make_row_norm_display_wave(img, a2k1d_hmLoFrac, a2k1d_hmHiFrac, a2k1d_hmGamma, a2k1d_hmBgSmooth, doBgSub)
+        imgDispPath = GetWavesDataFolder(imgDispSoft, 2)
+    endif
+
+    Wave/Z imgDisp = $imgDispPath
+    if (!WaveExists(imgDisp))
+        Abort "Heatmap: display wave generation failed."
+    endif
     //================================================
     // 3.6) build PLOTTING wave directly in swapped orientation
     // final display:
@@ -3061,7 +3113,11 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     // but use imgDisp (unswapped, k along dim0) for statistics window
     // apply fixed 3-peak CT (不要再做 percentile 压缩)
     String imgInst = StringFromList(0, ImageNameList(wname, ";"))
-    a2k1d_apply_threepeak_ct_to_image(wname, imgInst)
+    if (a2k1d_hmDisplayMode == 3)
+        a2k1d_apply_threepeak_ct_to_image(wname, imgInst)
+    else
+        a2k1d_apply_personal_soft_heat_ct_to_image(wname, imgInst)
+    endif
 
     ColorScale/C/N=heatScale/F=0/A=RB/E=0/W=$wname image=$imgInst, heightPct=30, widthPct=3, frame=1
 
@@ -3080,17 +3136,17 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
 
     if (WaveExists(wP2_k))
         AppendToGraph/W=$wname hmP2X vs hmP2Y
-        ModifyGraph/W=$wname mode($NameOfWave(hmP2X))=3,marker($NameOfWave(hmP2X))=17,msize($NameOfWave(hmP2X))=3,rgb($NameOfWave(hmP2X))=(65535,0,0)
+        ModifyGraph/W=$wname mode($NameOfWave(hmP2X))=3,marker($NameOfWave(hmP2X))=17,msize($NameOfWave(hmP2X))=3,rgb($NameOfWave(hmP2X))=(52000,12000,6000)
         if (WaveExists(wS2_k))
-            ErrorBars/W=$wname/RGB=(65535,0,0) $NameOfWave(hmP2X) Y, wave=(hmS2,hmS2)
+            ErrorBars/W=$wname/RGB=(52000,12000,6000) $NameOfWave(hmP2X) Y, wave=(hmS2,hmS2)
         endif
     endif
 
     if (WaveExists(wP3_k))
         AppendToGraph/W=$wname hmP3X vs hmP3Y
-        ModifyGraph/W=$wname mode($NameOfWave(hmP3X))=3,marker($NameOfWave(hmP3X))=16,msize($NameOfWave(hmP3X))=3,rgb($NameOfWave(hmP3X))=(0,0,65535)
+        ModifyGraph/W=$wname mode($NameOfWave(hmP3X))=3,marker($NameOfWave(hmP3X))=16,msize($NameOfWave(hmP3X))=3,rgb($NameOfWave(hmP3X))=(0,18000,52000)
         if (WaveExists(wS3_k))
-            ErrorBars/W=$wname/RGB=(0,0,65535) $NameOfWave(hmP3X) Y, wave=(hmS3,hmS3)
+            ErrorBars/W=$wname/RGB=(0,18000,52000) $NameOfWave(hmP3X) Y, wave=(hmS3,hmS3)
         endif
     endif
 
@@ -3163,6 +3219,7 @@ Function a2k1d_lerp(a, b, u)
     return a + (b-a)*u
 End
 
+// legacy peak-guided visualization; not recommended as default paper figure because the base image contains fit-position prior.
 Function/WAVE a2k1d_make_peak_guided_display_wave(imgIn, wP1X, wP2X, wP3X, wid1, wid2, wid3, gain1, gain2, gain3, bgSmoothN, baseFrac, peakThresh)
     Wave imgIn
     Wave wP1X, wP2X, wP3X
@@ -3331,6 +3388,187 @@ Function/WAVE a2k1d_make_peak_guided_display_wave(imgIn, wP1X, wP2X, wP3X, wid1,
     return imgDisp
 End
 
+
+Function/WAVE a2k1d_make_row_norm_display_wave(imgIn, loFrac, hiFrac, gammaVal, bgSmoothN, doBgSub)
+    Wave imgIn
+    Variable loFrac, hiFrac, gammaVal, bgSmoothN, doBgSub
+
+    a2k1d_ensure_folder()
+
+    Variable nx = DimSize(imgIn, 0)
+    Variable ny = DimSize(imgIn, 1)
+
+    String outDF = "root:ARPES_LJZ:OUTPUT:A2K1D:"
+    String dispPath = outDF + "a2k1d_img_disp_soft"
+    String rowPath  = outDF + "a2k1d_row_soft"
+    String bgPath   = outDF + "a2k1d_bg_soft"
+    String statPath = outDF + "a2k1d_stat_soft"
+
+    Make/O/D/N=(nx, ny) $dispPath
+    Make/O/D/N=(nx) $rowPath, $bgPath, $statPath
+
+    Wave imgDisp = $dispPath
+    Wave rowTmp  = $rowPath
+    Wave bgTmp   = $bgPath
+    Wave statTmp = $statPath
+
+    SetScale/P x, DimOffset(imgIn,0), DimDelta(imgIn,0), WaveUnits(imgIn,0), imgDisp
+    SetScale/P y, DimOffset(imgIn,1), DimDelta(imgIn,1), WaveUnits(imgIn,1), imgDisp
+    SetScale d, 0, 0, WaveUnits(imgIn,-1), imgDisp
+
+    if (loFrac < 0)
+        loFrac = 0
+    endif
+    if (hiFrac > 1)
+        hiFrac = 1
+    endif
+    if (hiFrac <= loFrac)
+        loFrac = 0.02
+        hiFrac = 0.995
+    endif
+    if (gammaVal <= 0 || numtype(gammaVal) != 0)
+        gammaVal = 1
+    endif
+    if (bgSmoothN < 1 || numtype(bgSmoothN) != 0)
+        bgSmoothN = 1
+    endif
+
+    Variable i, j
+    Variable vLo, vHi, val
+
+    for (j = 0; j < ny; j += 1)
+        rowTmp = imgIn[p][j]
+
+        if (doBgSub)
+            bgTmp = rowTmp[p]
+            if (bgSmoothN > 1)
+                Smooth bgSmoothN, bgTmp
+            endif
+            rowTmp = rowTmp[p] - bgTmp[p]
+            rowTmp = max(rowTmp[p], 0)
+        endif
+
+        statTmp = rowTmp[p]
+        Sort statTmp, statTmp
+
+        vLo = statTmp[round(loFrac * (nx - 1))]
+        vHi = statTmp[round(hiFrac * (nx - 1))]
+
+        if (numtype(vLo) != 0 || numtype(vHi) != 0 || vHi <= vLo)
+            WaveStats/Q rowTmp
+            vLo = V_min
+            vHi = V_max
+        endif
+
+        if (numtype(vLo) != 0 || numtype(vHi) != 0 || vHi <= vLo)
+            for (i = 0; i < nx; i += 1)
+                imgDisp[i][j] = 0
+            endfor
+            continue
+        endif
+
+        for (i = 0; i < nx; i += 1)
+            val = (rowTmp[i] - vLo) / (vHi - vLo)
+            if (val < 0)
+                val = 0
+            endif
+            if (val > 1)
+                val = 1
+            endif
+
+            val = val^gammaVal
+            imgDisp[i][j] = val
+        endfor
+    endfor
+
+    imgDisp = max(0, min(1, imgDisp[p][q]))
+
+    return imgDisp
+End
+
+Function/WAVE a2k1d_make_personal_soft_heat_ct(nSamp)
+    Variable nSamp
+
+    a2k1d_ensure_folder()
+    ctluz_ensure_folder()
+
+    if (nSamp < 2)
+        nSamp = 256
+    endif
+
+    SVAR/Z pickName = root:ARPES_LJZ:A2K1D:a2k1d_ctPickName
+    NVAR/Z invCT    = root:ARPES_LJZ:A2K1D:a2k1d_ctInvert
+    NVAR/Z whiteMix = root:ARPES_LJZ:A2K1D:a2k1d_hmCTWhiteMix
+
+    String pick = "Mualani"
+    if (SVAR_Exists(pickName) && strlen(pickName) > 0)
+        pick = pickName
+    endif
+
+    Variable inv = 0
+    if (NVAR_Exists(invCT))
+        inv = invCT
+    endif
+
+    Variable wm = 0.25
+    if (NVAR_Exists(whiteMix))
+        wm = whiteMix
+    endif
+    if (wm < 0)
+        wm = 0
+    endif
+    if (wm > 1)
+        wm = 1
+    endif
+
+    String outPath = "root:ARPES_LJZ:OUTPUT:A2K1D:a2k1d_personal_soft_heat_ct"
+    Make/O/W/U/N=(nSamp,3) $outPath
+    Wave ct = $outPath
+
+    Variable i, t, q
+    Variable r, g, b
+    Variable mix
+
+    for (i = 0; i < nSamp; i += 1)
+        t = i / (nSamp - 1.0)
+        q = t^0.85
+
+        a2k1d_ctluz_rgb16_at_t(pick, q, inv, r, g, b)
+
+        mix = wm * (1 - t)^1.5
+        r = r * (1 - mix) + 65535 * mix
+        g = g * (1 - mix) + 65535 * mix
+        b = b * (1 - mix) + 65535 * mix
+
+        ct[i][0] = max(0, min(65535, r))
+        ct[i][1] = max(0, min(65535, g))
+        ct[i][2] = max(0, min(65535, b))
+    endfor
+
+    return ct
+End
+
+Function a2k1d_apply_personal_soft_heat_ct_to_image(winName, imgName)
+    String winName, imgName
+
+    Wave ctLocal = a2k1d_make_personal_soft_heat_ct(256)
+    String ctPath = "root:ARPES_LJZ:OUTPUT:A2K1D:a2k1d_personal_soft_heat_ct"
+
+    String imgInst = imgName
+    String imgList = ImageNameList(winName, ";")
+    if (WhichListItem(imgInst, imgList, ";") < 0)
+        imgInst = StringFromList(0, imgList, ";")
+    endif
+    if (strlen(imgInst) == 0)
+        return -1
+    endif
+
+    ModifyImage/W=$winName $imgInst, ctab={0,1,$ctPath,0}
+    DoUpdate
+
+    return 0
+End
+
 Function a2k1d_btn_plot_delta_err(ctrlName) : ButtonControl
     String ctrlName
 
@@ -3426,6 +3664,7 @@ ModifyGraph/W=$wname rgb($NameOfWave(wD12))=(0,0,0)
     return 0
 End
 
+// legacy peak-guided visualization; not recommended as default paper figure because the base image contains fit-position prior.
 Function/WAVE a2k1d_make_threepeak_ct(nSamp)
     Variable nSamp
 
