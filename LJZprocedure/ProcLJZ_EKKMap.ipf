@@ -933,6 +933,9 @@ Function LJZ_EKKMap_SetRawAngleScale2D(w, degPixel)
     Wave w
     Variable degPixel
 
+    // This helper intentionally overrides the duplicated source wave x-scale to a centered analyzer-angle axis.
+    // If the original wave already carries a correct non-centered angle scale, setting degPixel != 0 will
+    // overwrite that x-scale on the temporary duplicate and can make the mapped result look shifted/distorted.
     if (degPixel == 0)
         return 0
     endif
@@ -944,6 +947,45 @@ Function LJZ_EKKMap_SetRawAngleScale2D(w, degPixel)
 
     SetScale/P x, -0.5 * (n - 1) * degPixel, degPixel, "deg", w
     return 0
+End
+
+Function LJZ_EKKMap_FiniteFraction2D(mapped2D)
+    Wave mapped2D
+
+    Variable totalN = DimSize(mapped2D,0) * DimSize(mapped2D,1)
+    Variable finiteN = 0
+
+    Duplicate/O mapped2D, LJZ_EKKMap_tmpFiniteMask2D
+    LJZ_EKKMap_tmpFiniteMask2D = numtype(mapped2D) == 0 ? 1 : 0
+    WaveStats/Q LJZ_EKKMap_tmpFiniteMask2D
+    finiteN = V_sum
+    KillWaves/Z LJZ_EKKMap_tmpFiniteMask2D
+
+    return totalN <= 0 ? NaN : finiteN / totalN
+End
+
+Function LJZ_EKKMap_ReportMapped2DDiagnostics(src, mapped2D, labelY)
+    Wave src, mapped2D
+    String labelY
+
+    Variable srcXMin = LJZ_EKKMap_DimMin(src,0)
+    Variable srcXMax = LJZ_EKKMap_DimMax(src,0)
+    Variable srcYMin = LJZ_EKKMap_DimMin(src,1)
+    Variable srcYMax = LJZ_EKKMap_DimMax(src,1)
+    Variable outXMin = LJZ_EKKMap_DimMin(mapped2D,0)
+    Variable outXMax = LJZ_EKKMap_DimMax(mapped2D,0)
+    Variable outYMin = LJZ_EKKMap_DimMin(mapped2D,1)
+    Variable outYMax = LJZ_EKKMap_DimMax(mapped2D,1)
+    Variable totalN = DimSize(mapped2D,0) * DimSize(mapped2D,1)
+    Variable frac = LJZ_EKKMap_FiniteFraction2D(mapped2D)
+    Variable finiteN = frac * totalN
+
+    printf "LJZ_EKKMap diag: src raw-angle range = [%g, %g] deg\r", srcXMin, srcXMax
+    printf "LJZ_EKKMap diag: src scan/hv range   = [%g, %g]\r", srcYMin, srcYMax
+    printf "LJZ_EKKMap diag: out kx range        = [%g, %g]\r", outXMin, outXMax
+    printf "LJZ_EKKMap diag: out %s range       = [%g, %g]\r", labelY, outYMin, outYMax
+    printf "LJZ_EKKMap diag: finite pixels       = %g / %g (%g)\r", finiteN, totalN, frac
+    return frac
 End
 
 Function LJZ_EKKMap_ClipToWave2D(src, xq, yq)
@@ -1428,7 +1470,9 @@ Function/WAVE LJZ_EKKMap_CalcKxKy2D(srcIn, energyRel, hv, workFunc, tilt, azimut
             KillWaves/Z LJZ_EKKMap_tmpKxr, LJZ_EKKMap_tmpKyr, LJZ_EKKMap_tmpAA, LJZ_EKKMap_tmpBB, LJZ_EKKMap_tmpCC, LJZ_EKKMap_tmpDisc
         endif
 
-        LJZ_EKKMap_tmpB2 -= scanOffset
+        // WTZ forward geometry uses physicalScan = rawScan - scanOffset.
+        // Therefore inverse lookup must use rawScan = physicalScan + scanOffset.
+        LJZ_EKKMap_tmpB2 += scanOffset
         LJZ_EKKMap_tmpKxKy = LJZ_EKKMap_ClipToWave2D(src, LJZ_EKKMap_tmpA2(x)(y), LJZ_EKKMap_tmpB2(x)(y))
     else
         LJZ_EKKMap_tmpA2 = asin(LJZ_EKKMap_ClampToUnit(sqrt(x^2+y^2)/k0 * cos(atan2(y,x)-azimuth*pi/180))) * 180/pi
@@ -1436,6 +1480,10 @@ Function/WAVE LJZ_EKKMap_CalcKxKy2D(srcIn, energyRel, hv, workFunc, tilt, azimut
         LJZ_EKKMap_tmpA2 -= tilt
         LJZ_EKKMap_tmpB2 -= scanOffset
         LJZ_EKKMap_tmpKxKy = LJZ_EKKMap_ClipToWave2D(src, LJZ_EKKMap_tmpA2(x)(y), LJZ_EKKMap_tmpB2(x)(y))
+    endif
+    if (LJZ_EKKMap_FiniteFraction2D(LJZ_EKKMap_tmpKxKy) < 0.05)
+        // Keep NaN clipping behavior unchanged; print diagnostics only for severe out-of-range inverse lookup.
+        LJZ_EKKMap_ReportMapped2DDiagnostics(src, LJZ_EKKMap_tmpKxKy, "ky")
     endif
 
     KillWaves/Z LJZ_EKKMap_tmpKxKy_src, LJZ_EKKMap_tmpKx1, LJZ_EKKMap_tmpKy1, LJZ_EKKMap_tmpKx2, LJZ_EKKMap_tmpKy2, LJZ_EKKMap_tmpA2, LJZ_EKKMap_tmpB2
@@ -1920,7 +1968,7 @@ Function LJZ_EKKMap_RunQuickFSKxKy()
         tmpQuickDS = tmpQuick[p*ds][q*ds]
         Duplicate/O tmpQuickDS, $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D")
         KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D_DS")
-        Wave tmpQuick = $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D")
+        tmpQuick = $(LJZ_EKKMap_BaseDF() + ":tmpQuickFS2D")
     endif
 
     Variable energyRelQuick = QuickEF - FL
