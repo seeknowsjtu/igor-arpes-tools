@@ -764,7 +764,8 @@ Window A2K1D_LJZ_P() : Panel
 	TitleBox a2k1d_tb_corr_mode,pos={438,458},size={102,18},title="0 full, 1 first, 2 mean",frame=0
 	Button a2k1d_btn_corr_peaks,pos={336,480},size={98,22},proc=a2k1d_btn_make_corr_peaks,title="Make Corr Peaks"
 	Button a2k1d_btn_corr_layers,pos={442,480},size={98,22},proc=a2k1d_btn_make_corr_layers,title="Make Corr Layers"
-	Button a2k1d_btn_corr_peaks_k,pos={336,506},size={204,22},proc=a2k1d_btn_corr_peaks_to_k,title="Corr Peaks -> K"
+	Button a2k1d_btn_corr_peaks_k,pos={336,506},size={98,22},proc=a2k1d_btn_corr_peaks_to_k,title="Corr Peaks -> K"
+	Button a2k1d_btn_corr_layers_k,pos={442,506},size={98,22},proc=a2k1d_btn_corr_layers_to_k,title="Corr Layers -> K"
 
 	Button a2k1d_btn_abort,pos={336,532},size={204,22},proc=a2k1d_btn_abort,title="Abort"
 	Button a2k1d_btn_help,pos={336,558},size={98,22},proc=a2k1d_btn_help,title="Help"
@@ -817,6 +818,20 @@ Function/S a2k1d_value_k_output_name(baseName)
         outName = outName[0, n-6] + "_k_corr"
     else
         outName += "_k"
+    endif
+
+    return CleanupName(outName, 0)
+End
+
+Function/S a2k1d_spec_k_output_name(baseName)
+    String baseName
+
+    String outName = baseName
+    Variable n = strlen(outName)
+    if (n >= 5 && StringMatch(LowerStr(outName[n-5, n-1]), "_corr"))
+        outName = outName[0, n-6] + "_k_spec_corr"
+    else
+        outName += "_k_spec"
     endif
 
     return CleanupName(outName, 0)
@@ -1361,7 +1376,7 @@ Function LJZ_Spectra_Interp_Run(srcPathStr, baseName, thetaOffset, hv, workFunc,
 
     // 3. Create Destination Wave (Linear k grid)
     Variable nPoints = DimSize(src, 0)
-    String destName = baseName + "_k_spec"
+    String destName = a2k1d_spec_k_output_name(baseName)
     
     Duplicate/O src, $destName
     Wave dest = $destName
@@ -3021,6 +3036,139 @@ Function a2k1d_btn_corr_peaks_to_k(ctrlName) : ButtonControl
             TitleBox a2k1d_runstat, win=A2K1D_LJZ_P, title="Status: corrected peaks -> k done"
         else
             TitleBox a2k1d_runstat, win=A2K1D_LJZ_P, title="Status: corrected peaks -> k failed"
+        endif
+    endif
+
+    return 0
+End
+
+Function a2k1d_batch_corr_layers_to_k(baseDF, recursive, corrRunDF)
+    String baseDF, corrRunDF
+    Variable recursive
+
+    a2k1d_init_defaults_if_needed()
+
+    String base = a2k1d_df_with_colon(baseDF)
+    String corrBase = a2k1d_df_with_colon(corrRunDF)
+
+    if (!a2k1d_df_exists(base))
+        Print "Corr Layers -> K: base data folder not found: " + base
+        return -1
+    endif
+
+    if (!a2k1d_corr_run_is_valid(corrBase))
+        Print "Corr Layers -> K: invalid correction run: " + corrBase
+        return -1
+    endif
+
+    NVAR thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
+    NVAR hv          = root:ARPES_LJZ:A2K1D:a2k1d_hv
+    NVAR workFunc    = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
+    NVAR energyE     = root:ARPES_LJZ:A2K1D:a2k1d_energyE
+    NVAR kShift      = root:ARPES_LJZ:A2K1D:a2k1d_kShift
+    NVAR LC          = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    NVAR corrMode    = root:ARPES_LJZ:A2K1D:a2k1d_corrMode
+    NVAR skipFlagged = root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
+    NVAR showGraph   = root:ARPES_LJZ:A2K1D:a2k1d_showGraph
+
+    String list = a2k1d_collect_layers(base, recursive)
+    Variable n = ItemsInList(list, ";")
+
+    Variable oldShow = showGraph
+    showGraph = 0
+
+    Variable i
+    Variable okCorr = 0
+    Variable okK = 0
+    Variable fail = 0
+    Variable skipFlag = 0
+    Variable nTrack = a2k1d_corr_nrows(corrBase)
+
+    for (i=0; i<n; i+=1)
+        String rawPath = StringFromList(i, list, ";")
+        if (strlen(rawPath) == 0)
+            continue
+        endif
+
+        Wave/Z rawLayer = $rawPath
+        if (!WaveExists(rawLayer))
+            fail += 1
+            continue
+        endif
+
+        String rawName = NameOfWave(rawLayer)
+        if (a2k1d_is_result_wave_name(rawName) || !a2k1d_is_layer_int_name(rawName))
+            fail += 1
+            continue
+        endif
+
+        Variable layerIdx = a2k1d_get_layer_index(rawName)
+        Variable row = a2k1d_corr_row_for_layer(layerIdx, nTrack)
+        Variable dTh, scEff
+        Variable corrRC = a2k1d_get_effective_corr(corrBase, row, corrMode, skipFlagged, dTh, scEff)
+        if (corrRC == -3)
+            skipFlag += 1
+            continue
+        endif
+
+        String corrPath = a2k1d_make_corr_layer_angle_wave(rawPath, corrBase)
+        if (strlen(corrPath) <= 0)
+            fail += 1
+            continue
+        endif
+        okCorr += 1
+
+        Wave/Z corrWave = $corrPath
+        if (!WaveExists(corrWave))
+            fail += 1
+            continue
+        endif
+
+        if (LJZ_Spectra_Interp_Run(corrPath, NameOfWave(corrWave), thetaOffset, hv, workFunc, energyE, kShift, LC) == 0)
+            okK += 1
+        else
+            fail += 1
+        endif
+    endfor
+
+    showGraph = oldShow
+
+    Printf "Corr Layers -> K summary: raw layers found=%d angle-corrected layers created=%d corrected k-space spectra created=%d failed=%d skipped flagged rows=%d\r", n, okCorr, okK, fail, skipFlag
+    return 0
+End
+
+Function a2k1d_btn_corr_layers_to_k(ctrlName) : ButtonControl
+    String ctrlName
+
+    a2k1d_init_defaults_if_needed()
+
+    SVAR a2k1d_baseDF = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
+    NVAR a2k1d_recursive = root:ARPES_LJZ:A2K1D:a2k1d_recursive
+    SVAR a2k1d_corrRunDF = root:ARPES_LJZ:A2K1D:a2k1d_corrRunDF
+    NVAR a2k1d_showGraph = root:ARPES_LJZ:A2K1D:a2k1d_showGraph
+
+    if (!a2k1d_corr_run_is_valid(a2k1d_corrRunDF))
+        DoAlert 0, "Invalid MDCTrack correction run."
+        DoWindow A2K1D_LJZ_P
+        if (V_flag)
+            TitleBox a2k1d_runstat, win=A2K1D_LJZ_P, title="Status: corr layers -> k failed"
+        endif
+        return 0
+    endif
+
+    Variable oldShow = a2k1d_showGraph
+    a2k1d_showGraph = 0
+
+    Variable rc = a2k1d_batch_corr_layers_to_k(a2k1d_baseDF, a2k1d_recursive, a2k1d_corrRunDF)
+
+    a2k1d_showGraph = oldShow
+
+    DoWindow A2K1D_LJZ_P
+    if (V_flag)
+        if (rc == 0)
+            TitleBox a2k1d_runstat, win=A2K1D_LJZ_P, title="Status: corr layers -> k done"
+        else
+            TitleBox a2k1d_runstat, win=A2K1D_LJZ_P, title="Status: corr layers -> k failed"
         endif
     endif
 
