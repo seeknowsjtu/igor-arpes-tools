@@ -43,6 +43,7 @@
 //      corr_vs_scale           // 2D diagnostic image: row x scale, corr at best shift
 //      corr_scale_axis         // scale-axis values used by corr_vs_scale
 //      kPeak_corr              // optional corrected peak positions written by Correct Peak button
+//      ApplyCorrLastOutputList // optional list of full-data waves written by Apply Corr
 //
 //  推荐用法：
 //    1) 打开 ARPES_LJZ -> 2026MDCTrack_LJZ。
@@ -50,6 +51,7 @@
 //    3) Build Reference。
 //    4) 填 TargetDF，Refresh Target List，Register Selected 或 Register All。
 //    5) 如果已经有 peak position wave，填 PeakRawPath，Correct Peak Wave。
+//    6) 如需把 dK/scale 应用到完整 1D/2D/3D 数据，设置 ApplySuffix，点击 Apply Corr。
 // ============================================================================
 
 Menu "ARPES_LJZ"
@@ -168,6 +170,26 @@ Function LJZ_MDCTrack_EnsureDF()
     SVAR/Z peakRaw = $(LJZ_MDCTrack_BaseDF() + ":PeakRawPath")
     if (!SVAR_Exists(peakRaw))
         String/G $(LJZ_MDCTrack_BaseDF() + ":PeakRawPath") = ""
+    endif
+
+    SVAR/Z applySuffix = $(LJZ_MDCTrack_BaseDF() + ":ApplySuffix")
+    if (!SVAR_Exists(applySuffix))
+        String/G $(LJZ_MDCTrack_BaseDF() + ":ApplySuffix") = "_corr"
+    endif
+
+    SVAR/Z applyLastOut = $(LJZ_MDCTrack_BaseDF() + ":ApplyCorrLastOutputList")
+    if (!SVAR_Exists(applyLastOut))
+        String/G $(LJZ_MDCTrack_BaseDF() + ":ApplyCorrLastOutputList") = ""
+    endif
+
+    NVAR/Z applySkipFlagged = $(LJZ_MDCTrack_BaseDF() + ":ApplySkipFlagged")
+    if (!NVAR_Exists(applySkipFlagged))
+        Variable/G $(LJZ_MDCTrack_BaseDF() + ":ApplySkipFlagged") = 0
+    endif
+
+    NVAR/Z applyOutputToRunDF = $(LJZ_MDCTrack_BaseDF() + ":ApplyOutputToRunDF")
+    if (!NVAR_Exists(applyOutputToRunDF))
+        Variable/G $(LJZ_MDCTrack_BaseDF() + ":ApplyOutputToRunDF") = 0
     endif
 
     SVAR/Z status = $(LJZ_MDCTrack_BaseDF() + ":Status")
@@ -1977,6 +1999,441 @@ Function LJZ_MDCTrack_CorrectPeakFromPanel()
     return ret
 End
 
+// ---- Apply dK/scale correction to full data waves ----
+
+Function LJZ_MDCTrack_RunUsesSingleCorrection(runDFIn)
+    String runDFIn
+
+    String runDF
+    runDF = LJZ_MDCTrack_df_with_colon(runDFIn)
+
+    // Prefer the frozen reference-stack information in the run folder.
+    // If it is missing, fall back to the tracking result length.
+    NVAR/Z refS0 = $(runDF + "RefStack0")
+    NVAR/Z refS1 = $(runDF + "RefStack1")
+    if (NVAR_Exists(refS0) && NVAR_Exists(refS1))
+        if (numtype(refS0) == 0 && numtype(refS1) == 0)
+            if (round(refS0) == round(refS1))
+                return 1
+            endif
+            return 0
+        endif
+    endif
+
+    Wave/Z dK = $(runDF + "dK_toRef")
+    if (WaveExists(dK))
+        if (numpnts(dK) <= 1)
+            return 1
+        endif
+    endif
+
+    return 0
+End
+
+Function LJZ_MDCTrack_CorrectionRowForLayer(layer, singleCorrection)
+    Variable layer
+    Variable singleCorrection
+
+    if (singleCorrection != 0)
+        return 0
+    endif
+
+    return round(layer)
+End
+
+Function LJZ_MDCTrack_GetKCenterFromRun(runDFIn)
+    String runDFIn
+
+    String runDF
+    Variable kCenter
+
+    runDF = LJZ_MDCTrack_df_with_colon(runDFIn)
+    NVAR/Z kCenterRun = $(runDF + "KCenter")
+    if (NVAR_Exists(kCenterRun))
+        kCenter = kCenterRun
+    else
+        LJZ_MDCTrack_EnsureDF()
+        NVAR kCenterGlobal = $(LJZ_MDCTrack_BaseDF() + ":KCenter")
+        kCenter = kCenterGlobal
+    endif
+
+    return kCenter
+End
+
+Function/S LJZ_MDCTrack_MakeApplyOutputPath(srcPath, runDFIn, suffix, outputToRunDF)
+    String srcPath
+    String runDFIn
+    String suffix
+    Variable outputToRunDF
+
+    Wave/Z src = $srcPath
+    if (!WaveExists(src))
+        return ""
+    endif
+
+    String srcName
+    String outName
+    String outDF
+
+    srcName = NameOfWave(src)
+    outName = CleanupName(srcName + suffix, 0)
+    if (strlen(outName) == 0)
+        return ""
+    endif
+    if (CmpStr(outName, CleanupName(srcName, 0)) == 0)
+        return ""
+    endif
+
+    if (outputToRunDF != 0)
+        outDF = LJZ_MDCTrack_df_with_colon(runDFIn)
+    else
+        outDF = GetWavesDataFolder(src, 1)
+        outDF = LJZ_MDCTrack_df_with_colon(outDF)
+    endif
+
+    return outDF + outName
+End
+
+Function LJZ_MDCTrack_FillKProfile1D(src, tmp, eIndex, zIndex)
+    Wave src
+    Wave tmp
+    Variable eIndex
+    Variable zIndex
+
+    Variable nd
+    Variable iK
+    Variable nK
+
+    nd = WaveDims(src)
+    nK = numpnts(tmp)
+
+    if (nd == 1)
+        for (iK = 0; iK < nK; iK += 1)
+            tmp[iK] = src[iK]
+        endfor
+    elseif (nd == 2)
+        for (iK = 0; iK < nK; iK += 1)
+            tmp[iK] = src[eIndex][iK]
+        endfor
+    elseif (nd == 3)
+        for (iK = 0; iK < nK; iK += 1)
+            tmp[iK] = src[eIndex][iK][zIndex]
+        endfor
+    endif
+
+    return 0
+End
+
+Function LJZ_MDCTrack_ApplyCorrectionToWaveEx(srcPath, runDFIn, suffix, skipFlagged, outputToRunDF)
+    String srcPath
+    String runDFIn
+    String suffix
+    Variable skipFlagged
+    Variable outputToRunDF
+
+    LJZ_MDCTrack_EnsureDF()
+    String/G $(LJZ_MDCTrack_BaseDF() + ":ApplyCorrLastOutputList") = ""
+
+    String runDF
+    runDF = LJZ_MDCTrack_df_with_colon(runDFIn)
+
+    Wave/Z src = $srcPath
+    if (!WaveExists(src))
+        Print "ApplyCorrectionToWave: source wave does not exist: " + srcPath
+        return -1
+    endif
+
+    if (LJZ_MDCTrack_IsAllowedSourceWave(src) == 0)
+        Print "ApplyCorrectionToWave: source must be numeric 1D/2D/3D: " + srcPath
+        return -2
+    endif
+
+    Wave/Z dK = $(runDF + "dK_toRef")
+    Wave/Z sc = $(runDF + "scale_toRef")
+    if (!WaveExists(dK) || !WaveExists(sc))
+        Print "ApplyCorrectionToWave: dK_toRef / scale_toRef missing in " + runDF
+        return -3
+    endif
+
+    Wave/Z flag = $(runDF + "flag")
+    if (numpnts(dK) != numpnts(sc))
+        Print "WARNING: dK_toRef and scale_toRef have different row counts. Using overlapping rows only. dK rows=", numpnts(dK), "; scale rows=", numpnts(sc)
+    endif
+
+    Variable nTrack
+    nTrack = min(numpnts(dK), numpnts(sc))
+    if (nTrack <= 0)
+        Print "ApplyCorrectionToWave: no tracking rows available in " + runDF
+        return -4
+    endif
+
+    String outPath
+    outPath = LJZ_MDCTrack_MakeApplyOutputPath(srcPath, runDF, suffix, outputToRunDF)
+    if (strlen(outPath) == 0)
+        Print "ApplyCorrectionToWave: invalid suffix or output name. Refusing to overwrite source wave. Source=", srcPath, "; suffix=", suffix
+        return -5
+    endif
+
+    Wave/Z outExisting = $outPath
+    if (WaveExists(outExisting))
+        if (WaveRefsEqual(outExisting, src))
+            Print "ApplyCorrectionToWave: output wave is the same object as the source. Refusing to overwrite source wave: " + srcPath
+            String/G $(LJZ_MDCTrack_BaseDF() + ":ApplyCorrLastOutputList") = ""
+            return -6
+        endif
+    endif
+
+    Variable nd
+    Variable nE
+    Variable nK
+    Variable nZ
+    Variable iE
+    Variable iK
+    Variable iZ
+    Variable row
+    Variable singleCorrection
+    Variable kCenter
+    Variable dKThis
+    Variable scaleThis
+    Variable flagThis
+    Variable kOut
+    Variable kSrc
+    Variable nWritten
+    Variable nSkippedFlag
+    Variable nSkippedMissing
+
+    nd = WaveDims(src)
+    singleCorrection = LJZ_MDCTrack_RunUsesSingleCorrection(runDF)
+    kCenter = LJZ_MDCTrack_GetKCenterFromRun(runDF)
+
+    if (nd == 1)
+        nE = 1
+        nK = DimSize(src, 0)
+        nZ = 1
+        Make/O/D/N=(nK) $outPath = NaN
+    elseif (nd == 2)
+        nE = DimSize(src, 0)
+        nK = DimSize(src, 1)
+        nZ = 1
+        Make/O/D/N=(nE, nK) $outPath = NaN
+    else
+        nE = DimSize(src, 0)
+        nK = DimSize(src, 1)
+        nZ = DimSize(src, 2)
+        Make/O/D/N=(nE, nK, nZ) $outPath = NaN
+    endif
+
+    Wave out = $outPath
+    SetScale/P x, DimOffset(src, 0), DimDelta(src, 0), WaveUnits(src, 0), out
+    if (nd >= 2)
+        SetScale/P y, DimOffset(src, 1), DimDelta(src, 1), WaveUnits(src, 1), out
+    endif
+    if (nd >= 3)
+        SetScale/P z, DimOffset(src, 2), DimDelta(src, 2), WaveUnits(src, 2), out
+    endif
+
+    if (singleCorrection == 0 && nZ != nTrack)
+        Print "WARNING: source layer count does not match tracking row count. Source layers=", nZ, "; tracking rows=", nTrack, ". Overlapping layers will be corrected; out-of-range layers remain NaN. Check target/layer order."
+    endif
+    if (singleCorrection != 0 && nTrack > 1)
+        Print "ApplyCorrectionToWave: run is treated as single-reference correction. All source layers will use row 0; additional tracking rows are ignored."
+    endif
+    if (skipFlagged != 0 && !WaveExists(flag))
+        Print "WARNING: skipFlagged is enabled but flag wave is missing. No layers will be skipped by flag."
+    endif
+
+    Make/FREE/D/N=(nK) tmpKProfile
+    if (nd == 1)
+        SetScale/P x, DimOffset(src, 0), DimDelta(src, 0), "", tmpKProfile
+    else
+        SetScale/P x, DimOffset(src, 1), DimDelta(src, 1), "", tmpKProfile
+    endif
+
+    nWritten = 0
+    nSkippedFlag = 0
+    nSkippedMissing = 0
+
+    for (iZ = 0; iZ < nZ; iZ += 1)
+        row = LJZ_MDCTrack_CorrectionRowForLayer(iZ, singleCorrection)
+        if (row < 0 || row >= nTrack)
+            nSkippedMissing += 1
+            continue
+        endif
+
+        dKThis = dK[row]
+        scaleThis = sc[row]
+        if (numtype(dKThis) != 0 || numtype(scaleThis) != 0 || scaleThis <= 0)
+            nSkippedMissing += 1
+            continue
+        endif
+
+        if (skipFlagged != 0 && WaveExists(flag))
+            flagThis = flag[row]
+            if (numtype(flagThis) == 0 && flagThis != 0)
+                Print "ApplyCorrectionToWave: skipped layer ", iZ, " using row ", row, " because flag=", flagThis
+                nSkippedFlag += 1
+                continue
+            endif
+        endif
+
+        for (iE = 0; iE < nE; iE += 1)
+            LJZ_MDCTrack_FillKProfile1D(src, tmpKProfile, iE, iZ)
+            for (iK = 0; iK < nK; iK += 1)
+                if (nd == 1)
+                    kOut = DimOffset(src, 0) + iK * DimDelta(src, 0)
+                else
+                    kOut = DimOffset(src, 1) + iK * DimDelta(src, 1)
+                endif
+                kSrc = kCenter + (kOut - kCenter - dKThis) / scaleThis
+                if (nd == 1)
+                    out[iK] = LJZ_MDCTrack_InterpScaled(tmpKProfile, kSrc)
+                elseif (nd == 2)
+                    out[iE][iK] = LJZ_MDCTrack_InterpScaled(tmpKProfile, kSrc)
+                else
+                    out[iE][iK][iZ] = LJZ_MDCTrack_InterpScaled(tmpKProfile, kSrc)
+                endif
+            endfor
+        endfor
+        nWritten += 1
+    endfor
+
+    String/G $(runDF + "ApplyCorrLastSourcePath") = srcPath
+    String/G $(runDF + "ApplyCorrLastOutputPath") = outPath
+    Variable/G $(runDF + "ApplyCorrLastSkipFlagged") = skipFlagged
+    String/G $(LJZ_MDCTrack_BaseDF() + ":ApplyCorrLastOutputList") = outPath + ";"
+
+    Print "ApplyCorrectionToWave: written ", outPath
+    Printf "ApplyCorrectionToWave summary: source layers=%d; corrected layers=%d; skipped by flag=%d; missing/invalid rows=%d; singleCorrection=%d\r", nZ, nWritten, nSkippedFlag, nSkippedMissing, singleCorrection
+
+    return 0
+End
+
+Function LJZ_MDCTrack_ApplyCorrectionToWave(srcPath, runDFIn, suffix, skipFlagged)
+    String srcPath
+    String runDFIn
+    String suffix
+    Variable skipFlagged
+
+    return LJZ_MDCTrack_ApplyCorrectionToWaveEx(srcPath, runDFIn, suffix, skipFlagged, 0)
+End
+
+Function LJZ_MDCTrack_ApplyCorrectionToListEx(pathListIn, runDFIn, suffix, skipFlagged, outputToRunDF)
+    String pathListIn
+    String runDFIn
+    String suffix
+    Variable skipFlagged
+    Variable outputToRunDF
+
+    LJZ_MDCTrack_EnsureDF()
+
+    String pathList
+    String onePath
+    String outList
+    Variable i
+    Variable n
+    Variable ret
+    Variable nOK
+    Variable nFail
+
+    pathList = pathListIn
+    if (strlen(pathList) == 0)
+        Wave/T/Z wPath = $(LJZ_MDCTrack_BaseDF() + ":LB_Path")
+        if (WaveExists(wPath))
+            n = numpnts(wPath)
+            for (i = 0; i < n; i += 1)
+                pathList = AddListItem(wPath[i], pathList, ";", Inf)
+            endfor
+        endif
+    endif
+
+    n = ItemsInList(pathList, ";")
+    if (n <= 0)
+        Print "ApplyCorrectionToList: empty source wave list."
+        return -1
+    endif
+
+    outList = ""
+    nOK = 0
+    nFail = 0
+    for (i = 0; i < n; i += 1)
+        onePath = StringFromList(i, pathList, ";")
+        if (strlen(onePath) == 0)
+            continue
+        endif
+        String/G $(LJZ_MDCTrack_BaseDF() + ":ApplyCorrLastOutputList") = ""
+        ret = LJZ_MDCTrack_ApplyCorrectionToWaveEx(onePath, runDFIn, suffix, skipFlagged, outputToRunDF)
+        if (ret == 0)
+            SVAR lastOut = $(LJZ_MDCTrack_BaseDF() + ":ApplyCorrLastOutputList")
+            if (strlen(lastOut) > 0)
+                outList += lastOut
+            else
+                Print "WARNING: ApplyCorrectionToList: success return but no output path was recorded for " + onePath
+            endif
+            nOK += 1
+        else
+            nFail += 1
+        endif
+    endfor
+
+    String/G $(LJZ_MDCTrack_BaseDF() + ":ApplyCorrLastOutputList") = outList
+    String runDF
+    runDF = LJZ_MDCTrack_df_with_colon(runDFIn)
+    if (DataFolderExists(runDF))
+        String/G $(runDF + "ApplyCorrLastOutputList") = outList
+    endif
+    if (LJZ_MDCTrack_RunUsesSingleCorrection(runDFIn))
+        Print "ApplyCorrectionToList mapping: single-reference run; all source layers use correction row 0."
+    else
+        Print "ApplyCorrectionToList mapping: multi-reference run; each source wave maps layer iz to correction row iz independently."
+        Print "If your run rows concatenate multiple source waves, apply waves separately or use a row-offset workflow."
+    endif
+    Printf "ApplyCorrectionToList summary: input waves=%d; succeeded=%d; failed=%d\r", n, nOK, nFail
+
+    return nOK
+End
+
+Function LJZ_MDCTrack_ApplyCorrectionToList(pathList, runDFIn, suffix, skipFlagged)
+    String pathList
+    String runDFIn
+    String suffix
+    Variable skipFlagged
+
+    return LJZ_MDCTrack_ApplyCorrectionToListEx(pathList, runDFIn, suffix, skipFlagged, 0)
+End
+
+Function LJZ_MDCTrack_ApplyCorrectionFromPanel(applyAll)
+    Variable applyAll
+
+    LJZ_MDCTrack_EnsureDF()
+
+    SVAR targetSel = $(LJZ_MDCTrack_BaseDF() + ":TargetWaveSel")
+    SVAR runDF = $(LJZ_MDCTrack_BaseDF() + ":RunDF")
+    SVAR suffix = $(LJZ_MDCTrack_BaseDF() + ":ApplySuffix")
+    SVAR status = $(LJZ_MDCTrack_BaseDF() + ":Status")
+    NVAR skipFlagged = $(LJZ_MDCTrack_BaseDF() + ":ApplySkipFlagged")
+    NVAR outputToRunDF = $(LJZ_MDCTrack_BaseDF() + ":ApplyOutputToRunDF")
+
+    Variable ret
+    if (applyAll != 0)
+        ret = LJZ_MDCTrack_ApplyCorrectionToListEx("", runDF, suffix, skipFlagged, outputToRunDF)
+    else
+        if (strlen(targetSel) == 0)
+            Print "Apply Corr: no target/source wave selected."
+            status = "Apply Corr failed: no selected wave."
+            return -1
+        endif
+        ret = LJZ_MDCTrack_ApplyCorrectionToWaveEx(targetSel, runDF, suffix, skipFlagged, outputToRunDF)
+    endif
+
+    if (ret >= 0)
+        status = "Apply Corr done."
+    else
+        status = "Apply Corr failed."
+    endif
+
+    return ret
+End
+
 // ============================================================================
 // Section 4. Graph display and text summary
 // ============================================================================
@@ -2286,7 +2743,7 @@ Function LJZ_MDCTrack_OpenPanel()
         return 0
     endif
 
-    NewPanel/K=1/N=$pn/W=(80,80,980,620) as "LJZ MDC Track"
+    NewPanel/K=1/N=$pn/W=(80,80,980,680) as "LJZ MDC Track"
 
     SVAR refPath = $(LJZ_MDCTrack_BaseDF() + ":RefWavePath")
     SVAR targetDF = $(LJZ_MDCTrack_BaseDF() + ":TargetDF")
@@ -2294,7 +2751,10 @@ Function LJZ_MDCTrack_OpenPanel()
     SVAR peakRaw = $(LJZ_MDCTrack_BaseDF() + ":PeakRawPath")
     SVAR runDF = $(LJZ_MDCTrack_BaseDF() + ":RunDF")
     SVAR status = $(LJZ_MDCTrack_BaseDF() + ":Status")
+    SVAR applySuffix = $(LJZ_MDCTrack_BaseDF() + ":ApplySuffix")
 
+    NVAR applySkipFlagged = $(LJZ_MDCTrack_BaseDF() + ":ApplySkipFlagged")
+    NVAR applyOutputToRunDF = $(LJZ_MDCTrack_BaseDF() + ":ApplyOutputToRunDF")
     NVAR usePhysE = $(LJZ_MDCTrack_BaseDF() + ":UsePhysE")
     NVAR refE0 = $(LJZ_MDCTrack_BaseDF() + ":RefE0")
     NVAR refE1 = $(LJZ_MDCTrack_BaseDF() + ":RefE1")
@@ -2314,32 +2774,32 @@ Function LJZ_MDCTrack_OpenPanel()
     NVAR smoothN = $(LJZ_MDCTrack_BaseDF() + ":SmoothN")
     NVAR recursive = $(LJZ_MDCTrack_BaseDF() + ":Recursive")
 
-    SetVariable svRef,pos={12,14},size={560,18},title="RefWavePath",value=refPath,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svTargetDF,pos={12,40},size={560,18},title="TargetDF",value=targetDF,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svRunName,pos={12,66},size={300,18},title="RunName",value=runName,proc=LJZ_MDCTrack_SetVarProc
-    CheckBox cbRecursive,pos={330,68},title="recursive",variable=recursive,proc=LJZ_MDCTrack_CheckProc
+    SetVariable svRef,pos={12,14},size={560,18},title="RefWavePath",value=root:ARPES_LJZ:MDCTrack:RefWavePath,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svTargetDF,pos={12,40},size={560,18},title="TargetDF",value=root:ARPES_LJZ:MDCTrack:TargetDF,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svRunName,pos={12,66},size={300,18},title="RunName",value=root:ARPES_LJZ:MDCTrack:RunName,proc=LJZ_MDCTrack_SetVarProc
+    CheckBox cbRecursive,pos={330,68},title="recursive",variable=root:ARPES_LJZ:MDCTrack:Recursive,proc=LJZ_MDCTrack_CheckProc
     Button btRefresh,pos={430,64},size={110,22},title="Refresh Targets",proc=LJZ_MDCTrack_ButtonProc
 
-    SetVariable svRefE0,pos={12,104},size={150,18},title="RefE0",value=refE0,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svRefE1,pos={170,104},size={150,18},title="RefE1",value=refE1,proc=LJZ_MDCTrack_SetVarProc
-    CheckBox cbUsePhysE,pos={335,106},title="phys E",variable=usePhysE,proc=LJZ_MDCTrack_CheckProc
-    SetVariable svRefS0,pos={430,104},size={120,18},title="RefS0",value=refStack0,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svRefS1,pos={560,104},size={120,18},title="RefS1",value=refStack1,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svRefE0,pos={12,104},size={150,18},title="RefE0",value=root:ARPES_LJZ:MDCTrack:RefE0,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svRefE1,pos={170,104},size={150,18},title="RefE1",value=root:ARPES_LJZ:MDCTrack:RefE1,proc=LJZ_MDCTrack_SetVarProc
+    CheckBox cbUsePhysE,pos={335,106},title="phys E",variable=root:ARPES_LJZ:MDCTrack:UsePhysE,proc=LJZ_MDCTrack_CheckProc
+    SetVariable svRefS0,pos={430,104},size={120,18},title="RefS0",value=root:ARPES_LJZ:MDCTrack:RefStack0,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svRefS1,pos={560,104},size={120,18},title="RefS1",value=root:ARPES_LJZ:MDCTrack:RefStack1,proc=LJZ_MDCTrack_SetVarProc
 
-    SetVariable svK0,pos={12,130},size={150,18},title="K0",value=k0,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svK1,pos={170,130},size={150,18},title="K1",value=k1,proc=LJZ_MDCTrack_SetVarProc
-    CheckBox cbUsePhysK,pos={335,132},title="phys K",variable=usePhysK,proc=LJZ_MDCTrack_CheckProc
-    SetVariable svKCenter,pos={430,130},size={150,18},title="kCenter",value=kCenter,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svK0,pos={12,130},size={150,18},title="K0",value=root:ARPES_LJZ:MDCTrack:K0,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svK1,pos={170,130},size={150,18},title="K1",value=root:ARPES_LJZ:MDCTrack:K1,proc=LJZ_MDCTrack_SetVarProc
+    CheckBox cbUsePhysK,pos={335,132},title="phys K",variable=root:ARPES_LJZ:MDCTrack:UsePhysK,proc=LJZ_MDCTrack_CheckProc
+    SetVariable svKCenter,pos={430,130},size={150,18},title="kCenter",value=root:ARPES_LJZ:MDCTrack:KCenter,proc=LJZ_MDCTrack_SetVarProc
 
-    SetVariable svMaxShift,pos={12,156},size={150,18},title="maxShift",value=maxShift,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svCorrThresh,pos={170,156},size={150,18},title="corrThresh",value=corrThresh,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svPreprocess,pos={335,156},size={130,18},title="preproc",value=preprocess,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svSmoothN,pos={475,156},size={130,18},title="smoothN",value=smoothN,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svMaxShift,pos={12,156},size={150,18},title="maxShift",value=root:ARPES_LJZ:MDCTrack:MaxShift,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svCorrThresh,pos={170,156},size={150,18},title="corrThresh",value=root:ARPES_LJZ:MDCTrack:CorrThresh,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svPreprocess,pos={335,156},size={130,18},title="preproc",value=root:ARPES_LJZ:MDCTrack:PreprocessMode,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svSmoothN,pos={475,156},size={130,18},title="smoothN",value=root:ARPES_LJZ:MDCTrack:SmoothN,proc=LJZ_MDCTrack_SetVarProc
 
-    CheckBox cbFitScale,pos={12,184},title="fit scale",variable=fitScale,proc=LJZ_MDCTrack_CheckProc
-    SetVariable svScaleMin,pos={110,182},size={130,18},title="scaleMin",value=scaleMin,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svScaleMax,pos={250,182},size={130,18},title="scaleMax",value=scaleMax,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svScaleN,pos={390,182},size={120,18},title="scaleN",value=scaleN,proc=LJZ_MDCTrack_SetVarProc
+    CheckBox cbFitScale,pos={12,184},title="fit scale",variable=root:ARPES_LJZ:MDCTrack:FitScale,proc=LJZ_MDCTrack_CheckProc
+    SetVariable svScaleMin,pos={110,182},size={130,18},title="scaleMin",value=root:ARPES_LJZ:MDCTrack:ScaleMin,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svScaleMax,pos={250,182},size={130,18},title="scaleMax",value=root:ARPES_LJZ:MDCTrack:ScaleMax,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svScaleN,pos={390,182},size={120,18},title="scaleN",value=root:ARPES_LJZ:MDCTrack:ScaleN,proc=LJZ_MDCTrack_SetVarProc
 
     Button btBuildRef,pos={12,216},size={110,24},title="Build Reference",proc=LJZ_MDCTrack_ButtonProc
     Button btShowRef,pos={132,216},size={80,24},title="Show Ref",proc=LJZ_MDCTrack_ButtonProc
@@ -2350,13 +2810,19 @@ Function LJZ_MDCTrack_OpenPanel()
     Button btCorrScale,pos={624,216},size={88,24},title="Corr Scale",proc=LJZ_MDCTrack_ButtonProc
     Button btSummary,pos={722,216},size={78,24},title="Summary",proc=LJZ_MDCTrack_ButtonProc
 
-    SetVariable svRunDF,pos={12,252},size={760,18},title="RunDF",value=runDF,proc=LJZ_MDCTrack_SetVarProc
-    SetVariable svPeakRaw,pos={12,278},size={620,18},title="PeakRawPath",value=peakRaw,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svRunDF,pos={12,252},size={760,18},title="RunDF",value=root:ARPES_LJZ:MDCTrack:RunDF,proc=LJZ_MDCTrack_SetVarProc
+    SetVariable svPeakRaw,pos={12,278},size={620,18},title="PeakRawPath",value=root:ARPES_LJZ:MDCTrack:PeakRawPath,proc=LJZ_MDCTrack_SetVarProc
     Button btCorrectPeak,pos={645,274},size={125,24},title="Correct Peak",proc=LJZ_MDCTrack_ButtonProc
 
-    ListBox lbTargets,pos={12,315},size={860,150},listWave=$(LJZ_MDCTrack_BaseDF() + ":LB_Disp"),selWave=$(LJZ_MDCTrack_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_MDCTrack_ListBoxProc
+    SetVariable svApplySuffix,pos={12,306},size={180,18},title="ApplySuffix",value=root:ARPES_LJZ:MDCTrack:ApplySuffix,proc=LJZ_MDCTrack_SetVarProc
+    CheckBox cbApplySkipFlagged,pos={210,308},title="skip flagged",variable=root:ARPES_LJZ:MDCTrack:ApplySkipFlagged,proc=LJZ_MDCTrack_CheckProc
+    CheckBox cbApplyToRunDF,pos={325,308},title="to runDF",variable=root:ARPES_LJZ:MDCTrack:ApplyOutputToRunDF,proc=LJZ_MDCTrack_CheckProc
+    Button btApplyCorr,pos={430,302},size={110,24},title="Apply Corr",proc=LJZ_MDCTrack_ButtonProc
+    Button btApplyCorrAll,pos={550,302},size={120,24},title="Apply Corr All",proc=LJZ_MDCTrack_ButtonProc
 
-    SetVariable svStatus,pos={12,486},size={860,18},title="Status",value=status,proc=LJZ_MDCTrack_SetVarProc,noedit=1
+    ListBox lbTargets,pos={12,340},size={860,150},listWave=$(LJZ_MDCTrack_BaseDF() + ":LB_Disp"),selWave=$(LJZ_MDCTrack_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_MDCTrack_ListBoxProc
+
+    SetVariable svStatus,pos={12,530},size={860,18},title="Status",value=root:ARPES_LJZ:MDCTrack:Status,proc=LJZ_MDCTrack_SetVarProc,noedit=1
 
     LJZ_MDCTrack_RebuildTargetList()
 
@@ -2441,6 +2907,16 @@ Function LJZ_MDCTrack_ButtonProc(ba) : ButtonControl
 
     if (CmpStr(ba.ctrlName, "btCorrectPeak") == 0)
         LJZ_MDCTrack_CorrectPeakFromPanel()
+        return 0
+    endif
+
+    if (CmpStr(ba.ctrlName, "btApplyCorr") == 0)
+        LJZ_MDCTrack_ApplyCorrectionFromPanel(0)
+        return 0
+    endif
+
+    if (CmpStr(ba.ctrlName, "btApplyCorrAll") == 0)
+        LJZ_MDCTrack_ApplyCorrectionFromPanel(1)
         return 0
     endif
 
