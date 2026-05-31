@@ -504,11 +504,26 @@ End
 //============================================================
 Function a2k1d_is_result_wave_name(wn)
     String wn
-    // 结果波：*_k_spec 或 *_k
-    if (StringMatch(wn, "*_k_spec"))
+    String lw = LowerStr(wn)
+
+    // Result waves must not be offered as angle/value inputs.
+    // Keep *_corr angle-domain inputs allowed, but exclude corrected k outputs.
+    if (StringMatch(lw, "deltak12_k_corr"))
         return 1
     endif
-    if (StringMatch(wn, "*_k"))
+    if (StringMatch(lw, "sigmadeltak12_k_corr"))
+        return 1
+    endif
+    if (StringMatch(lw, "*_k_spec_corr"))
+        return 1
+    endif
+    if (StringMatch(lw, "*_k_corr"))
+        return 1
+    endif
+    if (StringMatch(lw, "*_k_spec"))
+        return 1
+    endif
+    if (StringMatch(lw, "*_k"))
         return 1
     endif
     return 0
@@ -749,10 +764,11 @@ Window A2K1D_LJZ_P() : Panel
 	TitleBox a2k1d_tb_corr_mode,pos={438,458},size={102,18},title="0 full, 1 first, 2 mean",frame=0
 	Button a2k1d_btn_corr_peaks,pos={336,480},size={98,22},proc=a2k1d_btn_make_corr_peaks,title="Make Corr Peaks"
 	Button a2k1d_btn_corr_layers,pos={442,480},size={98,22},proc=a2k1d_btn_make_corr_layers,title="Make Corr Layers"
+	Button a2k1d_btn_corr_peaks_k,pos={336,506},size={204,22},proc=a2k1d_btn_corr_peaks_to_k,title="Corr Peaks -> K"
 
-	Button a2k1d_btn_abort,pos={336,506},size={204,22},proc=a2k1d_btn_abort,title="Abort"
-	Button a2k1d_btn_help,pos={336,532},size={98,22},proc=a2k1d_btn_help,title="Help"
-	Button a2k1d_btn_close,pos={442,532},size={98,22},proc=a2k1d_btn_close,title="Close"
+	Button a2k1d_btn_abort,pos={336,532},size={204,22},proc=a2k1d_btn_abort,title="Abort"
+	Button a2k1d_btn_help,pos={336,558},size={98,22},proc=a2k1d_btn_help,title="Help"
+	Button a2k1d_btn_close,pos={442,558},size={98,22},proc=a2k1d_btn_close,title="Close"
 
 	// --- Bottom: Plot / Visualization ---
 
@@ -792,6 +808,20 @@ EndMacro
 // Core (public API) REWRITTEN
 // Y-Value Transformation: Angle -> k
 //============================================================
+Function/S a2k1d_value_k_output_name(baseName)
+    String baseName
+
+    String outName = baseName
+    Variable n = strlen(outName)
+    if (n >= 5 && StringMatch(LowerStr(outName[n-5, n-1]), "_corr"))
+        outName = outName[0, n-6] + "_k_corr"
+    else
+        outName += "_k"
+    endif
+
+    return CleanupName(outName, 0)
+End
+
 Function LJZ_A2K1D_Run(srcPathStr, baseName, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN)
     String srcPathStr
     String baseName
@@ -843,7 +873,7 @@ Function LJZ_A2K1D_Run(srcPathStr, baseName, degPerPix, thetaOffset, hv, workFun
     Variable A = constantV * sqrt(Ek) * unitFactor
 
     // 2) Prepare Output Wave (clone src)
-    String destName = baseName + "_k"
+    String destName = a2k1d_value_k_output_name(baseName)
     Duplicate/O src, $destName
     Wave dest = $destName
 
@@ -947,7 +977,7 @@ Function LJZ_A2K1D_Run_Sigma(peakPathStr, sigmaPathStr, baseName, degPerPix, the
     Variable scale = (degPerPix == 0) ? 1 : degPerPix
     Variable dth_draw = scale * pi/180.0
 
-    String destName = baseName + "_k"
+    String destName = a2k1d_value_k_output_name(baseName)
     Duplicate/O wSig, $destName
     Wave dest = $destName
 
@@ -2793,6 +2823,207 @@ Function a2k1d_btn_make_corr_peaks(ctrlName) : ButtonControl
     endif
 
     Print "Make Corr Peaks done. Peak outputs created=", ok
+    return 0
+End
+
+
+Function a2k1d_batch_corr_peaks_to_k(baseDF, recursive)
+    String baseDF
+    Variable recursive
+
+    a2k1d_init_defaults_if_needed()
+
+    String base = a2k1d_df_with_colon(baseDF)
+    if (!a2k1d_df_exists(base))
+        Print "Corr Peaks -> K: base data folder not found: " + base
+        return -1
+    endif
+
+    NVAR degPerPix   = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
+    NVAR thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
+    NVAR hv          = root:ARPES_LJZ:A2K1D:a2k1d_hv
+    NVAR workFunc    = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
+    NVAR energyE     = root:ARPES_LJZ:A2K1D:a2k1d_energyE
+    NVAR kShift      = root:ARPES_LJZ:A2K1D:a2k1d_kShift
+    NVAR LC          = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    NVAR outN        = root:ARPES_LJZ:A2K1D:a2k1d_outN
+
+    String p1 = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak1K_corr")
+    String p2 = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak2K_corr")
+    String p3 = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak3K_corr")
+
+    String s1 = a2k1d_find_wave_by_tail_ci(base, recursive, "Sigmap1K_corr")
+    String s2 = a2k1d_find_wave_by_tail_ci(base, recursive, "Sigmap2K_corr")
+    String s3 = a2k1d_find_wave_by_tail_ci(base, recursive, "Sigmap3K_corr")
+
+    Variable okP = 0
+    Variable skipP = 0
+    Variable failP = 0
+    Variable okS = 0
+    Variable skipS = 0
+    Variable failS = 0
+    Variable deltaCreated = 0
+    Variable deltaSkipped = 0
+    Variable sigmaDeltaCreated = 0
+    Variable sigmaDeltaSkipped = 0
+
+    if (strlen(p1) > 0)
+        Wave/Z wP1 = $p1
+        if (WaveExists(wP1) && LJZ_A2K1D_Run(p1, NameOfWave(wP1), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN) == 0)
+            okP += 1
+        else
+            failP += 1
+        endif
+    else
+        skipP += 1
+    endif
+
+    if (strlen(p2) > 0)
+        Wave/Z wP2 = $p2
+        if (WaveExists(wP2) && LJZ_A2K1D_Run(p2, NameOfWave(wP2), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN) == 0)
+            okP += 1
+        else
+            failP += 1
+        endif
+    else
+        skipP += 1
+    endif
+
+    if (strlen(p3) > 0)
+        Wave/Z wP3 = $p3
+        if (WaveExists(wP3) && LJZ_A2K1D_Run(p3, NameOfWave(wP3), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN) == 0)
+            okP += 1
+        else
+            failP += 1
+        endif
+    else
+        skipP += 1
+    endif
+
+    if (strlen(p1) > 0 && strlen(s1) > 0)
+        Wave/Z wS1 = $s1
+        if (WaveExists(wS1) && LJZ_A2K1D_Run_Sigma(p1, s1, NameOfWave(wS1), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC) == 0)
+            okS += 1
+        else
+            failS += 1
+        endif
+    else
+        skipS += 1
+    endif
+
+    if (strlen(p2) > 0 && strlen(s2) > 0)
+        Wave/Z wS2 = $s2
+        if (WaveExists(wS2) && LJZ_A2K1D_Run_Sigma(p2, s2, NameOfWave(wS2), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC) == 0)
+            okS += 1
+        else
+            failS += 1
+        endif
+    else
+        skipS += 1
+    endif
+
+    if (strlen(p3) > 0 && strlen(s3) > 0)
+        Wave/Z wS3 = $s3
+        if (WaveExists(wS3) && LJZ_A2K1D_Run_Sigma(p3, s3, NameOfWave(wS3), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC) == 0)
+            okS += 1
+        else
+            failS += 1
+        endif
+    else
+        skipS += 1
+    endif
+
+    String p1k = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak1K_k_corr")
+    String p2k = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak2K_k_corr")
+    if (strlen(p1k) > 0 && strlen(p2k) > 0)
+        Wave/Z wP1K = $p1k
+        Wave/Z wP2K = $p2k
+        if (WaveExists(wP1K) && WaveExists(wP2K) && WaveDims(wP1K)==1 && WaveDims(wP2K)==1 && DimSize(wP1K,0)==DimSize(wP2K,0))
+            String deltaDF = GetWavesDataFolder(wP1K, 1)
+            if (strlen(deltaDF) == 0)
+                deltaDF = "root:"
+            endif
+            String deltaPath = deltaDF + "DeltaK12_k_corr"
+            Duplicate/O wP1K, $deltaPath
+            Wave wDelta = $deltaPath
+            wDelta = abs(wP1K - wP2K)
+            SetScale/P x, DimOffset(wP1K,0), DimDelta(wP1K,0), WaveUnits(wP1K,0), wDelta
+            SetScale d, 0, 0, WaveUnits(wP1K,-1), wDelta
+            Note/K wDelta
+            String noteDelta = ""
+            noteDelta += "A2K1D corrected DeltaK12 in k-space\r"
+            noteDelta += "wave1=" + p1k + "\r"
+            noteDelta += "wave2=" + p2k + "\r"
+            noteDelta += "formula=abs(Peak1K_k_corr-Peak2K_k_corr)\r"
+            Note wDelta, noteDelta
+            deltaCreated = 1
+        else
+            deltaSkipped = 1
+        endif
+    else
+        deltaSkipped = 1
+    endif
+
+    String s1k = a2k1d_find_wave_by_tail_ci(base, recursive, "Sigmap1K_k_corr")
+    String s2k = a2k1d_find_wave_by_tail_ci(base, recursive, "Sigmap2K_k_corr")
+    if (strlen(s1k) > 0 && strlen(s2k) > 0)
+        Wave/Z wS1K = $s1k
+        Wave/Z wS2K = $s2k
+        if (WaveExists(wS1K) && WaveExists(wS2K) && WaveDims(wS1K)==1 && WaveDims(wS2K)==1 && DimSize(wS1K,0)==DimSize(wS2K,0))
+            String sigmaDeltaDF = GetWavesDataFolder(wS1K, 1)
+            if (strlen(sigmaDeltaDF) == 0)
+                sigmaDeltaDF = "root:"
+            endif
+            String sigmaDeltaPath = sigmaDeltaDF + "SigmaDeltaK12_k_corr"
+            Duplicate/O wS1K, $sigmaDeltaPath
+            Wave wSigmaDelta = $sigmaDeltaPath
+            wSigmaDelta = sqrt(wS1K^2 + wS2K^2)
+            SetScale/P x, DimOffset(wS1K,0), DimDelta(wS1K,0), WaveUnits(wS1K,0), wSigmaDelta
+            SetScale d, 0, 0, WaveUnits(wS1K,-1), wSigmaDelta
+            Note/K wSigmaDelta
+            String noteSigmaDelta = ""
+            noteSigmaDelta += "A2K1D corrected SigmaDeltaK12 in k-space\r"
+            noteSigmaDelta += "sigma1=" + s1k + "\r"
+            noteSigmaDelta += "sigma2=" + s2k + "\r"
+            noteSigmaDelta += "formula=sqrt(Sigmap1K_k_corr^2+Sigmap2K_k_corr^2)\r"
+            Note wSigmaDelta, noteSigmaDelta
+            sigmaDeltaCreated = 1
+        else
+            sigmaDeltaSkipped = 1
+        endif
+    else
+        sigmaDeltaSkipped = 1
+    endif
+
+    Printf "Corr Peaks -> K summary: corrected peaks converted=%d skipped=%d failed=%d | corrected sigmas converted=%d skipped=%d failed=%d | DeltaK12_k_corr %s | SigmaDeltaK12_k_corr %s\r", okP, skipP, failP, okS, skipS, failS, SelectString(deltaCreated, "skipped", "created"), SelectString(sigmaDeltaCreated, "skipped", "created")
+    return 0
+End
+
+Function a2k1d_btn_corr_peaks_to_k(ctrlName) : ButtonControl
+    String ctrlName
+
+    a2k1d_init_defaults_if_needed()
+
+    SVAR a2k1d_baseDF = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
+    NVAR a2k1d_recursive = root:ARPES_LJZ:A2K1D:a2k1d_recursive
+    NVAR a2k1d_showGraph = root:ARPES_LJZ:A2K1D:a2k1d_showGraph
+
+    Variable oldShow = a2k1d_showGraph
+    a2k1d_showGraph = 0
+
+    Variable rc = a2k1d_batch_corr_peaks_to_k(a2k1d_baseDF, a2k1d_recursive)
+
+    a2k1d_showGraph = oldShow
+
+    DoWindow A2K1D_LJZ_P
+    if (V_flag)
+        if (rc == 0)
+            TitleBox a2k1d_runstat, win=A2K1D_LJZ_P, title="Status: corrected peaks -> k done"
+        else
+            TitleBox a2k1d_runstat, win=A2K1D_LJZ_P, title="Status: corrected peaks -> k failed"
+        endif
+    endif
+
     return 0
 End
 
