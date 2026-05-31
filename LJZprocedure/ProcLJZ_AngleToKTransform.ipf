@@ -507,20 +507,27 @@ Function a2k1d_is_result_wave_name(wn)
     String lw = LowerStr(wn)
 
     // Result waves must not be offered as angle/value inputs.
-    // Keep *_corr angle-domain inputs allowed, but exclude corrected k outputs.
-    if (StringMatch(lw, "deltak12_k_corr"))
-        return 1
-    endif
-    if (StringMatch(lw, "sigmadeltak12_k_corr"))
-        return 1
-    endif
+    // Keep corrected angle-domain inputs (Peak1K_corr, Sigmap1K_corr,
+    // layer_show_i_corr) allowed, but exclude every final k-domain output.
     if (StringMatch(lw, "*_k_spec_corr"))
         return 1
     endif
-    if (StringMatch(lw, "*_k_corr"))
+    if (StringMatch(lw, "*_k_spec"))
         return 1
     endif
-    if (StringMatch(lw, "*_k_spec"))
+    if (StringMatch(lw, "deltak*_k_corr"))
+        return 1
+    endif
+    if (StringMatch(lw, "sigmadeltak*_k_corr"))
+        return 1
+    endif
+    if (StringMatch(lw, "deltak*_k"))
+        return 1
+    endif
+    if (StringMatch(lw, "sigmadeltak*_k"))
+        return 1
+    endif
+    if (StringMatch(lw, "*_k_corr"))
         return 1
     endif
     if (StringMatch(lw, "*_k"))
@@ -1941,6 +1948,7 @@ Function a2k1d_btn_plot_layers_stack(ctrlName) : ButtonControl
     NVAR a2k1d_recursive = root:ARPES_LJZ:A2K1D:a2k1d_recursive
     NVAR a2k1d_kvary     = root:ARPES_LJZ:A2K1D:a2k1d_kvary
     SVAR a2k1d_baseName  = root:ARPES_LJZ:A2K1D:a2k1d_baseName
+    NVAR useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
     
     // Gradient Color Params
     NVAR a2k1d_useCT      = root:ARPES_LJZ:A2K1D:a2k1d_useCT
@@ -1953,10 +1961,11 @@ Function a2k1d_btn_plot_layers_stack(ctrlName) : ButtonControl
     endif
 
     // 1. Collect Waves
-    String rawList = a2k1d_collect_layers(base, a2k1d_recursive)
-    Variable n = ItemsInList(rawList, ";")
-    if (n <= 0)
-        Abort "Error: No layer waves found."
+    if (useCorr)
+        Print "A2K1D plot stack: prefer corrected k spectra/peaks."
+        Print "A2K1D: using corrected k outputs where available."
+    else
+        Print "A2K1D plot stack: using default uncorrected preference."
     endif
 
     // 2. Window Setup & Unique Prefix
@@ -1971,32 +1980,7 @@ Function a2k1d_btn_plot_layers_stack(ctrlName) : ButtonControl
     DoWindow/K $wname 
 
     // 3. Build valid spectra list
-    String listKS = ""
-    Variable i
-    for (i=0; i<n; i+=1)
-        String wp = StringFromList(i, rawList, ";")
-        if (strlen(wp) == 0)
-            continue
-        endif
-        Wave/Z wRaw = $wp
-        if (!WaveExists(wRaw))
-            continue
-        endif
-
-        String outDF = GetWavesDataFolder(wRaw, 1)
-        if (strlen(outDF) == 0)
-             outDF = "root:"
-        endif
-        String bn = a2k1d_clean_basename(NameOfWave(wRaw))
-        String wps = outDF + bn + "_k_spec"
-        Wave/Z wSpec = $wps
-        
-        if (WaveExists(wSpec))
-            if (WhichListItem(wps, listKS, ";") == -1) 
-                listKS += wps + ";"
-            endif
-        endif
-    endfor
+    String listKS = a2k1d_collect_existing_kspec_list_prefer_corr(base, a2k1d_recursive, useCorr)
 
     Variable m = ItemsInList(listKS, ";")
     if (m <= 0)
@@ -2004,9 +1988,9 @@ Function a2k1d_btn_plot_layers_stack(ctrlName) : ButtonControl
     endif
     
     // 4. Find Peak Waves
-    String p1_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak1k_k")
-    String p2_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak2k_k")
-    String p3_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak3k_k")
+    String p1_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 1)
+    String p2_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 2)
+    String p3_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 3)
 
     Wave/Z wP1_k = $p1_path
     Wave/Z wP2_k = $p2_path
@@ -2244,10 +2228,15 @@ Function a2k1d_btn_plot_peaks_err(ctrlName) : ButtonControl
     NVAR a2k1d_hmUnitMode = root:ARPES_LJZ:A2K1D:a2k1d_hmUnitMode
     SVAR a2k1d_baseName  = root:ARPES_LJZ:A2K1D:a2k1d_baseName
     NVAR a2k1d_LC        = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    NVAR useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
 
     String base = a2k1d_df_with_colon(a2k1d_baseDF)
     if (!a2k1d_df_exists(base))
         Abort "Plot peaks: baseDF not found."
+    endif
+
+    if (useCorr)
+        Print "A2K1D: using corrected k outputs where available."
     endif
 
     // Window name
@@ -2259,71 +2248,101 @@ Function a2k1d_btn_plot_peaks_err(ctrlName) : ButtonControl
     endif
     DoWindow/K $wname
 
-    // Find waves (full paths)
-    String p1 = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak1k_k")
-    String p2 = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak2k_k")
-    String p3 = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak3k_k")
+    // Find waves (full paths), preferring corrected outputs when requested.
+    String p1 = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 1)
+    String p2 = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 2)
+    String p3 = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 3)
 
-    String s1 = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "sigmap1k_k")
-    String s2 = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "sigmap2k_k")
-    String s3 = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "sigmap3k_k")
+    String s1 = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 1)
+    String s2 = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 2)
+    String s3 = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 3)
 
-    // Checks
-    if (strlen(p1)==0 || strlen(p2)==0 || strlen(p3)==0)
-        Abort "Plot peaks: missing peak waves (1, 2, or 3)."
+    if (useCorr && a2k1d_path_is_corr_k_output(p1) && !a2k1d_path_is_corr_k_output(s1))
+        Print "Corrected peak found but corrected sigma missing for rank 1; plotting without corrected error bar."
+        s1 = ""
     endif
-    if (strlen(s1)==0 || strlen(s2)==0 || strlen(s3)==0)
-        Abort "Plot peaks: missing sigma waves (1, 2, or 3)."
+    if (useCorr && a2k1d_path_is_corr_k_output(p2) && !a2k1d_path_is_corr_k_output(s2))
+        Print "Corrected peak found but corrected sigma missing for rank 2; plotting without corrected error bar."
+        s2 = ""
+    endif
+    if (useCorr && a2k1d_path_is_corr_k_output(p3) && !a2k1d_path_is_corr_k_output(s3))
+        Print "Corrected peak found but corrected sigma missing for rank 3; plotting without corrected error bar."
+        s3 = ""
     endif
 
-    // Display
-    // 注意：Display 后，图上的 Trace 名称默认是波的名字（不含路径）
-    // 为了防止路径解析错误，这里建立 Wave 引用来获取准确名字
-    Wave wP1 = $p1
-    Wave wP2 = $p2
-    Wave wP3 = $p3
-    
-String outDF = "root:ARPES_LJZ:OUTPUT:A2K1D:"
-String axisPath
-if (strlen(a2k1d_baseName) > 0)
-    axisPath = outDF + a2k1d_baseName + "_AxisX"
-else
-    axisPath = outDF + "A2K1D_AxisX"
-endif
+    if (strlen(p1)==0 && strlen(p2)==0 && strlen(p3)==0)
+        Abort "Plot peaks: no k peak waves found."
+    endif
 
-Wave wAxis = a2k1d_make_axis_wave(DimSize(wP1,0), axisPath)
+    String firstPeak = p1
+    if (strlen(firstPeak) == 0)
+        firstPeak = p2
+    endif
+    if (strlen(firstPeak) == 0)
+        firstPeak = p3
+    endif
 
-Display/N=$wname wP1 vs wAxis
-AppendToGraph/W=$wname wP2 vs wAxis
-AppendToGraph/W=$wname wP3 vs wAxis
+    Wave wFirst = $firstPeak
+    String outDF = "root:ARPES_LJZ:OUTPUT:A2K1D:"
+    String axisPath
+    if (strlen(a2k1d_baseName) > 0)
+        axisPath = outDF + a2k1d_baseName + "_AxisX"
+    else
+        axisPath = outDF + "A2K1D_AxisX"
+    endif
 
-ModifyGraph/W=$wname mirror=2
-    
-    // 设置线条颜色，便于区分
-    ModifyGraph/W=$wname rgb($NameOfWave(wP1))=(0,0,0)          // Black
-    ModifyGraph/W=$wname rgb($NameOfWave(wP2))=(65535,0,0)      // Red
-    ModifyGraph/W=$wname rgb($NameOfWave(wP3))=(0,0,65535)      // Blue
+    Wave wAxis = a2k1d_make_axis_wave(DimSize(wFirst,0), axisPath)
 
-    // Error bars
-    // 【修复1】这里全部改用黑色 RGB=(0,0,0)，你原来的第三个是 Cyan，很难看清。
-    // 使用 NameOfWave() 确保 Trace 名字匹配
-    ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wP1) Y, wave=($s1, $s1)
-    ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wP2) Y, wave=($s2, $s2)
-    ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wP3) Y, wave=($s3, $s3)
+    Variable didDisplay = 0
+    if (strlen(p1) > 0)
+        Wave wP1 = $p1
+        Display/N=$wname wP1 vs wAxis
+        ModifyGraph/W=$wname rgb($NameOfWave(wP1))=(0,0,0)
+        if (strlen(s1) > 0)
+            Wave wS1 = $s1
+            ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wP1) Y, wave=(wS1, wS1)
+        endif
+        didDisplay = 1
+    endif
+    if (strlen(p2) > 0)
+        Wave wP2 = $p2
+        if (didDisplay)
+            AppendToGraph/W=$wname wP2 vs wAxis
+        else
+            Display/N=$wname wP2 vs wAxis
+            didDisplay = 1
+        endif
+        ModifyGraph/W=$wname rgb($NameOfWave(wP2))=(65535,0,0)
+        if (strlen(s2) > 0)
+            Wave wS2 = $s2
+            ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wP2) Y, wave=(wS2, wS2)
+        endif
+    endif
+    if (strlen(p3) > 0)
+        Wave wP3 = $p3
+        if (didDisplay)
+            AppendToGraph/W=$wname wP3 vs wAxis
+        else
+            Display/N=$wname wP3 vs wAxis
+            didDisplay = 1
+        endif
+        ModifyGraph/W=$wname rgb($NameOfWave(wP3))=(0,0,65535)
+        if (strlen(s3) > 0)
+            Wave wS3 = $s3
+            ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wP3) Y, wave=(wS3, wS3)
+        endif
+    endif
 
-    // Labels
-    // 【修复2】Angstrom 单位修正
+    ModifyGraph/W=$wname mirror=2
+
     if (a2k1d_LC == 0)
-        // \S 进入上标，\M 退出上标（回到正常基线）
-        Label/W=$wname left, "k (Å\\S-1\\M)" 
+        Label/W=$wname left, "k (Å\\S-1\\M)"
     else
         Label/W=$wname left, "k (π/a)"
     endif
 
     Label/W=$wname bottom, a2k1d_heat_unit_label(a2k1d_hmUnitMode)
-    
-    ModifyGraph tickUnit(left)=1
-    // 自动调整一下范围，防止误差棒画到图外面
+    ModifyGraph/W=$wname tickUnit(left)=1
     SetAxis/A/W=$wname
 
     return 0
@@ -2761,7 +2780,7 @@ Function/S a2k1d_find_wave_by_tail_ci(baseDF, recursive, tailName)
             if (strlen(wn0) == 0)
                 continue
             endif
-            if (StringMatch(LowerStr(wn0), tailLower))
+            if (cmpstr(LowerStr(wn0), tailLower) == 0)
                 if (WaveExists($(base + wn0)))
                     return base + wn0
                 endif
@@ -2778,7 +2797,7 @@ Function/S a2k1d_find_wave_by_tail_ci(baseDF, recursive, tailName)
         if (strlen(wp) == 0)
             continue
         endif
-        if (StringMatch(LowerStr(a2k1d_tail_wavename(wp)), tailLower))
+        if (cmpstr(LowerStr(a2k1d_tail_wavename(wp)), tailLower) == 0)
             if (WaveExists($wp))
                 return wp
             endif
@@ -2786,6 +2805,121 @@ Function/S a2k1d_find_wave_by_tail_ci(baseDF, recursive, tailName)
     endfor
 
     return ""
+End
+
+Function a2k1d_path_is_corr_k_output(wp)
+    String wp
+    String lw = LowerStr(a2k1d_tail_wavename(wp))
+    if (StringMatch(lw, "*_k_spec_corr") || StringMatch(lw, "*_k_corr"))
+        return 1
+    endif
+    return 0
+End
+
+Function/S a2k1d_find_preferred_k_peak(baseDF, recursive, rank)
+    String baseDF
+    Variable recursive, rank
+
+    NVAR/Z useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
+    Variable preferCorr = 0
+    if (NVAR_Exists(useCorr))
+        preferCorr = useCorr
+    endif
+
+    String corrTail = "Peak" + num2str(rank) + "K_k_corr"
+    String oldTail  = "Peak" + num2str(rank) + "K_k"
+    String firstTail, secondTail
+    if (preferCorr)
+        firstTail = corrTail
+        secondTail = oldTail
+    else
+        firstTail = oldTail
+        secondTail = corrTail
+    endif
+
+    String found = a2k1d_find_wave_by_tail_ci(baseDF, recursive, firstTail)
+    if (strlen(found) > 0)
+        return found
+    endif
+
+    found = a2k1d_find_wave_by_tail_ci(baseDF, recursive, secondTail)
+    if (strlen(found) > 0 && preferCorr)
+        Print "A2K1D: corrected output missing for peak " + num2str(rank) + "; fallback to uncorrected."
+    endif
+    return found
+End
+
+Function/S a2k1d_find_preferred_k_sigma(baseDF, recursive, rank)
+    String baseDF
+    Variable recursive, rank
+
+    NVAR/Z useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
+    Variable preferCorr = 0
+    if (NVAR_Exists(useCorr))
+        preferCorr = useCorr
+    endif
+
+    String corrTail = "Sigmap" + num2str(rank) + "K_k_corr"
+    String oldTail  = "Sigmap" + num2str(rank) + "K_k"
+    String firstTail, secondTail
+    if (preferCorr)
+        firstTail = corrTail
+        secondTail = oldTail
+    else
+        firstTail = oldTail
+        secondTail = corrTail
+    endif
+
+    String found = a2k1d_find_wave_by_tail_ci(baseDF, recursive, firstTail)
+    if (strlen(found) > 0)
+        return found
+    endif
+
+    found = a2k1d_find_wave_by_tail_ci(baseDF, recursive, secondTail)
+    if (strlen(found) > 0 && preferCorr)
+        Print "A2K1D: corrected sigma missing for peak " + num2str(rank) + "; fallback sigma is available."
+    endif
+    return found
+End
+
+Function/S a2k1d_find_preferred_delta_wave(baseDF, recursive, sigmaFlag)
+    String baseDF
+    Variable recursive, sigmaFlag
+
+    NVAR/Z useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
+    Variable preferCorr = 0
+    if (NVAR_Exists(useCorr))
+        preferCorr = useCorr
+    endif
+
+    String oldTail, corrTail
+    if (sigmaFlag)
+        oldTail = "SigmaDeltaK12_k"
+        corrTail = "SigmaDeltaK12_k_corr"
+    else
+        oldTail = "DeltaK12_k"
+        corrTail = "DeltaK12_k_corr"
+    endif
+
+    String firstTail, secondTail
+    if (preferCorr)
+        firstTail = corrTail
+        secondTail = oldTail
+    else
+        firstTail = oldTail
+        secondTail = corrTail
+    endif
+
+    String found = a2k1d_find_wave_by_tail_ci(baseDF, recursive, firstTail)
+    if (strlen(found) > 0)
+        return found
+    endif
+
+    found = a2k1d_find_wave_by_tail_ci(baseDF, recursive, secondTail)
+    if (strlen(found) > 0 && preferCorr && !sigmaFlag)
+        Print "A2K1D: corrected output missing for DeltaK12; fallback to uncorrected."
+    endif
+    return found
 End
 
 Function a2k1d_btn_make_corr_peaks(ctrlName) : ButtonControl
@@ -3702,6 +3836,77 @@ Function/S a2k1d_collect_existing_kspec_list(baseDF, recursive)
     return listKS
 End
 
+Function/S a2k1d_collect_existing_kspec_list_prefer_corr(baseDF, recursive, preferCorr)
+    String baseDF
+    Variable recursive, preferCorr
+
+    String rawList = a2k1d_collect_layers(baseDF, recursive)
+    rawList = a2k1d_sort_kspec_list_by_layerindex(rawList)
+    String listKS = ""
+    Variable corrUsed = 0
+    Variable fallbackUsed = 0
+    Variable oldUsed = 0
+    Variable corrFallbackUsed = 0
+
+    Variable i, n = ItemsInList(rawList, ";")
+    for (i=0; i<n; i+=1)
+        String wp = StringFromList(i, rawList, ";")
+        if (strlen(wp) == 0)
+            continue
+        endif
+
+        Wave/Z wRaw = $wp
+        if (!WaveExists(wRaw))
+            continue
+        endif
+
+        String outDF = GetWavesDataFolder(wRaw, 1)
+        if (strlen(outDF) == 0)
+            outDF = "root:"
+        endif
+
+        String bn = a2k1d_clean_basename(NameOfWave(wRaw))
+        String oldPath = outDF + bn + "_k_spec"
+        String corrPath = outDF + bn + "_k_spec_corr"
+        String chosen = ""
+
+        Wave/Z wOld = $oldPath
+        Wave/Z wCorr = $corrPath
+
+        if (preferCorr)
+            if (WaveExists(wCorr))
+                chosen = corrPath
+                corrUsed += 1
+            elseif (WaveExists(wOld))
+                chosen = oldPath
+                fallbackUsed += 1
+            endif
+        else
+            if (WaveExists(wOld))
+                chosen = oldPath
+                oldUsed += 1
+            elseif (WaveExists(wCorr))
+                chosen = corrPath
+                corrFallbackUsed += 1
+            endif
+        endif
+
+        if (strlen(chosen) > 0 && WhichListItem(chosen, listKS, ";") == -1)
+            listKS += chosen + ";"
+        endif
+    endfor
+
+    if (preferCorr)
+        Printf "A2K1D: corrected spectra used = %d; fallback spectra used = %d\r", corrUsed, fallbackUsed
+    else
+        if (corrFallbackUsed > 0)
+            Printf "A2K1D: uncorrected spectra used = %d; corrected fallback spectra used = %d\r", oldUsed, corrFallbackUsed
+        endif
+    endif
+
+    return listKS
+End
+
 Function/S a2k1d_sort_kspec_list_by_layerindex(listIn)
     String listIn
 
@@ -3813,6 +4018,7 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     SVAR a2k1d_baseDF     = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
     NVAR a2k1d_recursive  = root:ARPES_LJZ:A2K1D:a2k1d_recursive
     SVAR a2k1d_baseName   = root:ARPES_LJZ:A2K1D:a2k1d_baseName
+    NVAR useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
 
     NVAR a2k1d_hmY0       = root:ARPES_LJZ:A2K1D:a2k1d_hmY0
     NVAR a2k1d_hmDY       = root:ARPES_LJZ:A2K1D:a2k1d_hmDY
@@ -3828,8 +4034,10 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     //================================================
     // 1) collect *_k_spec and sort
     //================================================
-    String listKS = a2k1d_collect_existing_kspec_list(base, a2k1d_recursive)
-    listKS = a2k1d_sort_kspec_list_by_layerindex(listKS)
+    if (useCorr)
+        Print "A2K1D: using corrected k outputs where available."
+    endif
+    String listKS = a2k1d_collect_existing_kspec_list_prefer_corr(base, a2k1d_recursive, useCorr)
 
     Variable m = ItemsInList(listKS, ";")
     if (m <= 0)
@@ -3898,17 +4106,30 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     //================================================
     // 3) peak overlay waves
     //================================================
-    String p1_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak1k_k")
-    String p2_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak2k_k")
-    String p3_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "peak3k_k")
+    String p1_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 1)
+    String p2_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 2)
+    String p3_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 3)
 
     Wave/Z wP1_k = $p1_path
     Wave/Z wP2_k = $p2_path
     Wave/Z wP3_k = $p3_path
 
-    String s1_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "sigmap1k_k")
-    String s2_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "sigmap2k_k")
-    String s3_path = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "sigmap3k_k")
+    String s1_path = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 1)
+    String s2_path = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 2)
+    String s3_path = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 3)
+
+    if (useCorr && a2k1d_path_is_corr_k_output(p1_path) && !a2k1d_path_is_corr_k_output(s1_path))
+        Print "Corrected peak found but corrected sigma missing for rank 1; plotting without corrected error bar."
+        s1_path = ""
+    endif
+    if (useCorr && a2k1d_path_is_corr_k_output(p2_path) && !a2k1d_path_is_corr_k_output(s2_path))
+        Print "Corrected peak found but corrected sigma missing for rank 2; plotting without corrected error bar."
+        s2_path = ""
+    endif
+    if (useCorr && a2k1d_path_is_corr_k_output(p3_path) && !a2k1d_path_is_corr_k_output(s3_path))
+        Print "Corrected peak found but corrected sigma missing for rank 3; plotting without corrected error bar."
+        s3_path = ""
+    endif
 
     Wave/Z wS1_k = $s1_path
     Wave/Z wS2_k = $s2_path
@@ -4535,10 +4756,15 @@ Function a2k1d_btn_plot_delta_err(ctrlName) : ButtonControl
     NVAR a2k1d_hmUnitMode  = root:ARPES_LJZ:A2K1D:a2k1d_hmUnitMode
     SVAR a2k1d_baseName  = root:ARPES_LJZ:A2K1D:a2k1d_baseName
     NVAR a2k1d_LC        = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    NVAR useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
 
     String base = a2k1d_df_with_colon(a2k1d_baseDF)
     if (!a2k1d_df_exists(base))
         Abort "Plot delta: baseDF not found."
+    endif
+
+    if (useCorr)
+        Print "A2K1D: using corrected k outputs where available."
     endif
 
     String wname
@@ -4549,48 +4775,62 @@ Function a2k1d_btn_plot_delta_err(ctrlName) : ButtonControl
     endif
     DoWindow/K $wname
 
-    String d12  = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "deltak12_k")
-    String sd12 = a2k1d_find_wave_by_tail(base, a2k1d_recursive, "sigmadeltak12_k")
+    String d12  = a2k1d_find_preferred_delta_wave(base, a2k1d_recursive, 0)
+    String sd12 = a2k1d_find_preferred_delta_wave(base, a2k1d_recursive, 1)
+
+    if (useCorr && a2k1d_path_is_corr_k_output(d12) && !a2k1d_path_is_corr_k_output(sd12))
+        Print "Corrected DeltaK12 found but corrected SigmaDeltaK12 missing; plotting without corrected error bar."
+        sd12 = ""
+    endif
 
     if (strlen(d12) == 0)
         Abort "Plot delta: missing deltak12_k."
     endif
-    if (strlen(sd12) == 0)
-        Abort "Plot delta: missing sigmadeltak12_k."
-    endif
 
-    Wave wD12   = $d12
-    Wave wSD12  = $sd12
-
-    if (!WaveExists(wD12) || !WaveExists(wSD12))
+    Wave wD12 = $d12
+    if (!WaveExists(wD12))
         Abort "Plot delta: wave reference failed."
     endif
-
-    if (WaveDims(wD12) != 1 || WaveDims(wSD12) != 1)
-        Abort "Plot delta: waves must be 1D."
+    if (WaveDims(wD12) != 1)
+        Abort "Plot delta: delta wave must be 1D."
     endif
 
-    if (DimSize(wD12,0) != DimSize(wSD12,0))
-        Abort "Plot delta: deltak12_k and sigmadeltak12_k size mismatch."
+    Variable hasSigma = 0
+    if (strlen(sd12) > 0)
+        Wave wSD12 = $sd12
+        if (WaveExists(wSD12))
+            if (WaveDims(wSD12) != 1)
+                Abort "Plot delta: sigma delta wave must be 1D."
+            endif
+            if (DimSize(wD12,0) != DimSize(wSD12,0))
+                Abort "Plot delta: deltak12_k and sigmadeltak12_k size mismatch."
+            endif
+            hasSigma = 1
+        endif
     endif
-    
-String outDF = "root:ARPES_LJZ:OUTPUT:A2K1D:"
-String axisPath
-if (strlen(a2k1d_baseName) > 0)
-    axisPath = outDF + a2k1d_baseName + "_AxisX"
-else
-    axisPath = outDF + "A2K1D_AxisX"
-endif
+    if (!hasSigma)
+        Print "Plot delta: SigmaDeltaK12 wave missing; plotting without error bars."
+    endif
 
-Wave wAxis = a2k1d_make_axis_wave(DimSize(wD12,0), axisPath)
+    String outDF = "root:ARPES_LJZ:OUTPUT:A2K1D:"
+    String axisPath
+    if (strlen(a2k1d_baseName) > 0)
+        axisPath = outDF + a2k1d_baseName + "_AxisX"
+    else
+        axisPath = outDF + "A2K1D_AxisX"
+    endif
 
-Display/N=$wname wD12 vs wAxis
+    Wave wAxis = a2k1d_make_axis_wave(DimSize(wD12,0), axisPath)
 
-ModifyGraph/W=$wname mirror=2
-ModifyGraph/W=$wname mode($NameOfWave(wD12))=0
-ModifyGraph/W=$wname rgb($NameOfWave(wD12))=(0,0,0)
+    Display/N=$wname wD12 vs wAxis
 
-    ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wD12) Y, wave=(wSD12, wSD12)
+    ModifyGraph/W=$wname mirror=2
+    ModifyGraph/W=$wname mode($NameOfWave(wD12))=0
+    ModifyGraph/W=$wname rgb($NameOfWave(wD12))=(0,0,0)
+
+    if (hasSigma)
+        ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wD12) Y, wave=(wSD12, wSD12)
+    endif
 
     if (a2k1d_LC == 0)
         Label/W=$wname left "Δk\\B12\\M (Å\\S-1\\M)"
@@ -4603,7 +4843,11 @@ ModifyGraph/W=$wname rgb($NameOfWave(wD12))=(0,0,0)
     // -------- y-axis: force lower bound to 0 --------
     Duplicate/O wD12, root:ARPES_LJZ:OUTPUT:A2K1D:a2k1d_tmp_deltaTop
     Wave tmpTop = root:ARPES_LJZ:OUTPUT:A2K1D:a2k1d_tmp_deltaTop
-    tmpTop = wD12 + wSD12
+    if (hasSigma)
+        tmpTop = wD12 + wSD12
+    else
+        tmpTop = wD12
+    endif
 
     WaveStats/Q tmpTop
     Variable yHi = V_max
