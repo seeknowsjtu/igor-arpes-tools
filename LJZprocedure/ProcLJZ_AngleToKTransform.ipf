@@ -2094,47 +2094,32 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
         
         if (layerIdx >= 0)
             // Peak 1
-            if (strlen(p1_path) > 0)
-                Wave/Z wP1_k_loop = $p1_path
-                if (WaveExists(wP1_k_loop) && layerIdx < DimSize(wP1_k_loop, 0))
-                    kVal = wP1_k_loop[layerIdx]
-                    if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
-                         intVal = a2k1d_safe_y_at_x(wj, kVal)
-                         if (numtype(intVal) == 0)
-                             dwP1_X[j] = kVal
-                             dwP1_Y[j] = intVal + currentOffset + lift
-                         endif
-                    endif
+            kVal = a2k1d_value_from_1d_path(p1_path, layerIdx)
+            if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
+                intVal = a2k1d_safe_y_at_x(wj, kVal)
+                if (numtype(intVal) == 0)
+                    dwP1_X[j] = kVal
+                    dwP1_Y[j] = intVal + currentOffset + lift
                 endif
             endif
             
             // Peak 2
-            if (strlen(p2_path) > 0)
-                Wave/Z wP2_k_loop = $p2_path
-                if (WaveExists(wP2_k_loop) && layerIdx < DimSize(wP2_k_loop, 0))
-                    kVal = wP2_k_loop[layerIdx]
-                    if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
-                         intVal = a2k1d_safe_y_at_x(wj, kVal)
-                         if (numtype(intVal) == 0)
-                             dwP2_X[j] = kVal
-                             dwP2_Y[j] = intVal + currentOffset + lift
-                         endif
-                    endif
+            kVal = a2k1d_value_from_1d_path(p2_path, layerIdx)
+            if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
+                intVal = a2k1d_safe_y_at_x(wj, kVal)
+                if (numtype(intVal) == 0)
+                    dwP2_X[j] = kVal
+                    dwP2_Y[j] = intVal + currentOffset + lift
                 endif
             endif
 
             // Peak 3
-            if (strlen(p3_path) > 0)
-                Wave/Z wP3_k_loop = $p3_path
-                if (WaveExists(wP3_k_loop) && layerIdx < DimSize(wP3_k_loop, 0))
-                    kVal = wP3_k_loop[layerIdx]
-                    if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
-                         intVal = a2k1d_safe_y_at_x(wj, kVal)
-                         if (numtype(intVal) == 0)
-                             dwP3_X[j] = kVal
-                             dwP3_Y[j] = intVal + currentOffset + lift
-                         endif
-                    endif
+            kVal = a2k1d_value_from_1d_path(p3_path, layerIdx)
+            if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
+                intVal = a2k1d_safe_y_at_x(wj, kVal)
+                if (numtype(intVal) == 0)
+                    dwP3_X[j] = kVal
+                    dwP3_Y[j] = intVal + currentOffset + lift
                 endif
             endif
         endif
@@ -2143,29 +2128,20 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
     // 7. Append Markers (FIXED: Use dynamic Trace Name)
     // 之前硬编码了 "Disp_P1_Y"，现在需要获取加上前缀后的真实波形名
     
-    if (strlen(p1_path) > 0)
-        Wave/Z wP1_k_marker = $p1_path
-        if (WaveExists(wP1_k_marker))
-            AppendToGraph/W=$wname dwP1_Y vs dwP1_X
-            String trName1 = NameOfWave(dwP1_Y)
-            ModifyGraph/W=$wname mode($trName1)=3, marker($trName1)=19, msize($trName1)=2, rgb($trName1)=(0,0,0)
-        endif
+    if (a2k1d_wave_has_any_finite(dwP1_X))
+        AppendToGraph/W=$wname dwP1_Y vs dwP1_X
+        String trName1 = NameOfWave(dwP1_Y)
+        ModifyGraph/W=$wname mode($trName1)=3, marker($trName1)=19, msize($trName1)=2, rgb($trName1)=(0,0,0)
     endif
-    if (strlen(p2_path) > 0)
-        Wave/Z wP2_k_marker = $p2_path
-        if (WaveExists(wP2_k_marker))
-            AppendToGraph/W=$wname dwP2_Y vs dwP2_X
-            String trName2 = NameOfWave(dwP2_Y)
-            ModifyGraph/W=$wname mode($trName2)=3, marker($trName2)=17, msize($trName2)=2, rgb($trName2)=(65535,0,0)
-        endif
+    if (a2k1d_wave_has_any_finite(dwP2_X))
+        AppendToGraph/W=$wname dwP2_Y vs dwP2_X
+        String trName2 = NameOfWave(dwP2_Y)
+        ModifyGraph/W=$wname mode($trName2)=3, marker($trName2)=17, msize($trName2)=2, rgb($trName2)=(65535,0,0)
     endif
-    if (strlen(p3_path) > 0)
-        Wave/Z wP3_k_marker = $p3_path
-        if (WaveExists(wP3_k_marker))
-            AppendToGraph/W=$wname dwP3_Y vs dwP3_X
-            String trName3 = NameOfWave(dwP3_Y)
-            ModifyGraph/W=$wname mode($trName3)=3, marker($trName3)=16, msize($trName3)=2, rgb($trName3)=(0,0,65535)
-        endif
+    if (a2k1d_wave_has_any_finite(dwP3_X))
+        AppendToGraph/W=$wname dwP3_Y vs dwP3_X
+        String trName3 = NameOfWave(dwP3_Y)
+        ModifyGraph/W=$wname mode($trName3)=3, marker($trName3)=16, msize($trName3)=2, rgb($trName3)=(0,0,65535)
     endif
     //============================================================
     // 8) Smart X-axis clamp around peak region (NEW)
@@ -3485,50 +3461,143 @@ End
 // Helper: compute global k-range from optional peak wave paths without
 // creating Wave/Z references from empty strings.
 //============================================================
-Function a2k1d_peak_global_krange_paths(p1Path, p2Path, p3Path, maxLayers, marginFrac, minAbsMargin, kLo, kHi)
-    String p1Path, p2Path, p3Path
-    Variable maxLayers, marginFrac, minAbsMargin
-    Variable &kLo, &kHi
+Function a2k1d_path_is_valid_1d_wave(wp)
+    String wp
 
-    String pathList = p1Path + ";" + p2Path + ";" + p3Path + ";"
-    Variable has = 0
-    Variable kmin = 0, kmax = 0
-    Variable ip, i, kv
-
-    for (ip=0; ip<ItemsInList(pathList, ";"); ip+=1)
-        String pkPath = StringFromList(ip, pathList, ";")
-        if (strlen(pkPath) <= 0)
-            continue
-        endif
-        Wave/Z wPkRange = $pkPath
-        if (!WaveExists(wPkRange))
-            continue
-        endif
-        for (i=0; i<min(maxLayers, DimSize(wPkRange,0)); i+=1)
-            kv = wPkRange[i]
-            if (numtype(kv)==0)
-                if (!has)
-                    kmin = kv; kmax = kv; has = 1
-                else
-                    if (kv < kmin)
-                        kmin = kv
-                    endif
-                    if (kv > kmax)
-                        kmax = kv
-                    endif
-                endif
-            endif
-        endfor
-    endfor
-
-    if (!has)
+    if (strlen(wp) <= 0)
         return 0
     endif
 
-    Variable span = kmax-kmin
-    Variable mar = max(abs(span)*marginFrac, minAbsMargin)
-    kLo = kmin - mar
-    kHi = kmax + mar
+    Wave/Z w = $wp
+    if (!WaveExists(w))
+        return 0
+    endif
+
+    if (WaveDims(w) != 1)
+        return 0
+    endif
+
+    return 1
+End
+
+Function a2k1d_value_from_1d_path(wp, idx)
+    String wp
+    Variable idx
+
+    if (strlen(wp) <= 0)
+        return NaN
+    endif
+
+    Wave/Z w = $wp
+    if (!WaveExists(w))
+        return NaN
+    endif
+
+    if (WaveDims(w) != 1)
+        return NaN
+    endif
+
+    if (idx < 0 || idx >= DimSize(w, 0))
+        return NaN
+    endif
+
+    return w[idx]
+End
+
+Function a2k1d_wave_has_any_finite(w)
+    Wave w
+
+    Variable i, n
+    n = DimSize(w, 0)
+
+    for (i = 0; i < n; i += 1)
+        if (numtype(w[i]) == 0)
+            return 1
+        endif
+    endfor
+
+    return 0
+End
+
+Function a2k1d_accumulate_peak_range_from_path(peakPath, nLayers, kMinOut, kMaxOut, hasOut)
+    String peakPath
+    Variable nLayers
+    Variable &kMinOut, &kMaxOut, &hasOut
+
+    if (!a2k1d_path_is_valid_1d_wave(peakPath))
+        return 0
+    endif
+
+    Wave/Z w = $peakPath
+    if (!WaveExists(w))
+        return 0
+    endif
+
+    Variable n = min(nLayers, DimSize(w, 0))
+    Variable i, v
+
+    for (i = 0; i < n; i += 1)
+        v = w[i]
+        if (numtype(v) == 0)
+            if (hasOut == 0)
+                kMinOut = v
+                kMaxOut = v
+                hasOut = 1
+            else
+                if (v < kMinOut)
+                    kMinOut = v
+                endif
+                if (v > kMaxOut)
+                    kMaxOut = v
+                endif
+            endif
+        endif
+    endfor
+
+    return 0
+End
+
+//============================================================
+// Helper: compute global k-range from optional peak wave paths without
+// creating Wave/Z references from empty strings.
+//============================================================
+Function a2k1d_peak_global_krange_paths(p1Path, p2Path, p3Path, nLayers, marginFrac, minAbsMargin, kLoOut, kHiOut)
+    String p1Path, p2Path, p3Path
+    Variable nLayers, marginFrac, minAbsMargin
+    Variable &kLoOut, &kHiOut
+
+    Variable kMin = NaN
+    Variable kMax = NaN
+    Variable has = 0
+
+    a2k1d_accumulate_peak_range_from_path(p1Path, nLayers, kMin, kMax, has)
+    a2k1d_accumulate_peak_range_from_path(p2Path, nLayers, kMin, kMax, has)
+    a2k1d_accumulate_peak_range_from_path(p3Path, nLayers, kMin, kMax, has)
+
+    if (has == 0)
+        kLoOut = NaN
+        kHiOut = NaN
+        return 0
+    endif
+
+    Variable span = kMax - kMin
+    Variable margin = abs(span) * marginFrac
+
+    if (margin < minAbsMargin)
+        margin = minAbsMargin
+    endif
+
+    kLoOut = kMin - margin
+    kHiOut = kMax + margin
+
+    if (numtype(kLoOut) != 0 || numtype(kHiOut) != 0)
+        return 0
+    endif
+
+    if (kHiOut <= kLoOut)
+        return 0
+    endif
+
     return 1
 End
 
@@ -4298,45 +4367,36 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
             continue
         endif
 
-        if (strlen(p1_path) > 0)
-            Wave/Z wP1_k_hm = $p1_path
-            if (WaveExists(wP1_k_hm) && layerIdx2 < DimSize(wP1_k_hm,0) && numtype(wP1_k_hm[layerIdx2]) == 0)
-                hmP1X[j] = wP1_k_hm[layerIdx2]
-                hmP1Y[j] = yVal
-                if (strlen(s1_path) > 0)
-                    Wave/Z wS1_k_hm = $s1_path
-                    if (WaveExists(wS1_k_hm) && layerIdx2 < DimSize(wS1_k_hm,0) && numtype(wS1_k_hm[layerIdx2]) == 0)
-                        hmS1[j] = wS1_k_hm[layerIdx2]
-                    endif
-                endif
+        Variable p1v = a2k1d_value_from_1d_path(p1_path, layerIdx2)
+        if (numtype(p1v) == 0)
+            hmP1X[j] = p1v
+            hmP1Y[j] = yVal
+
+            Variable s1v = a2k1d_value_from_1d_path(s1_path, layerIdx2)
+            if (numtype(s1v) == 0)
+                hmS1[j] = s1v
             endif
         endif
 
-        if (strlen(p2_path) > 0)
-            Wave/Z wP2_k_hm = $p2_path
-            if (WaveExists(wP2_k_hm) && layerIdx2 < DimSize(wP2_k_hm,0) && numtype(wP2_k_hm[layerIdx2]) == 0)
-                hmP2X[j] = wP2_k_hm[layerIdx2]
-                hmP2Y[j] = yVal
-                if (strlen(s2_path) > 0)
-                    Wave/Z wS2_k_hm = $s2_path
-                    if (WaveExists(wS2_k_hm) && layerIdx2 < DimSize(wS2_k_hm,0) && numtype(wS2_k_hm[layerIdx2]) == 0)
-                        hmS2[j] = wS2_k_hm[layerIdx2]
-                    endif
-                endif
+        Variable p2v = a2k1d_value_from_1d_path(p2_path, layerIdx2)
+        if (numtype(p2v) == 0)
+            hmP2X[j] = p2v
+            hmP2Y[j] = yVal
+
+            Variable s2v = a2k1d_value_from_1d_path(s2_path, layerIdx2)
+            if (numtype(s2v) == 0)
+                hmS2[j] = s2v
             endif
         endif
 
-        if (strlen(p3_path) > 0)
-            Wave/Z wP3_k_hm = $p3_path
-            if (WaveExists(wP3_k_hm) && layerIdx2 < DimSize(wP3_k_hm,0) && numtype(wP3_k_hm[layerIdx2]) == 0)
-                hmP3X[j] = wP3_k_hm[layerIdx2]
-                hmP3Y[j] = yVal
-                if (strlen(s3_path) > 0)
-                    Wave/Z wS3_k_hm = $s3_path
-                    if (WaveExists(wS3_k_hm) && layerIdx2 < DimSize(wS3_k_hm,0) && numtype(wS3_k_hm[layerIdx2]) == 0)
-                        hmS3[j] = wS3_k_hm[layerIdx2]
-                    endif
-                endif
+        Variable p3v = a2k1d_value_from_1d_path(p3_path, layerIdx2)
+        if (numtype(p3v) == 0)
+            hmP3X[j] = p3v
+            hmP3Y[j] = yVal
+
+            Variable s3v = a2k1d_value_from_1d_path(s3_path, layerIdx2)
+            if (numtype(s3v) == 0)
+                hmS3[j] = s3v
             endif
         endif
     endfor
@@ -4431,7 +4491,7 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     // k window (used both for axis crop and CT stats)
     Variable kLoAuto, kHiAuto
     Variable okRange
-    okRange = a2k1d_peak_global_krange(wP1_k, wP2_k, wP3_k, m, 0.5, 0.03, kLoAuto, kHiAuto)
+    okRange = a2k1d_peak_global_krange_paths(p1_path, p2_path, p3_path, m, 0.5, 0.03, kLoAuto, kHiAuto)
 
     if (okRange)
         SetAxis/W=$wname left kLoAuto, kHiAuto
@@ -4456,26 +4516,26 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     // x = delay, y = k
     // so: AppendToGraph yWave(k) vs xWave(delay)
     //================================================
-    if (WaveExists(wP1_k))
+    if (a2k1d_wave_has_any_finite(hmP1X))
         AppendToGraph/W=$wname hmP1X vs hmP1Y
         ModifyGraph/W=$wname mode($NameOfWave(hmP1X))=3,marker($NameOfWave(hmP1X))=19,msize($NameOfWave(hmP1X))=3,rgb($NameOfWave(hmP1X))=(0,0,0)
-        if (WaveExists(wS1_k))
+        if (a2k1d_wave_has_any_finite(hmS1))
             ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(hmP1X) Y, wave=(hmS1,hmS1)
         endif
     endif
 
-    if (WaveExists(wP2_k))
+    if (a2k1d_wave_has_any_finite(hmP2X))
         AppendToGraph/W=$wname hmP2X vs hmP2Y
         ModifyGraph/W=$wname mode($NameOfWave(hmP2X))=3,marker($NameOfWave(hmP2X))=17,msize($NameOfWave(hmP2X))=3,rgb($NameOfWave(hmP2X))=(52000,12000,6000)
-        if (WaveExists(wS2_k))
+        if (a2k1d_wave_has_any_finite(hmS2))
             ErrorBars/W=$wname/RGB=(52000,12000,6000) $NameOfWave(hmP2X) Y, wave=(hmS2,hmS2)
         endif
     endif
 
-    if (WaveExists(wP3_k))
+    if (a2k1d_wave_has_any_finite(hmP3X))
         AppendToGraph/W=$wname hmP3X vs hmP3Y
         ModifyGraph/W=$wname mode($NameOfWave(hmP3X))=3,marker($NameOfWave(hmP3X))=16,msize($NameOfWave(hmP3X))=3,rgb($NameOfWave(hmP3X))=(0,18000,52000)
-        if (WaveExists(wS3_k))
+        if (a2k1d_wave_has_any_finite(hmS3))
             ErrorBars/W=$wname/RGB=(0,18000,52000) $NameOfWave(hmP3X) Y, wave=(hmS3,hmS3)
         endif
     endif
