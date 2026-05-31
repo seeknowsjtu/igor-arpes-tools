@@ -2820,40 +2820,50 @@ Function LJZ_EDCFermiFit_PushEFToEKKMap()
         return -1
     endif
 
-    // 检查至少有一个有效点
     Variable i, n = numpnts(efWave)
     Variable nValid = 0
+    Variable efSum = 0
+    Variable efVal, okVal
     for (i = 0; i < n; i += 1)
-        if (numtype(efWave[i]) != 0)
+        efVal = efWave[i]
+        if (numtype(efVal) != 0)
             continue
         endif
-        if (WaveExists(okWave) && numtype(okWave[i]) == 0 && okWave[i] <= 0)
-            continue
+        if (WaveExists(okWave))
+            okVal = okWave[i]
+            if (numtype(okVal) != 0 || okVal <= 0)
+                continue
+            endif
         endif
         nValid += 1
+        efSum += efVal
     endfor
 
     if (nValid <= 0)
-        DoAlert 0, "没有有效的 EF 点（需要 ok > 0）。"
+        DoAlert 0, "没有有效的 EF 点（需要有限值且 ok > 0）。"
         return -1
     endif
 
-    // 确保 EKKMap 已初始化
-    if (!DataFolderExists("root:ARPES_LJZ:EKKMap"))
-        DoAlert 0, "EKKMap 尚未初始化，请先打开 EKKMap 面板。"
-        return -1
-    endif
+    Variable efMean = efSum / nValid
 
-    // 写入 FLSourceDF 和开关，让 EKKMap 逐 slice 从 edc_ff_ef 读取 FL
-    String/G root:ARPES_LJZ:EKKMap:FLSourceDF = dfStr
-    Variable/G root:ARPES_LJZ:EKKMap:FLUseEDC = 1
+    LJZ_EKKMap_EnsureDF()
 
-    Print "EDCFermiFit -> EKKMap: per-slice FL from " + dfStr + "edc_ff_ef  (valid=" + num2str(nValid) + ")"
+    NVAR FL = $(LJZ_EKKMap_BaseDF() + ":FL")
+    NVAR QuickEF = $(LJZ_EKKMap_BaseDF() + ":QuickEF")
+    NVAR FLUseEDC = $(LJZ_EKKMap_BaseDF() + ":FLUseEDC")
+    SVAR FLSourceDF = $(LJZ_EKKMap_BaseDF() + ":FLSourceDF")
 
-    // 如果 EKKMap 面板开着，刷新 title 显示
-    if (WinType("LJZ_EKKMap_Panel") != 0)
+    FL = efMean
+    QuickEF = efMean
+    FLUseEDC = 1
+    FLSourceDF = dfStr
+
+    if (WinType(LJZ_EKKMap_PanelName()) != 0)
+        LJZ_EKKMap_RefreshWindowControls()
         LJZ_EKKMap_RefreshTitleBoxes()
     endif
+
+    Print "EDCFermiFit -> EKKMap: SourceDF=" + dfStr + ", valid EF=" + num2str(nValid) + ", FL=" + num2str(efMean) + " eV fallback, per-slice FL enabled from " + dfStr + "edc_ff_ef"
 
     return 0
 End
