@@ -1805,9 +1805,12 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
             continue
         endif
 
-        // ---- sigma propagation: sigmap1k -> sigmap1k_k
-        if (WaveExists($(fdf+"peak1k")) && WaveExists($(fdf+"sigmap1k")))
-            Variable rc1 = LJZ_A2K1D_Run_Sigma(fdf+"peak1k", fdf+"sigmap1k", "sigmap1k", a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
+        // ---- sigma propagation: Sigmap1K -> Sigmap1K_k (case-insensitive tails)
+        String p1Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Peak1K")
+        String s1Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Sigmap1K")
+        if (strlen(p1Raw) > 0 && strlen(s1Raw) > 0)
+            Wave/Z wS1RawName = $s1Raw
+            Variable rc1 = LJZ_A2K1D_Run_Sigma(p1Raw, s1Raw, NameOfWave(wS1RawName), a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
             if (rc1 == 0)
                 okS += 1
             else
@@ -1817,9 +1820,12 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
             skipS += 1
         endif
 
-        // ---- sigma propagation: sigmap2k -> sigmap2k_k
-        if (WaveExists($(fdf+"peak2k")) && WaveExists($(fdf+"sigmap2k")))
-            Variable rc2 = LJZ_A2K1D_Run_Sigma(fdf+"peak2k", fdf+"sigmap2k", "sigmap2k", a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
+        // ---- sigma propagation: Sigmap2K -> Sigmap2K_k (case-insensitive tails)
+        String p2Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Peak2K")
+        String s2Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Sigmap2K")
+        if (strlen(p2Raw) > 0 && strlen(s2Raw) > 0)
+            Wave/Z wS2RawName = $s2Raw
+            Variable rc2 = LJZ_A2K1D_Run_Sigma(p2Raw, s2Raw, NameOfWave(wS2RawName), a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
             if (rc2 == 0)
                 okS += 1
             else
@@ -1829,9 +1835,12 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
             skipS += 1
         endif
 
-        // ---- sigma propagation: sigmap3k -> sigmap3k_k
-        if (WaveExists($(fdf+"peak3k")) && WaveExists($(fdf+"sigmap3k")))
-            Variable rc3 = LJZ_A2K1D_Run_Sigma(fdf+"peak3k", fdf+"sigmap3k", "sigmap3k", a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
+        // ---- sigma propagation: Sigmap3K -> Sigmap3K_k (case-insensitive tails)
+        String p3Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Peak3K")
+        String s3Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Sigmap3K")
+        if (strlen(p3Raw) > 0 && strlen(s3Raw) > 0)
+            Wave/Z wS3RawName = $s3Raw
+            Variable rc3 = LJZ_A2K1D_Run_Sigma(p3Raw, s3Raw, NameOfWave(wS3RawName), a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
             if (rc3 == 0)
                 okS += 1
             else
@@ -1841,10 +1850,12 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
             skipS += 1
         endif
 
-        // ---- delta k: deltak12_k = abs(peak1k_k - peak2k_k)
-        if (WaveExists($(fdf+"peak1k_k")) && WaveExists($(fdf+"peak2k_k")))
-            Wave/Z wP1K = $(fdf+"peak1k_k")
-            Wave/Z wP2K = $(fdf+"peak2k_k")
+        // ---- delta k: deltak12_k = abs(Peak1K_k - Peak2K_k)
+        String p1K = a2k1d_find_wave_tail_in_df_ci(fdf, "Peak1K_k")
+        String p2K = a2k1d_find_wave_tail_in_df_ci(fdf, "Peak2K_k")
+        if (strlen(p1K) > 0 && strlen(p2K) > 0)
+            Wave/Z wP1K = $p1K
+            Wave/Z wP2K = $p2K
 
             if (WaveExists(wP1K) && WaveExists(wP2K) && WaveDims(wP1K)==1 && WaveDims(wP2K)==1 && DimSize(wP1K,0)==DimSize(wP2K,0))
                 Duplicate/O wP1K, $(fdf+"deltak12_k")
@@ -1858,8 +1869,8 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
                 Note/K wDeltaK
                 String noteDelta = ""
                 noteDelta += "A2K1D DeltaK (LJZ)\r"
-                noteDelta += "wave1=" + fdf + "peak1k_k\r"
-                noteDelta += "wave2=" + fdf + "peak2k_k\r"
+                noteDelta += "wave1=" + p1K + "\r"
+                noteDelta += "wave2=" + p2K + "\r"
                 noteDelta += "formula=abs(peak1k_k-peak2k_k)\r"
                 Note wDeltaK, noteDelta
 
@@ -1871,10 +1882,12 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
             skipD += 1
         endif
 
-        // ---- sigma(delta k): sigmadeltak12_k = sqrt(sigmap1k_k^2 + sigmap2k_k^2)
-        if (WaveExists($(fdf+"sigmap1k_k")) && WaveExists($(fdf+"sigmap2k_k")))
-            Wave/Z wS1K = $(fdf+"sigmap1k_k")
-            Wave/Z wS2K = $(fdf+"sigmap2k_k")
+        // ---- sigma(delta k): sigmadeltak12_k = sqrt(Sigmap1K_k^2 + Sigmap2K_k^2)
+        String s1K = a2k1d_find_wave_tail_in_df_ci(fdf, "Sigmap1K_k")
+        String s2K = a2k1d_find_wave_tail_in_df_ci(fdf, "Sigmap2K_k")
+        if (strlen(s1K) > 0 && strlen(s2K) > 0)
+            Wave/Z wS1K = $s1K
+            Wave/Z wS2K = $s2K
 
             if (WaveExists(wS1K) && WaveExists(wS2K) && WaveDims(wS1K)==1 && WaveDims(wS2K)==1 && DimSize(wS1K,0)==DimSize(wS2K,0))
                 Duplicate/O wS1K, $(fdf+"sigmadeltak12_k")
@@ -1888,8 +1901,8 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
                 Note/K wSigmaDeltaK
                 String noteSigmaDelta = ""
                 noteSigmaDelta += "A2K1D SigmaDeltaK (LJZ)\r"
-                noteSigmaDelta += "sigma1=" + fdf + "sigmap1k_k\r"
-                noteSigmaDelta += "sigma2=" + fdf + "sigmap2k_k\r"
+                noteSigmaDelta += "sigma1=" + s1K + "\r"
+                noteSigmaDelta += "sigma2=" + s2K + "\r"
                 noteSigmaDelta += "formula=sqrt(sigmap1k_k^2+sigmap2k_k^2)\r"
                 Note wSigmaDeltaK, noteSigmaDelta
 
@@ -2023,10 +2036,6 @@ Function a2k1d_btn_plot_layers_stack(ctrlName) : ButtonControl
     String p2_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 2)
     String p3_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 3)
 
-    Wave/Z wP1_k = $p1_path
-    Wave/Z wP2_k = $p2_path
-    Wave/Z wP3_k = $p3_path
-
     // 5. Prepare Marker Waves (FIXED: Added prefix to wave names)
     a2k1d_ensure_folder()
     String dispDF = "root:ARPES_LJZ:OUTPUT:A2K1D:"
@@ -2085,38 +2094,47 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
         
         if (layerIdx >= 0)
             // Peak 1
-            if (WaveExists(wP1_k) && layerIdx < DimSize(wP1_k, 0))
-                kVal = wP1_k[layerIdx]
-                if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
-                     intVal = a2k1d_safe_y_at_x(wj, kVal)
-                     if (numtype(intVal) == 0)
-                         dwP1_X[j] = kVal
-                         dwP1_Y[j] = intVal + currentOffset + lift
-                     endif
+            if (strlen(p1_path) > 0)
+                Wave/Z wP1_k_loop = $p1_path
+                if (WaveExists(wP1_k_loop) && layerIdx < DimSize(wP1_k_loop, 0))
+                    kVal = wP1_k_loop[layerIdx]
+                    if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
+                         intVal = a2k1d_safe_y_at_x(wj, kVal)
+                         if (numtype(intVal) == 0)
+                             dwP1_X[j] = kVal
+                             dwP1_Y[j] = intVal + currentOffset + lift
+                         endif
+                    endif
                 endif
             endif
             
             // Peak 2
-            if (WaveExists(wP2_k) && layerIdx < DimSize(wP2_k, 0))
-                kVal = wP2_k[layerIdx]
-                if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
-                     intVal = a2k1d_safe_y_at_x(wj, kVal)
-                     if (numtype(intVal) == 0)
-                         dwP2_X[j] = kVal
-                         dwP2_Y[j] = intVal + currentOffset + lift
-                     endif
+            if (strlen(p2_path) > 0)
+                Wave/Z wP2_k_loop = $p2_path
+                if (WaveExists(wP2_k_loop) && layerIdx < DimSize(wP2_k_loop, 0))
+                    kVal = wP2_k_loop[layerIdx]
+                    if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
+                         intVal = a2k1d_safe_y_at_x(wj, kVal)
+                         if (numtype(intVal) == 0)
+                             dwP2_X[j] = kVal
+                             dwP2_Y[j] = intVal + currentOffset + lift
+                         endif
+                    endif
                 endif
             endif
 
             // Peak 3
-            if (WaveExists(wP3_k) && layerIdx < DimSize(wP3_k, 0))
-                kVal = wP3_k[layerIdx]
-                if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
-                     intVal = a2k1d_safe_y_at_x(wj, kVal)
-                     if (numtype(intVal) == 0)
-                         dwP3_X[j] = kVal
-                         dwP3_Y[j] = intVal + currentOffset + lift
-                     endif
+            if (strlen(p3_path) > 0)
+                Wave/Z wP3_k_loop = $p3_path
+                if (WaveExists(wP3_k_loop) && layerIdx < DimSize(wP3_k_loop, 0))
+                    kVal = wP3_k_loop[layerIdx]
+                    if (numtype(kVal) == 0 && kVal >= min(LeftX(wj), RightX(wj)) && kVal <= max(LeftX(wj), RightX(wj)))
+                         intVal = a2k1d_safe_y_at_x(wj, kVal)
+                         if (numtype(intVal) == 0)
+                             dwP3_X[j] = kVal
+                             dwP3_Y[j] = intVal + currentOffset + lift
+                         endif
+                    endif
                 endif
             endif
         endif
@@ -2125,20 +2143,29 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
     // 7. Append Markers (FIXED: Use dynamic Trace Name)
     // 之前硬编码了 "Disp_P1_Y"，现在需要获取加上前缀后的真实波形名
     
-    if (WaveExists(wP1_k))
-        AppendToGraph/W=$wname dwP1_Y vs dwP1_X
-        String trName1 = NameOfWave(dwP1_Y) 
-        ModifyGraph/W=$wname mode($trName1)=3, marker($trName1)=19, msize($trName1)=2, rgb($trName1)=(0,0,0)
+    if (strlen(p1_path) > 0)
+        Wave/Z wP1_k_marker = $p1_path
+        if (WaveExists(wP1_k_marker))
+            AppendToGraph/W=$wname dwP1_Y vs dwP1_X
+            String trName1 = NameOfWave(dwP1_Y)
+            ModifyGraph/W=$wname mode($trName1)=3, marker($trName1)=19, msize($trName1)=2, rgb($trName1)=(0,0,0)
+        endif
     endif
-    if (WaveExists(wP2_k))
-        AppendToGraph/W=$wname dwP2_Y vs dwP2_X
-        String trName2 = NameOfWave(dwP2_Y)
-        ModifyGraph/W=$wname mode($trName2)=3, marker($trName2)=17, msize($trName2)=2, rgb($trName2)=(65535,0,0)
+    if (strlen(p2_path) > 0)
+        Wave/Z wP2_k_marker = $p2_path
+        if (WaveExists(wP2_k_marker))
+            AppendToGraph/W=$wname dwP2_Y vs dwP2_X
+            String trName2 = NameOfWave(dwP2_Y)
+            ModifyGraph/W=$wname mode($trName2)=3, marker($trName2)=17, msize($trName2)=2, rgb($trName2)=(65535,0,0)
+        endif
     endif
-    if (WaveExists(wP3_k))
-        AppendToGraph/W=$wname dwP3_Y vs dwP3_X
-        String trName3 = NameOfWave(dwP3_Y)
-        ModifyGraph/W=$wname mode($trName3)=3, marker($trName3)=16, msize($trName3)=2, rgb($trName3)=(0,0,65535)
+    if (strlen(p3_path) > 0)
+        Wave/Z wP3_k_marker = $p3_path
+        if (WaveExists(wP3_k_marker))
+            AppendToGraph/W=$wname dwP3_Y vs dwP3_X
+            String trName3 = NameOfWave(dwP3_Y)
+            ModifyGraph/W=$wname mode($trName3)=3, marker($trName3)=16, msize($trName3)=2, rgb($trName3)=(0,0,65535)
+        endif
     endif
     //============================================================
     // 8) Smart X-axis clamp around peak region (NEW)
@@ -2148,7 +2175,7 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
 
     // marginFrac=0.25 表示左右各扩 25% 的 peak-span
     // minAbsMargin=0.03 是绝对最小扩展（单位同 k）
-    okRange = a2k1d_peak_global_krange(wP1_k, wP2_k, wP3_k, m, 0.5, 0.03, kLoAuto, kHiAuto)
+    okRange = a2k1d_peak_global_krange_paths(p1_path, p2_path, p3_path, m, 0.5, 0.03, kLoAuto, kHiAuto)
 
     if (okRange)
         SetAxis/W=$wname bottom kLoAuto, kHiAuto
@@ -2838,6 +2865,38 @@ Function/S a2k1d_find_wave_by_tail_ci(baseDF, recursive, tailName)
     return ""
 End
 
+
+Function/S a2k1d_find_wave_tail_in_df_ci(dfIn, tailName)
+    String dfIn, tailName
+
+    String df = a2k1d_df_with_colon(dfIn)
+    if (!a2k1d_df_exists(df))
+        return ""
+    endif
+
+    String df0 = GetDataFolder(1)
+    SetDataFolder $df
+
+    String list = WaveList("*", ";", "DIMS:1")
+    SetDataFolder df0
+
+    String want = LowerStr(tailName)
+    Variable i, n
+    n = ItemsInList(list, ";")
+
+    for (i=0; i<n; i+=1)
+        String wn = StringFromList(i, list, ";")
+        if (strlen(wn) == 0)
+            continue
+        endif
+        if (CmpStr(LowerStr(wn), want) == 0)
+            return df + wn
+        endif
+    endfor
+
+    return ""
+End
+
 Function a2k1d_path_is_corr_k_output(wp)
     String wp
     String lw = LowerStr(a2k1d_tail_wavename(wp))
@@ -3420,6 +3479,57 @@ Function a2k1d_clamp(v, lo, hi)
         return hi
     endif
     return v
+End
+
+//============================================================
+// Helper: compute global k-range from optional peak wave paths without
+// creating Wave/Z references from empty strings.
+//============================================================
+Function a2k1d_peak_global_krange_paths(p1Path, p2Path, p3Path, maxLayers, marginFrac, minAbsMargin, kLo, kHi)
+    String p1Path, p2Path, p3Path
+    Variable maxLayers, marginFrac, minAbsMargin
+    Variable &kLo, &kHi
+
+    String pathList = p1Path + ";" + p2Path + ";" + p3Path + ";"
+    Variable has = 0
+    Variable kmin = 0, kmax = 0
+    Variable ip, i, kv
+
+    for (ip=0; ip<ItemsInList(pathList, ";"); ip+=1)
+        String pkPath = StringFromList(ip, pathList, ";")
+        if (strlen(pkPath) <= 0)
+            continue
+        endif
+        Wave/Z wPkRange = $pkPath
+        if (!WaveExists(wPkRange))
+            continue
+        endif
+        for (i=0; i<min(maxLayers, DimSize(wPkRange,0)); i+=1)
+            kv = wPkRange[i]
+            if (numtype(kv)==0)
+                if (!has)
+                    kmin = kv; kmax = kv; has = 1
+                else
+                    if (kv < kmin)
+                        kmin = kv
+                    endif
+                    if (kv > kmax)
+                        kmax = kv
+                    endif
+                endif
+            endif
+        endfor
+    endfor
+
+    if (!has)
+        return 0
+    endif
+
+    Variable span = kmax-kmin
+    Variable mar = max(abs(span)*marginFrac, minAbsMargin)
+    kLo = kmin - mar
+    kHi = kmax + mar
+    return 1
 End
 
 //============================================================
@@ -4141,10 +4251,6 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     String p2_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 2)
     String p3_path = a2k1d_find_preferred_k_peak(base, a2k1d_recursive, 3)
 
-    Wave/Z wP1_k = $p1_path
-    Wave/Z wP2_k = $p2_path
-    Wave/Z wP3_k = $p3_path
-
     String s1_path = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 1)
     String s2_path = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 2)
     String s3_path = a2k1d_find_preferred_k_sigma(base, a2k1d_recursive, 3)
@@ -4162,10 +4268,6 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
         s3_path = ""
     endif
 
-    Wave/Z wS1_k = $s1_path
-    Wave/Z wS2_k = $s2_path
-    Wave/Z wS3_k = $s3_path
-    
     String wnP1X = outDF + prefix + "_HM_P1_X"
     String wnP1Y = outDF + prefix + "_HM_P1_Y"
     String wnP2X = outDF + prefix + "_HM_P2_X"
@@ -4196,27 +4298,45 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
             continue
         endif
 
-        if (WaveExists(wP1_k) && layerIdx2 < DimSize(wP1_k,0) && numtype(wP1_k[layerIdx2]) == 0)
-            hmP1X[j] = wP1_k[layerIdx2]
-            hmP1Y[j] = yVal
-            if (WaveExists(wS1_k) && layerIdx2 < DimSize(wS1_k,0) && numtype(wS1_k[layerIdx2]) == 0)
-                hmS1[j] = wS1_k[layerIdx2]
+        if (strlen(p1_path) > 0)
+            Wave/Z wP1_k_hm = $p1_path
+            if (WaveExists(wP1_k_hm) && layerIdx2 < DimSize(wP1_k_hm,0) && numtype(wP1_k_hm[layerIdx2]) == 0)
+                hmP1X[j] = wP1_k_hm[layerIdx2]
+                hmP1Y[j] = yVal
+                if (strlen(s1_path) > 0)
+                    Wave/Z wS1_k_hm = $s1_path
+                    if (WaveExists(wS1_k_hm) && layerIdx2 < DimSize(wS1_k_hm,0) && numtype(wS1_k_hm[layerIdx2]) == 0)
+                        hmS1[j] = wS1_k_hm[layerIdx2]
+                    endif
+                endif
             endif
         endif
 
-        if (WaveExists(wP2_k) && layerIdx2 < DimSize(wP2_k,0) && numtype(wP2_k[layerIdx2]) == 0)
-            hmP2X[j] = wP2_k[layerIdx2]
-            hmP2Y[j] = yVal
-            if (WaveExists(wS2_k) && layerIdx2 < DimSize(wS2_k,0) && numtype(wS2_k[layerIdx2]) == 0)
-                hmS2[j] = wS2_k[layerIdx2]
+        if (strlen(p2_path) > 0)
+            Wave/Z wP2_k_hm = $p2_path
+            if (WaveExists(wP2_k_hm) && layerIdx2 < DimSize(wP2_k_hm,0) && numtype(wP2_k_hm[layerIdx2]) == 0)
+                hmP2X[j] = wP2_k_hm[layerIdx2]
+                hmP2Y[j] = yVal
+                if (strlen(s2_path) > 0)
+                    Wave/Z wS2_k_hm = $s2_path
+                    if (WaveExists(wS2_k_hm) && layerIdx2 < DimSize(wS2_k_hm,0) && numtype(wS2_k_hm[layerIdx2]) == 0)
+                        hmS2[j] = wS2_k_hm[layerIdx2]
+                    endif
+                endif
             endif
         endif
 
-        if (WaveExists(wP3_k) && layerIdx2 < DimSize(wP3_k,0) && numtype(wP3_k[layerIdx2]) == 0)
-            hmP3X[j] = wP3_k[layerIdx2]
-            hmP3Y[j] = yVal
-            if (WaveExists(wS3_k) && layerIdx2 < DimSize(wS3_k,0) && numtype(wS3_k[layerIdx2]) == 0)
-                hmS3[j] = wS3_k[layerIdx2]
+        if (strlen(p3_path) > 0)
+            Wave/Z wP3_k_hm = $p3_path
+            if (WaveExists(wP3_k_hm) && layerIdx2 < DimSize(wP3_k_hm,0) && numtype(wP3_k_hm[layerIdx2]) == 0)
+                hmP3X[j] = wP3_k_hm[layerIdx2]
+                hmP3Y[j] = yVal
+                if (strlen(s3_path) > 0)
+                    Wave/Z wS3_k_hm = $s3_path
+                    if (WaveExists(wS3_k_hm) && layerIdx2 < DimSize(wS3_k_hm,0) && numtype(wS3_k_hm[layerIdx2]) == 0)
+                        hmS3[j] = wS3_k_hm[layerIdx2]
+                    endif
+                endif
             endif
         endif
     endfor
@@ -4814,11 +4934,11 @@ Function a2k1d_btn_plot_delta_err(ctrlName) : ButtonControl
         sd12 = ""
     endif
 
-    if (strlen(d12) == 0)
-        Abort "Plot delta: missing deltak12_k."
+    if (strlen(d12) <= 0)
+        Abort "Plot delta: no DeltaK12_k or DeltaK12_k_corr wave found."
     endif
 
-    Wave wD12 = $d12
+    Wave/Z wD12 = $d12
     if (!WaveExists(wD12))
         Abort "Plot delta: wave reference failed."
     endif
@@ -4828,7 +4948,7 @@ Function a2k1d_btn_plot_delta_err(ctrlName) : ButtonControl
 
     Variable hasSigma = 0
     if (strlen(sd12) > 0)
-        Wave wSD12 = $sd12
+        Wave/Z wSD12 = $sd12
         if (WaveExists(wSD12))
             if (WaveDims(wSD12) != 1)
                 Abort "Plot delta: sigma delta wave must be 1D."
