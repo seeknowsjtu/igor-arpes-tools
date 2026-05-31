@@ -1624,83 +1624,80 @@ Function LJZ_EDCFermiFit_EvalModel(pw, yw, xw)
     endif
 
     Variable kB = 8.617333262e-5
-    Variable A   = pw[0]
-    Variable EF  = pw[1]
-    Variable T   = min(max(abs(pw[2]), 0.2), 1000)
-    Variable BG  = pw[3]
-    Variable sig = min(max(abs(pw[4]), 1e-8), 0.20)
-    Variable SB  = max(pw[5], 0)
+    Variable A        = pw[0]
+    Variable EF       = pw[1]
+    Variable T        = min(max(abs(pw[2]), 0.2), 1000)
+    Variable BG       = pw[3]
+    Variable sig      = min(max(abs(pw[4]), 1e-8), 0.20)
+    Variable SB       = max(pw[5], 0)
     Variable OccSlope = pw[6]
 
-    Variable dx
+    Variable dx = 1e-4
     if (n > 1)
         dx = xw[1] - xw[0]
-    else
-        dx = 1e-4
     endif
-    if (dx == 0 && n > 1)
-        dx = (xw[n - 1] - xw[0]) / max(1, n - 1)
+    if (dx == 0)
+        if (n > 1)
+            dx = (xw[n-1] - xw[0]) / max(n-1, 1)
+        endif
     endif
     if (dx == 0)
         dx = 1e-4
     endif
     Variable dxAbs = abs(dx)
+
     Variable blurEV = max(sig, 4 * kB * T)
     Variable padN = max(24, ceil(8 * blurEV / dxAbs))
-    padN = min(padN, 2000)
+    if (padN > 2000)
+        padN = 2000
+    endif
     Variable nExt = n + 2 * padN
 
+    // ---- FD × OccSlope：wave 表达式，无 for 循环 ----
     Make/FREE/D/N=(nExt) xExt, yBare
     xExt = xw[0] + (p - padN) * dx
-    Variable i, arg, occAmp
-    for (i = 0; i < nExt; i += 1)
-        arg = (xExt[i] - EF) / (kB * T)
-        occAmp = A + OccSlope * (xExt[i] - EF)
-        if (arg > 60)
-            yBare[i] = 0
-        elseif (arg < -60)
-            yBare[i] = occAmp
-        else
-            yBare[i] = occAmp / (1 + exp(arg))
-        endif
-    endfor
 
-    if (sig > 1e-7 * dxAbs)
-        Variable rad = max(3, ceil(4 * sig / dxAbs))
-        rad = min(rad, 1000)
-        Variable gN = 2 * rad + 1
-        Make/FREE/D/N=(gN) gk
-        gk = exp(-(((p - rad) * dxAbs)^2) / (2 * sig^2))
-        Variable gsum = sum(gk, -inf, inf)
-        if (numtype(gsum) != 0 || gsum <= 0)
-            gsum = 1
-        endif
-        gk /= gsum
-        Convolve/A gk, yBare
+    Variable kBT = kB * T
+    yBare = (A + OccSlope * (xExt - EF)) / (1 + exp(min((xExt - EF) / kBT, 60)))
+
+    // ---- Gaussian 卷积 ----
+    Variable rad = max(3, ceil(4 * sig / dxAbs))
+    if (rad > 1000)
+        rad = 1000
     endif
+    Variable gN = 2 * rad + 1
+    Make/FREE/D/N=(gN) gk
+    gk = exp(-(((p - rad) * dxAbs)^2) / (2 * sig^2))
+    Variable gsum = sum(gk, -inf, inf)
+    if (numtype(gsum) == 0 && gsum > 0)
+        gk /= gsum
+    endif
+    Convolve/A gk, yBare
 
-    Make/FREE/D/N=(n) yCrop, yTail, shirleyShape
+    // ---- crop 回原始长度 ----
+    Make/FREE/D/N=(n) yCrop
     yCrop = yBare[p + padN]
 
-    Variable rightRef = yCrop[n - 1]
-    yTail = max(yCrop[p] - rightRef, 0)
-    Duplicate/FREE yTail, shirleyShape
+    // ---- Shirley 背底：wave 表达式 + 内置 Integrate ----
+    Make/FREE/D/N=(n) shirleyShape
+    shirleyShape = max(yCrop - yCrop[n-1], 0)
     Reverse shirleyShape
-    Integrate shirleyShape
+    Integrate shirleyShape /D=shirleyShape
     Reverse shirleyShape
 
     Variable shMax = shirleyShape[0]
-    if (numtype(shMax) != 0 || shMax <= 0)
-        shirleyShape = 0
-    else
+    if (numtype(shMax) == 0 && shMax > 0)
         shirleyShape /= shMax
+    else
+        shirleyShape = 0
     endif
 
-    yw = yCrop[p] + BG + SB * shirleyShape[p]
+    yw = yCrop + BG + SB * shirleyShape
     return 0
 End
 
 // Smooth model used only by FuncFit. Preview still uses LJZ_EDCFermiFit_EvalModel.
+
 Function LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
     Wave pw, yw, xw
 
@@ -1710,16 +1707,14 @@ Function LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
     endif
 
     Variable kB = 8.617333262e-5
-    Variable A   = pw[0]
-    Variable EF  = pw[1]
-    Variable T   = pw[2]
-    Variable BG  = pw[3]
-    Variable sig = pw[4]
-    Variable SB  = pw[5]
+    Variable A        = pw[0]
+    Variable EF       = pw[1]
+    Variable T        = pw[2]
+    Variable BG       = pw[3]
+    Variable sig      = pw[4]
+    Variable SB       = pw[5]
     Variable OccSlope = pw[6]
 
-    // Smooth fitting version: do not use abs(T), abs(sig), or max(SB,0).
-    // Those operations make the Jacobian singular/non-smooth for FuncFit.
     if (numtype(T) != 0)
         T = 20
     endif
@@ -1734,75 +1729,69 @@ Function LJZ_EDCFermiFit_EvalModel_FitSmooth(pw, yw, xw)
         SB = 0
     endif
 
-    Variable dx
+    Variable dx = 1e-4
     if (n > 1)
         dx = xw[1] - xw[0]
-    else
-        dx = 1e-4
     endif
-    if (dx == 0 && n > 1)
-        dx = (xw[n - 1] - xw[0]) / max(1, n - 1)
+    if (dx == 0)
+        if (n > 1)
+            dx = (xw[n-1] - xw[0]) / max(n-1, 1)
+        endif
     endif
     if (dx == 0)
         dx = 1e-4
     endif
     Variable dxAbs = abs(dx)
+
     Variable blurEV = max(sig, 4 * kB * T)
     Variable padN = max(24, ceil(8 * blurEV / dxAbs))
-    padN = min(padN, 2000)
+    if (padN > 2000)
+        padN = 2000
+    endif
     Variable nExt = n + 2 * padN
 
+    // ---- FD × OccSlope：wave 表达式，无 for 循环 ----
     Make/FREE/D/N=(nExt) xExt, yBare
     xExt = xw[0] + (p - padN) * dx
-    Variable i, arg, occAmp
-    for (i = 0; i < nExt; i += 1)
-        arg = (xExt[i] - EF) / (kB * T)
-        occAmp = A + OccSlope * (xExt[i] - EF)
-        if (arg > 60)
-            yBare[i] = 0
-        elseif (arg < -60)
-            yBare[i] = occAmp
-        else
-            yBare[i] = occAmp / (1 + exp(arg))
-        endif
-    endfor
 
-    if (sig > 1e-7 * dxAbs)
-        Variable rad = max(3, ceil(4 * sig / dxAbs))
-        rad = min(rad, 1000)
-        Variable gN = 2 * rad + 1
-        Make/FREE/D/N=(gN) gk
-        gk = exp(-(((p - rad) * dxAbs)^2) / (2 * sig^2))
-        Variable gsum = sum(gk, -inf, inf)
-        if (numtype(gsum) != 0 || gsum <= 0)
-            gsum = 1
-        endif
-        gk /= gsum
-        Convolve/A gk, yBare
+    Variable kBT = kB * T
+    yBare = (A + OccSlope * (xExt - EF)) / (1 + exp((xExt - EF) / kBT))
+
+    // ---- Gaussian 卷积 ----
+    Variable rad = max(3, ceil(4 * sig / dxAbs))
+    if (rad > 1000)
+        rad = 1000
     endif
+    Variable gN = 2 * rad + 1
+    Make/FREE/D/N=(gN) gk
+    gk = exp(-(((p - rad) * dxAbs)^2) / (2 * sig^2))
+    Variable gsum = sum(gk, -inf, inf)
+    if (numtype(gsum) == 0 && gsum > 0)
+        gk /= gsum
+    endif
+    Convolve/A gk, yBare
 
-    Make/FREE/D/N=(n) yCrop, yTail, shirleyShape
+    // ---- crop 回原始长度 ----
+    Make/FREE/D/N=(n) yCrop
     yCrop = yBare[p + padN]
 
-    Variable rightRef = yCrop[n - 1]
-    yTail = max(yCrop[p] - rightRef, 0)
-    Duplicate/FREE yTail, shirleyShape
+    // ---- Shirley 背底：wave 表达式 + 内置 Integrate ----
+    Make/FREE/D/N=(n) shirleyShape
+    shirleyShape = max(yCrop - yCrop[n-1], 0)
     Reverse shirleyShape
-    Integrate shirleyShape
+    Integrate shirleyShape /D=shirleyShape
     Reverse shirleyShape
 
     Variable shMax = shirleyShape[0]
-    if (numtype(shMax) != 0 || shMax <= 0)
-        shirleyShape = 0
-    else
+    if (numtype(shMax) == 0 && shMax > 0)
         shirleyShape /= shMax
+    else
+        shirleyShape = 0
     endif
 
-    yw = yCrop[p] + BG + SB * shirleyShape[p]
+    yw = yCrop + BG + SB * shirleyShape
     return 0
 End
-
-
 
 
 
@@ -2925,9 +2914,10 @@ Function LJZ_EDCFermiFit_OpenPanel()
     SetVariable svLastOccSlope,pos={470,596},size={165,20},title="Last OccSlope"
     SetVariable svLastOccSlope,variable=$(LJZ_EDCFermiFit_BaseDF() + ":LastOccSlope"),noedit=1
 
-    Button btPlotResult,pos={665,552},size={70,24},title="Plot",proc=LJZ_EDCFermiFit_ButtonProc
-    Button btPushMDCPerLayer,pos={665,580},size={150,24},title="→MDCExtract",proc=LJZ_EDCFermiFit_ButtonProc
-
+Button btPlotResult,pos={660,464},size={90,24},title="Plot",proc=LJZ_EDCFermiFit_ButtonProc
+Button btPushMDCPerLayer,pos={660,494},size={90,24},title="→MDCExt",proc=LJZ_EDCFermiFit_ButtonProc
+Button btPushEKKMap,pos={660,524},size={90,24},title="→EKKMap",proc=LJZ_EDCFermiFit_ButtonProc
+   
     SetVariable svSelWave,pos={8,624},size={900,20},title="Selected Wave:"
     SetVariable svSelWave,value=_STR:sWaveSel,noedit=1
 
@@ -3039,6 +3029,10 @@ Function LJZ_EDCFermiFit_ButtonProc(ba) : ButtonControl
     endif
     if (CmpStr(ctrlName, "btPushMDCPerLayer") == 0)
         LJZ_EDCFermiFit_PushEFToMDCExtract()
+        return 0
+    endif
+    if (CmpStr(ctrlName, "btPushEKKMap") == 0)
+        LJZ_EDCFermiFit_PushEFToEKKMap()
         return 0
     endif
 
@@ -3324,6 +3318,78 @@ Function LJZ_EDCFermiFit_PreviewInitialParams()
 
     TextBox/W=$graphPath/K/N=tbInitPreview
     TextBox/W=$graphPath/C/N=tbInitPreview/F=0/A=LT/X=2/Y=8 "\\Z10orange dashed = initial parameters"
+
+    return 0
+End
+
+Function LJZ_EDCFermiFit_PushEFToEKKMap()
+    LJZ_EDCFermiFit_EnsureDF()
+
+    SVAR sDF = $(LJZ_EDCFermiFit_BaseDF() + ":SourceDF")
+    String dfStr = LJZ_EDCFermiFit_df_with_colon(sDF)
+    if (!DataFolderExists(dfStr))
+        DoAlert 0, "EDCFermiFit SourceDF 不存在。"
+        return -1
+    endif
+
+    Wave/Z efWave = $(dfStr + "edc_ff_ef")
+    Wave/Z okWave = $(dfStr + "edc_ff_ok")
+    if (!WaveExists(efWave))
+        DoAlert 0, "未找到 edc_ff_ef，无法推送到 EKKMap。"
+        return -1
+    endif
+
+    Variable i, n = numpnts(efWave)
+    Variable nValid = 0, efSum = 0
+    Variable efVal, okVal
+    for (i = 0; i < n; i += 1)
+        efVal = efWave[i]
+        if (numtype(efVal) != 0)
+            continue
+        endif
+        if (WaveExists(okWave))
+            okVal = okWave[i]
+            if (numtype(okVal) != 0 || okVal <= 0)
+                continue
+            endif
+        endif
+        nValid += 1
+        efSum += efVal
+    endfor
+
+    if (nValid <= 0)
+        DoAlert 0, "没有有效的 EF 点（需要 ok > 0）。"
+        return -1
+    endif
+
+    // 确保 EKKMap 状态变量存在
+    if (!DataFolderExists(LJZ_EKKMap_BaseDF()))
+        DoAlert 0, "EKKMap 尚未初始化，请先打开 EKKMap 面板。"
+        return -1
+    endif
+
+    Variable efMean = efSum / nValid
+
+    NVAR/Z FL = $(LJZ_EKKMap_BaseDF() + ":FL")
+    if (!NVAR_Exists(FL))
+        DoAlert 0, "找不到 EKKMap:FL 变量。"
+        return -1
+    endif
+    FL = efMean
+
+    // 同时把 FLMode 置为 0（手动模式），让 EKKMap 直接用这个值
+    NVAR/Z FLMode = $(LJZ_EKKMap_BaseDF() + ":FLMode")
+    if (NVAR_Exists(FLMode))
+        FLMode = 0
+    endif
+
+    Print "EDCFermiFit -> EKKMap FL = " + num2str(efMean) + "  (valid=" + num2str(nValid) + ", source=" + dfStr + ")"
+
+    // 如果 EKKMap 面板开着，刷新显示
+    if (WinType(LJZ_EKKMap_PanelName()) != 0)
+        LJZ_EKKMap_RefreshWindowControls()
+        LJZ_EKKMap_RefreshTitleBoxes()
+    endif
 
     return 0
 End
