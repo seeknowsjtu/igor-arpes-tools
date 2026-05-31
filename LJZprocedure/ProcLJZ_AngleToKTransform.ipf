@@ -93,6 +93,26 @@ Function a2k1d_init_defaults_if_needed()
         Variable/G a2k1d_recursive = 0
     endif
 
+    SVAR/Z a2k1d_corrRunDF = root:ARPES_LJZ:A2K1D:a2k1d_corrRunDF
+    if (!SVAR_Exists(a2k1d_corrRunDF))
+        String/G a2k1d_corrRunDF = ""
+    endif
+
+    NVAR/Z a2k1d_useAngleCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
+    if (!NVAR_Exists(a2k1d_useAngleCorr))
+        Variable/G a2k1d_useAngleCorr = 0
+    endif
+
+    NVAR/Z a2k1d_corrSkipFlagged = root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
+    if (!NVAR_Exists(a2k1d_corrSkipFlagged))
+        Variable/G a2k1d_corrSkipFlagged = 1
+    endif
+
+    NVAR/Z a2k1d_corrMode = root:ARPES_LJZ:A2K1D:a2k1d_corrMode
+    if (!NVAR_Exists(a2k1d_corrMode))
+        Variable/G a2k1d_corrMode = 0
+    endif
+
     // Abort flag (for long loops)
     NVAR/Z a2k1d_abortFlag = root:ARPES_LJZ:A2K1D:a2k1d_abortFlag
     if (!NVAR_Exists(a2k1d_abortFlag))
@@ -657,7 +677,7 @@ End
 
 Window A2K1D_LJZ_P() : Panel
 	PauseUpdate; Silent 1
-	NewPanel /W=(420,60,982.2,700.0) as "Angle->k (Value & Spectra) (LJZ)"
+	NewPanel /W=(420,60,982.2,790.0) as "Angle->k (Value & Spectra) (LJZ)"
 	ModifyPanel frameStyle=1
 	ShowTools/A
 
@@ -718,36 +738,48 @@ Window A2K1D_LJZ_P() : Panel
 	Button a2k1d_btn_batch_peak,pos={336,358},size={204,22},proc=a2k1d_btn_batch_peaks_valuetrans,title="Batch: peak/sigmap Value->k"
 	Button a2k1d_btn_table_peak_k,pos={336,382},size={204,22},proc=a2k1d_btn_table_peak_k,title="Table Peak->K"
 
-	Button a2k1d_btn_abort,pos={336,412},size={204,28},proc=a2k1d_btn_abort,title="Abort"
-	Button a2k1d_btn_help,pos={336,450},size={98,28},proc=a2k1d_btn_help,title="Help"
-	Button a2k1d_btn_close,pos={442,450},size={98,28},proc=a2k1d_btn_close,title="Close"
+	SetVariable a2k1d_sv_corr_df,pos={336,410},size={204,19.80},title="CorrRunDF"
+	SetVariable a2k1d_sv_corr_df,value= root:ARPES_LJZ:A2K1D:a2k1d_corrRunDF
+	CheckBox a2k1d_ck_angle_corr,pos={336,434},size={104,18},title="Use angle corr"
+	CheckBox a2k1d_ck_angle_corr,variable= root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
+	CheckBox a2k1d_ck_corr_skip,pos={444,434},size={96,18},title="skip flagged"
+	CheckBox a2k1d_ck_corr_skip,variable= root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
+	SetVariable a2k1d_sv_corr_mode,pos={336,456},size={98,19.80},title="CorrMode"
+	SetVariable a2k1d_sv_corr_mode,limits={0,2,1},value= root:ARPES_LJZ:A2K1D:a2k1d_corrMode
+	TitleBox a2k1d_tb_corr_mode,pos={438,458},size={102,18},title="0 full, 1 first, 2 mean",frame=0
+	Button a2k1d_btn_corr_peaks,pos={336,480},size={98,22},proc=a2k1d_btn_make_corr_peaks,title="Make Corr Peaks"
+	Button a2k1d_btn_corr_layers,pos={442,480},size={98,22},proc=a2k1d_btn_make_corr_layers,title="Make Corr Layers"
+
+	Button a2k1d_btn_abort,pos={336,506},size={204,22},proc=a2k1d_btn_abort,title="Abort"
+	Button a2k1d_btn_help,pos={336,532},size={98,22},proc=a2k1d_btn_help,title="Help"
+	Button a2k1d_btn_close,pos={442,532},size={98,22},proc=a2k1d_btn_close,title="Close"
 
 	// --- Bottom: Plot / Visualization ---
 
 	// Row 1: peak plots | kVary | stack
-	Button a2k1d_btn_plot_peaks,pos={12,490},size={90,22},proc=a2k1d_btn_plot_peaks_err,title="Plot Peaks"
-	Button a2k1d_btn_plot_delta,pos={108,490},size={90,22},proc=a2k1d_btn_plot_delta_err,title="Plot Dk12"
-	SetVariable a2k1d_sv_kvary,pos={210,492},size={108,19.80},title="kVary"
+	Button a2k1d_btn_plot_peaks,pos={12,580},size={90,22},proc=a2k1d_btn_plot_peaks_err,title="Plot Peaks"
+	Button a2k1d_btn_plot_delta,pos={108,580},size={90,22},proc=a2k1d_btn_plot_delta_err,title="Plot Dk12"
+	SetVariable a2k1d_sv_kvary,pos={210,582},size={108,19.80},title="kVary"
 	SetVariable a2k1d_sv_kvary,limits={-1e+06,1e+06,0.001},value= root:ARPES_LJZ:A2K1D:a2k1d_kvary
-	Button a2k1d_btn_plot_layers,pos={324,490},size={216,22},proc=a2k1d_btn_plot_layers_stack,title="Plot: stack layer_*_k_spec"
+	Button a2k1d_btn_plot_layers,pos={324,580},size={216,22},proc=a2k1d_btn_plot_layers_stack,title="Plot: stack layer_*_k_spec"
 
 	// Row 2: color table | heatmap
-	CheckBox a2k1d_ck_useCT,pos={12,518},size={72,18},title="GradColor"
+	CheckBox a2k1d_ck_useCT,pos={12,608},size={72,18},title="GradColor"
 	CheckBox a2k1d_ck_useCT,variable= root:ARPES_LJZ:A2K1D:a2k1d_useCT
-	CheckBox a2k1d_ck_invCT,pos={88,518},size={52,18},title="Invert"
+	CheckBox a2k1d_ck_invCT,pos={88,608},size={52,18},title="Invert"
 	CheckBox a2k1d_ck_invCT,variable= root:ARPES_LJZ:A2K1D:a2k1d_ctInvert
-	TitleBox a2k1d_tb_ct_current,pos={144,518},size={88,18},title="CT: NeonClash",frame=0
-	Button a2k1d_btn_browse_ct,pos={236,516},size={38,20},proc=a2k1d_btn_open_ct_browser,title="..."
-	Button a2k1d_btn_plot_heat,pos={282,514},size={258,24},proc=a2k1d_btn_plot_layers_heatmap,title="Plot: 2D Heatmap"
+	TitleBox a2k1d_tb_ct_current,pos={144,608},size={88,18},title="CT: NeonClash",frame=0
+	Button a2k1d_btn_browse_ct,pos={236,606},size={38,20},proc=a2k1d_btn_open_ct_browser,title="..."
+	Button a2k1d_btn_plot_heat,pos={282,604},size={258,24},proc=a2k1d_btn_plot_layers_heatmap,title="Plot: 2D Heatmap"
 
 	// Row 3: heatmap axis params
-	SetVariable a2k1d_sv_hmY0,pos={12,544},size={116,19.80},title="HM y0"
+	SetVariable a2k1d_sv_hmY0,pos={12,634},size={116,19.80},title="HM y0"
 	SetVariable a2k1d_sv_hmY0,limits={-1e+09,1e+09,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_hmY0
-	SetVariable a2k1d_sv_hmDY,pos={132,544},size={116,19.80},title="HM dY"
+	SetVariable a2k1d_sv_hmDY,pos={132,634},size={116,19.80},title="HM dY"
 	SetVariable a2k1d_sv_hmDY,limits={-1e+09,1e+09,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_hmDY
-	PopupMenu a2k1d_pm_hmUnit,pos={252,544},size={152,20.40},proc=a2k1d_pm_hm_unit_proc,title="HM Unit"
+	PopupMenu a2k1d_pm_hmUnit,pos={252,634},size={152,20.40},proc=a2k1d_pm_hm_unit_proc,title="HM Unit"
 	PopupMenu a2k1d_pm_hmUnit,mode=3,popvalue="Fluence(uJ/cm^2)",value= #"\"Delay(ps);Temperature(K);Fluence(uJ/cm^2);Frame Index\""
-	SetVariable a2k1d_sv_hmMul,pos={408,544},size={132,19.80},title="HM mul"
+	SetVariable a2k1d_sv_hmMul,pos={408,634},size={132,19.80},title="HM mul"
 	SetVariable a2k1d_sv_hmMul,limits={-1e+09,1e+09,0.0001},value= root:ARPES_LJZ:A2K1D:a2k1d_hmYMul
 
 EndMacro
@@ -2249,6 +2281,553 @@ ModifyGraph/W=$wname mirror=2
     // 自动调整一下范围，防止误差棒画到图外面
     SetAxis/A/W=$wname
 
+    return 0
+End
+
+
+//============================================================
+// MDCTrack angle-correction helpers (angle-domain outputs only)
+//============================================================
+Function/S a2k1d_corr_df_with_colon(runDF)
+    String runDF
+    return a2k1d_df_with_colon(runDF)
+End
+
+Function a2k1d_corr_run_is_valid(runDF)
+    String runDF
+
+    String df = a2k1d_df_with_colon(runDF)
+    if (!DataFolderExists(df))
+        return 0
+    endif
+
+    Wave/Z dK = $(df + "dK_toRef")
+    Wave/Z sc = $(df + "scale_toRef")
+
+    if (!WaveExists(dK) || !WaveExists(sc))
+        return 0
+    endif
+    if (DimSize(dK,0) <= 0 || DimSize(sc,0) <= 0)
+        return 0
+    endif
+
+    return 1
+End
+
+Function a2k1d_corr_nrows(runDF)
+    String runDF
+    String df = a2k1d_df_with_colon(runDF)
+    Wave/Z dK = $(df + "dK_toRef")
+    Wave/Z sc = $(df + "scale_toRef")
+    if (!WaveExists(dK) || !WaveExists(sc))
+        return 0
+    endif
+    return min(DimSize(dK,0), DimSize(sc,0))
+End
+
+Function a2k1d_corr_row_for_layer(layer, nTrack)
+    Variable layer, nTrack
+
+    if (nTrack <= 1)
+        return 0
+    endif
+
+    return round(layer)
+End
+
+Function a2k1d_corr_mean_finite(w)
+    Wave w
+
+    Variable i, n, v, sum, cnt
+    n = DimSize(w,0)
+    sum = 0
+    cnt = 0
+
+    for (i=0; i<n; i+=1)
+        v = w[i]
+        if (numtype(v) == 0)
+            sum += v
+            cnt += 1
+        endif
+    endfor
+
+    if (cnt <= 0)
+        return NaN
+    endif
+
+    return sum / cnt
+End
+
+Function a2k1d_get_theta_center_from_corr_run(runDF)
+    String runDF
+
+    String df = a2k1d_df_with_colon(runDF)
+
+    NVAR/Z kcRun = $(df + "KCenter")
+    if (NVAR_Exists(kcRun))
+        if (numtype(kcRun) == 0)
+            return kcRun
+        endif
+    endif
+
+    NVAR/Z kcGlobal = root:ARPES_LJZ:MDCTrack:KCenter
+    if (NVAR_Exists(kcGlobal))
+        if (numtype(kcGlobal) == 0)
+            return kcGlobal
+        endif
+    endif
+
+    return 0
+End
+
+Function a2k1d_get_effective_corr(runDF, row, corrMode, skipFlagged, dThetaOut, scaleOut)
+    String runDF
+    Variable row, corrMode, skipFlagged
+    Variable &dThetaOut, &scaleOut
+
+    String df = a2k1d_df_with_colon(runDF)
+
+    Wave/Z dK = $(df + "dK_toRef")
+    Wave/Z sc = $(df + "scale_toRef")
+    Wave/Z flag = $(df + "flag")
+
+    dThetaOut = NaN
+    scaleOut = NaN
+
+    if (!WaveExists(dK) || !WaveExists(sc))
+        return -1
+    endif
+
+    Variable nTrack = min(DimSize(dK,0), DimSize(sc,0))
+    if (row < 0 || row >= nTrack)
+        return -2
+    endif
+
+    if (skipFlagged != 0 && WaveExists(flag))
+        if (row < DimSize(flag,0))
+            if (numtype(flag[row]) == 0 && flag[row] != 0)
+                return -3
+            endif
+        endif
+    endif
+
+    Variable d0, s0, meanD, meanS
+
+    if (numtype(dK[row]) != 0 || numtype(sc[row]) != 0 || sc[row] <= 0)
+        return -4
+    endif
+
+    if (corrMode == 1)
+        d0 = dK[0]
+        s0 = sc[0]
+
+        if (numtype(d0) == 0)
+            dThetaOut = dK[row] - d0
+        else
+            dThetaOut = dK[row]
+        endif
+
+        if (numtype(s0) == 0 && s0 > 0)
+            scaleOut = sc[row] / s0
+        else
+            scaleOut = sc[row]
+        endif
+
+    elseif (corrMode == 2)
+        meanD = a2k1d_corr_mean_finite(dK)
+        meanS = a2k1d_corr_mean_finite(sc)
+
+        if (numtype(meanD) == 0)
+            dThetaOut = dK[row] - meanD
+        else
+            dThetaOut = dK[row]
+        endif
+
+        if (numtype(meanS) == 0 && meanS > 0)
+            scaleOut = sc[row] / meanS
+        else
+            scaleOut = sc[row]
+        endif
+
+    else
+        dThetaOut = dK[row]
+        scaleOut = sc[row]
+    endif
+
+    if (numtype(dThetaOut) != 0 || numtype(scaleOut) != 0 || scaleOut <= 0)
+        return -5
+    endif
+
+    return 0
+End
+
+Function/S a2k1d_make_corr_angle_name(rawName)
+    String rawName
+
+    String wn = rawName
+    String lower = LowerStr(wn)
+
+    if (StringMatch(lower, "*_corr"))
+        return wn
+    endif
+
+    return CleanupName(wn + "_corr", 0)
+End
+
+Function/S a2k1d_make_corr_peak_angle_wave(peakPath, runDF)
+    String peakPath, runDF
+
+    Wave/Z src = $peakPath
+    if (!WaveExists(src))
+        Print "AngleCorr peak: source missing: " + peakPath
+        return ""
+    endif
+
+    if (WaveType(src) == 0 || WaveDims(src) != 1)
+        Print "AngleCorr peak: source must be numeric 1D: " + peakPath
+        return ""
+    endif
+
+    if (!a2k1d_corr_run_is_valid(runDF))
+        Print "AngleCorr peak: invalid correction run: " + runDF
+        return ""
+    endif
+
+    String df0 = GetDataFolder(1)
+    String outDF = GetWavesDataFolder(src, 1)
+    if (strlen(outDF) == 0)
+        outDF = "root:"
+    endif
+
+    String outName = a2k1d_make_corr_angle_name(NameOfWave(src))
+    String outPath = outDF + outName
+
+    Duplicate/O src, $outPath
+    Wave out = $outPath
+
+    String cdf = a2k1d_df_with_colon(runDF)
+    Variable nTrack = a2k1d_corr_nrows(cdf)
+    Variable thetaCenter = a2k1d_get_theta_center_from_corr_run(cdf)
+
+    NVAR corrMode = root:ARPES_LJZ:A2K1D:a2k1d_corrMode
+    NVAR skipFlagged = root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
+
+    Variable i, row, rc, dTh, scEff, raw
+    for (i=0; i<DimSize(src,0); i+=1)
+        row = a2k1d_corr_row_for_layer(i, nTrack)
+        rc = a2k1d_get_effective_corr(cdf, row, corrMode, skipFlagged, dTh, scEff)
+
+        raw = src[i]
+        if (rc == 0 && numtype(raw) == 0)
+            out[i] = thetaCenter + scEff * (raw - thetaCenter) + dTh
+        else
+            out[i] = NaN
+        endif
+    endfor
+
+    SetScale/P x, DimOffset(src,0), DimDelta(src,0), WaveUnits(src,0), out
+    SetScale d, 0, 0, WaveUnits(src,-1), out
+
+    Note/K out
+    String noteStr = ""
+    noteStr += "A2K1D angle correction from MDCTrack\r"
+    noteStr += "source=" + peakPath + "\r"
+    noteStr += "corrRunDF=" + cdf + "\r"
+    noteStr += "formula=thetaCorr=thetaCenter+scaleEff*(thetaRaw-thetaCenter)+dThetaEff\r"
+    noteStr += "thetaCenter=" + num2str(thetaCenter) + "\r"
+    noteStr += "corrMode=" + num2str(corrMode) + "\r"
+    noteStr += "skipFlagged=" + num2str(skipFlagged) + "\r"
+    Note out, noteStr
+
+    Print "AngleCorr peak written: " + outPath
+    SetDataFolder df0
+    return outPath
+End
+
+Function/S a2k1d_make_corr_sigma_angle_wave(sigmaPath, runDF)
+    String sigmaPath, runDF
+
+    Wave/Z src = $sigmaPath
+    if (!WaveExists(src))
+        Print "AngleCorr sigma: source missing: " + sigmaPath
+        return ""
+    endif
+
+    if (WaveType(src) == 0 || WaveDims(src) != 1)
+        Print "AngleCorr sigma: source must be numeric 1D: " + sigmaPath
+        return ""
+    endif
+
+    if (!a2k1d_corr_run_is_valid(runDF))
+        Print "AngleCorr sigma: invalid correction run: " + runDF
+        return ""
+    endif
+
+    String outDF = GetWavesDataFolder(src, 1)
+    if (strlen(outDF) == 0)
+        outDF = "root:"
+    endif
+
+    String outName = a2k1d_make_corr_angle_name(NameOfWave(src))
+    String outPath = outDF + outName
+
+    Duplicate/O src, $outPath
+    Wave out = $outPath
+
+    String cdf = a2k1d_df_with_colon(runDF)
+    Variable nTrack = a2k1d_corr_nrows(cdf)
+
+    NVAR corrMode = root:ARPES_LJZ:A2K1D:a2k1d_corrMode
+    NVAR skipFlagged = root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
+
+    Variable i, row, rc, dTh, scEff, raw
+    for (i=0; i<DimSize(src,0); i+=1)
+        row = a2k1d_corr_row_for_layer(i, nTrack)
+        rc = a2k1d_get_effective_corr(cdf, row, corrMode, skipFlagged, dTh, scEff)
+
+        raw = src[i]
+        if (rc == 0 && numtype(raw) == 0)
+            out[i] = abs(scEff) * raw
+        else
+            out[i] = NaN
+        endif
+    endfor
+
+    SetScale/P x, DimOffset(src,0), DimDelta(src,0), WaveUnits(src,0), out
+    SetScale d, 0, 0, WaveUnits(src,-1), out
+
+    Note/K out
+    String noteStr = ""
+    noteStr += "A2K1D sigma angle correction from MDCTrack\r"
+    noteStr += "source=" + sigmaPath + "\r"
+    noteStr += "corrRunDF=" + cdf + "\r"
+    noteStr += "formula=sigmaThetaCorr=abs(scaleEff)*sigmaThetaRaw\r"
+    noteStr += "corrMode=" + num2str(corrMode) + "\r"
+    noteStr += "skipFlagged=" + num2str(skipFlagged) + "\r"
+    Note out, noteStr
+
+    Print "AngleCorr sigma written: " + outPath
+    return outPath
+End
+
+Function/S a2k1d_make_corr_layer_angle_wave(layerPath, runDF)
+    String layerPath, runDF
+
+    Wave/Z src = $layerPath
+    if (!WaveExists(src))
+        Print "AngleCorr layer: source missing: " + layerPath
+        return ""
+    endif
+
+    if (WaveType(src) == 0 || WaveDims(src) != 1)
+        Print "AngleCorr layer: source must be numeric 1D: " + layerPath
+        return ""
+    endif
+
+    String wn = NameOfWave(src)
+    if (!a2k1d_is_layer_int_name(wn))
+        Print "AngleCorr layer: source must be raw layer_show_<integer>: " + layerPath
+        return ""
+    endif
+
+    if (!a2k1d_corr_run_is_valid(runDF))
+        Print "AngleCorr layer: invalid correction run: " + runDF
+        return ""
+    endif
+
+    Variable layerIdx = a2k1d_get_layer_index(wn)
+    String cdf = a2k1d_df_with_colon(runDF)
+    Variable nTrack = a2k1d_corr_nrows(cdf)
+    Variable row = a2k1d_corr_row_for_layer(layerIdx, nTrack)
+
+    NVAR corrMode = root:ARPES_LJZ:A2K1D:a2k1d_corrMode
+    NVAR skipFlagged = root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
+
+    Variable dTh, scEff
+    Variable rc = a2k1d_get_effective_corr(cdf, row, corrMode, skipFlagged, dTh, scEff)
+    if (rc != 0)
+        Print "AngleCorr layer: invalid/skipped correction row. layer=", layerIdx, " row=", row
+        return ""
+    endif
+
+    Variable thetaCenter = a2k1d_get_theta_center_from_corr_run(cdf)
+
+    String outDF = GetWavesDataFolder(src, 1)
+    if (strlen(outDF) == 0)
+        outDF = "root:"
+    endif
+
+    String outName = a2k1d_make_corr_angle_name(wn)
+    String outPath = outDF + outName
+
+    Duplicate/O src, $outPath
+    Wave out = $outPath
+
+    Variable rawOff = DimOffset(src,0)
+    Variable rawDel = DimDelta(src,0)
+    Variable corrOff = thetaCenter + scEff * (rawOff - thetaCenter) + dTh
+    Variable corrDel = scEff * rawDel
+
+    SetScale/P x, corrOff, corrDel, WaveUnits(src,0), out
+    SetScale d, 0, 0, WaveUnits(src,-1), out
+
+    Note/K out
+    String noteStr = ""
+    noteStr += "A2K1D layer angle-axis correction from MDCTrack\r"
+    noteStr += "source=" + layerPath + "\r"
+    noteStr += "corrRunDF=" + cdf + "\r"
+    noteStr += "layerIdx=" + num2str(layerIdx) + "\r"
+    noteStr += "row=" + num2str(row) + "\r"
+    noteStr += "dThetaEff=" + num2str(dTh) + "\r"
+    noteStr += "scaleEff=" + num2str(scEff) + "\r"
+    noteStr += "thetaCenter=" + num2str(thetaCenter) + "\r"
+    noteStr += "xScaleFormula=thetaCorr=thetaCenter+scaleEff*(thetaRaw-thetaCenter)+dThetaEff\r"
+    Note out, noteStr
+
+    Print "AngleCorr layer written: " + outPath
+    return outPath
+End
+
+Function/S a2k1d_find_wave_by_tail_ci(baseDF, recursive, tailName)
+    String baseDF, tailName
+    Variable recursive
+
+    String found = a2k1d_find_wave_by_tail(baseDF, recursive, tailName)
+    if (strlen(found) > 0)
+        return found
+    endif
+
+    String base = a2k1d_df_with_colon(baseDF)
+    if (!a2k1d_df_exists(base))
+        return ""
+    endif
+
+    String tailLower = LowerStr(tailName)
+    if (!recursive)
+        String df0 = GetDataFolder(1)
+        SetDataFolder $base
+        String allNames = WaveList("*", ";", "DIMS:1")
+        SetDataFolder df0
+
+        Variable j, m
+        m = ItemsInList(allNames, ";")
+        for (j=0; j<m; j+=1)
+            String wn0 = StringFromList(j, allNames, ";")
+            if (strlen(wn0) == 0)
+                continue
+            endif
+            if (StringMatch(LowerStr(wn0), tailLower))
+                if (WaveExists($(base + wn0)))
+                    return base + wn0
+                endif
+            endif
+        endfor
+        return ""
+    endif
+
+    String all = a2k1d_collect_1d_waves_recursive(base)
+    Variable n = ItemsInList(all, ";")
+    Variable i
+    for (i=0; i<n; i+=1)
+        String wp = StringFromList(i, all, ";")
+        if (strlen(wp) == 0)
+            continue
+        endif
+        if (StringMatch(LowerStr(a2k1d_tail_wavename(wp)), tailLower))
+            if (WaveExists($wp))
+                return wp
+            endif
+        endif
+    endfor
+
+    return ""
+End
+
+Function a2k1d_btn_make_corr_peaks(ctrlName) : ButtonControl
+    String ctrlName
+
+    SVAR baseDF = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
+    NVAR recursive = root:ARPES_LJZ:A2K1D:a2k1d_recursive
+    SVAR corrRunDF = root:ARPES_LJZ:A2K1D:a2k1d_corrRunDF
+
+    String base = a2k1d_df_with_colon(baseDF)
+    if (!a2k1d_corr_run_is_valid(corrRunDF))
+        DoAlert 0, "Invalid MDCTrack correction run."
+        return 0
+    endif
+
+    String p1 = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak1K")
+    String p2 = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak2K")
+    String p3 = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak3K")
+
+    String s1 = a2k1d_find_wave_by_tail_ci(base, recursive, "Sigmap1K")
+    String s2 = a2k1d_find_wave_by_tail_ci(base, recursive, "Sigmap2K")
+    String s3 = a2k1d_find_wave_by_tail_ci(base, recursive, "Sigmap3K")
+
+    Variable ok = 0
+
+    if (strlen(p1) > 0)
+        if (strlen(a2k1d_make_corr_peak_angle_wave(p1, corrRunDF)) > 0)
+            ok += 1
+        endif
+    endif
+    if (strlen(p2) > 0)
+        if (strlen(a2k1d_make_corr_peak_angle_wave(p2, corrRunDF)) > 0)
+            ok += 1
+        endif
+    endif
+    if (strlen(p3) > 0)
+        if (strlen(a2k1d_make_corr_peak_angle_wave(p3, corrRunDF)) > 0)
+            ok += 1
+        endif
+    endif
+
+    if (strlen(s1) > 0)
+        a2k1d_make_corr_sigma_angle_wave(s1, corrRunDF)
+    endif
+    if (strlen(s2) > 0)
+        a2k1d_make_corr_sigma_angle_wave(s2, corrRunDF)
+    endif
+    if (strlen(s3) > 0)
+        a2k1d_make_corr_sigma_angle_wave(s3, corrRunDF)
+    endif
+
+    Print "Make Corr Peaks done. Peak outputs created=", ok
+    return 0
+End
+
+Function a2k1d_btn_make_corr_layers(ctrlName) : ButtonControl
+    String ctrlName
+
+    SVAR baseDF = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
+    NVAR recursive = root:ARPES_LJZ:A2K1D:a2k1d_recursive
+    SVAR corrRunDF = root:ARPES_LJZ:A2K1D:a2k1d_corrRunDF
+
+    if (!a2k1d_corr_run_is_valid(corrRunDF))
+        DoAlert 0, "Invalid MDCTrack correction run."
+        return 0
+    endif
+
+    String list = a2k1d_collect_layers(baseDF, recursive)
+    Variable n = ItemsInList(list, ";")
+    Variable i, ok, fail
+    ok = 0
+    fail = 0
+
+    for (i=0; i<n; i+=1)
+        String wp = StringFromList(i, list, ";")
+        if (strlen(wp) == 0)
+            continue
+        endif
+        String outp = a2k1d_make_corr_layer_angle_wave(wp, corrRunDF)
+        if (strlen(outp) > 0)
+            ok += 1
+        else
+            fail += 1
+        endif
+    endfor
+
+    Printf "Make Corr Layers done: ok=%d fail=%d total=%d\r", ok, fail, n
     return 0
 End
 
