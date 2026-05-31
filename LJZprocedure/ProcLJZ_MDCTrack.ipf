@@ -1988,6 +1988,14 @@ Function LJZ_MDCTrack_CorrectPeakFromPanel()
     SVAR runDF = $(LJZ_MDCTrack_BaseDF() + ":RunDF")
     SVAR status = $(LJZ_MDCTrack_BaseDF() + ":Status")
 
+    Wave/Z pk = $peakRaw
+    if (WaveExists(pk))
+        String pkName = LowerStr(NameOfWave(pk))
+        if (StringMatch(pkName, "*_k") || StringMatch(pkName, "*_k_corr") || StringMatch(pkName, "*_k_spec") || StringMatch(pkName, "*_k_spec_corr"))
+            Print "WARNING: MDCTrack Correct Peak is a same-unit correction. If this MDCTrack run was performed in angle coordinates, do NOT use this button on k-space peak waves such as Peak1K_k. Use A2K1D correction-aware workflow instead: Make Corr Peaks -> Corr Peaks -> K."
+        endif
+    endif
+
     Variable ret
     ret = LJZ_MDCTrack_CorrectPeakPositionsFromPaths(peakRaw, runDF, "kPeak_corr")
     if (ret == 0)
@@ -2812,7 +2820,7 @@ Function LJZ_MDCTrack_OpenPanel()
 
     SetVariable svRunDF,pos={12,252},size={760,18},title="RunDF",value=root:ARPES_LJZ:MDCTrack:RunDF,proc=LJZ_MDCTrack_SetVarProc
     SetVariable svPeakRaw,pos={12,278},size={620,18},title="PeakRawPath",value=root:ARPES_LJZ:MDCTrack:PeakRawPath,proc=LJZ_MDCTrack_SetVarProc
-    Button btCorrectPeak,pos={645,274},size={125,24},title="Correct Peak",proc=LJZ_MDCTrack_ButtonProc
+    Button btCorrectPeak,pos={645,274},size={125,24},title="Correct Same-Unit",proc=LJZ_MDCTrack_ButtonProc
 
     SetVariable svApplySuffix,pos={12,306},size={180,18},title="ApplySuffix",value=root:ARPES_LJZ:MDCTrack:ApplySuffix,proc=LJZ_MDCTrack_SetVarProc
     CheckBox cbApplySkipFlagged,pos={210,308},title="skip flagged",variable=root:ARPES_LJZ:MDCTrack:ApplySkipFlagged,proc=LJZ_MDCTrack_CheckProc

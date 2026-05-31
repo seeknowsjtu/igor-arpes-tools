@@ -1448,23 +1448,51 @@ End
 
 Function a2k1d_is_peak_name(wn)
     String wn
-    return (StringMatch(wn, "peak1k") || StringMatch(wn, "peak2k") || StringMatch(wn, "peak3k"))
+    String lw = LowerStr(wn)
+
+    // Raw angle-domain peak waves
+    if (StringMatch(lw, "peak1k") || StringMatch(lw, "peak2k") || StringMatch(lw, "peak3k"))
+        return 1
+    endif
+
+    // Corrected angle-domain peak waves
+    // These are still angle-domain inputs, not final k outputs.
+    if (StringMatch(lw, "peak1k_corr") || StringMatch(lw, "peak2k_corr") || StringMatch(lw, "peak3k_corr"))
+        return 1
+    endif
+
+    return 0
 End
 
 Function a2k1d_is_sigmap_name(wn)
     String wn
-    return (StringMatch(wn, "sigmap1k") || StringMatch(wn, "sigmap2k") || StringMatch(wn, "sigmap3k"))
-End
+    String lw = LowerStr(wn)
 
+    // Raw angle-domain sigma waves
+    if (StringMatch(lw, "sigmap1k") || StringMatch(lw, "sigmap2k") || StringMatch(lw, "sigmap3k"))
+        return 1
+    endif
+
+    // Corrected angle-domain sigma waves
+    // These are still angle-domain inputs, not final k outputs.
+    if (StringMatch(lw, "sigmap1k_corr") || StringMatch(lw, "sigmap2k_corr") || StringMatch(lw, "sigmap3k_corr"))
+        return 1
+    endif
+
+    return 0
+End
 
 Function a2k1d_is_peak_sigma_name(wn)
     String wn
-    if (StringMatch(wn, "peak1k") || StringMatch(wn, "peak2k") || StringMatch(wn, "peak3k"))
+
+    if (a2k1d_is_peak_name(wn))
         return 1
     endif
-    if (StringMatch(wn, "sigmap1k") || StringMatch(wn, "sigmap2k") || StringMatch(wn, "sigmap3k"))
+
+    if (a2k1d_is_sigmap_name(wn))
         return 1
     endif
+
     return 0
 End
 
@@ -1560,6 +1588,9 @@ Function/S a2k1d_collect_peak_sigma(baseDF, recursive)
             continue
         endif
         String wn = a2k1d_tail_wavename(wp)
+        if (a2k1d_is_result_wave_name(wn))
+            continue
+        endif
         if (a2k1d_is_peak_sigma_name(wn))
             out += wp + ";"
         endif
