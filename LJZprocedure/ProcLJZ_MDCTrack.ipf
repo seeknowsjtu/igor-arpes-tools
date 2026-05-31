@@ -8,11 +8,14 @@
 //  负责：
 //    1) 从用户指定的 1D / 2D / 3D reference wave 构造一条 RefProfile(k)。
 //    2) 从每个 target 2D / 3D wave 的高 binding-energy / band-bottom 窗口构造 TargetProfile(k)。
-//    3) 用 normalized cross-correlation 搜索 target 相对 reference 的 k 轴平移 dK_toRef，
+//    3) 用 normalized cross-correlation 搜索 target 相对 reference 的坐标平移 dK_toRef，
 //       可选同时搜索一个小范围 scale_toRef。
 //    4) 输出每个 target layer 的 dK_toRef / scale_toRef / similarity / flag。
-//    5) 对已经拟合出的 MDC peak position wave 做坐标校正：
-//          k_corr = kCenter + scale_toRef * (k_raw - kCenter) + dK_toRef
+//       dK_toRef 是 target 到 reference 的通用坐标平移：
+//         - 如果 tracking profiles 建在 k 轴上，它就是 k shift。
+//         - 如果 tracking profiles 建在角度轴上，应将它理解为 dTheta_toRef。
+//    5) 对已经拟合出的 MDC peak position wave 做同坐标校正：
+//          coord_corr = kCenter + scale_toRef * (coord_raw - kCenter) + dK_toRef
 //
 //  不负责：
 //    - MDC 多峰拟合本身。
@@ -30,7 +33,9 @@
 //      ref_profile_proc        // preprocessed reference profile
 //      target_path             // text wave, one row per registered target layer
 //      target_layer            // layer index in target wave; 0 for 2D wave
-//      dK_toRef                // correction to add to raw peak positions, in k units
+//      dK_toRef                // coordinate shift from target to reference.
+//                               // If profiles are on a k-axis, this is a k shift.
+//                               // If profiles are on an angle-axis, interpret as dTheta_toRef.
 //      scale_toRef             // scale around kCenter; 1 for shift-only
 //      similarity              // best local Pearson correlation coefficient
 //      residual                // normalized RMS residual after alignment
@@ -42,7 +47,7 @@
 //      corr_shift_axis         // shift-axis values used by corr_vs_shift
 //      corr_vs_scale           // 2D diagnostic image: row x scale, corr at best shift
 //      corr_scale_axis         // scale-axis values used by corr_vs_scale
-//      kPeak_corr              // optional corrected peak positions written by Correct Peak button
+//      kPeak_corr              // optional same-unit corrected peak positions written by Correct Peak button
 //      ApplyCorrLastOutputList // optional list of full-data waves written by Apply Corr
 //
 //  推荐用法：
@@ -1928,6 +1933,12 @@ Function LJZ_MDCTrack_CorrectPeakPositionsFromPaths(peakRawPath, runDFIn, outNam
     endif
     String outPath
     outPath = runDF + outName
+
+    // The old Correct Peak button applies a same-coordinate correction:
+    //     coord_corr = center + scale_toRef*(coord_raw-center) + dK_toRef
+    // It should only be used when raw peak positions have the same coordinate unit
+    // as the tracking profile. For angle-domain tracking followed by angle-to-k
+    // conversion, use the A2K1D correction-aware workflow instead.
 
     if (nd == 1)
         n0 = DimSize(peakRaw, 0)
