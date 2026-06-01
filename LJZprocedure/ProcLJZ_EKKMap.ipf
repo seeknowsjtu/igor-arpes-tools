@@ -6,8 +6,8 @@
 //  LJZ_EKKMap : E-k / kx-ky / kx-kz mapping workbench
 //
 //  来源与重构目标：
-//    - 提取并重写 ZWT 系列里与 GetEKImage_WTZG / kxky_WTZG_Button /
-//      kxkz_WTZG_Button / CalcKxKyP1_ZWT / CalcKxKzP1_ZWT / E-k 计算相关的部分
+//    - 将 E-k / kx-ky / kx-kz 统一到同一套 ARPES 几何约定；不再暴露旧 ZWT geometry 开关。
+//    - E-k 严格作为 kx-ky 几何在 beta = scanOffset 的 slit 切片，避免 EK 与 mapping 使用不同 tilt 符号。
 //    - UI / 状态管理风格参考 ProcLJZ 系列（尤其是 MDCPeakSep 的工程写法）
 //
 //  只负责：
@@ -16,7 +16,7 @@
 //    3) 对选中 wave 做 E-k / kx-ky / kx-kz 映射
 //    4) 结果输出到 root:ARPES_LJZ:EKKMapOutput 下
 //
-//  约定（与原 ZWT 代码保持兼容）：
+//  输入维度约定（统一几何版）：
 //    - E-k 的 2D 输入：energy × angle
 //    - E-k 的 3D 输入：energy × angle × stack
 //    - kx-ky 的 2D 输入：mode-angle × scan-angle
@@ -24,10 +24,14 @@
 //    - kx-kz 的 2D 输入：mode-angle × hv
 //    - kx-kz 的 3D 输入：energy × mode-angle × hv
 //
+//  统一几何约定：
+//    - kx-ky 使用原 geo=1 的三维旋转几何作为唯一几何。
+//    - E-k 使用同一几何在 beta = scanOffset 的 slit 切片：k_EK = k0*sin(rawAngle - tilt)。
+//    - scanOffset 用来定义 EK 对应的 kx-ky 扫描切线；azimuth 只旋转 kx-ky 平面，不改变 EK 的一维 k 轴。
+//
 //  这版相对旧代码的明确修正：
 //    - 所有计算都在临时 wave 上完成，不再修改源 wave 的 scaling
-//    - kx-ky 3D 正负 DimDelta 分支统一，去掉原来一支调用 CalcKxKyP_ZWT、
-//      另一支调用 CalcKxKyP1_ZWT 的不一致
+//    - kx-ky 3D 正负 DimDelta 分支统一，去掉旧几何分支差异
 //    - 原代码里多处 degPixel -> x scale 的公式把 DimDelta 重复乘了一次，
 //      这里统一改为真正的“每像素角度”标定：x = (p-(N-1)/2)*degPixel
 //    - 统一做 sqrt / asin / 二次方程判别式的合法性检查，非法点直接写 NaN
@@ -420,6 +424,15 @@ Function LJZ_EKKMap_EnsureDF()
         Variable/G $(LJZ_EKKMap_BaseDF() + ":MDCKf") = 0
     endif
 
+    NVAR/Z EKSign = $(LJZ_EKKMap_BaseDF() + ":EKSign")
+    if (!NVAR_Exists(EKSign))
+        // EK must use the same sign convention as kx-ky mapping. Do not mirror here;
+        // gamma centering is controlled by MDCKf, not by a separate sign flip.
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":EKSign") = 1
+    endif
+    NVAR EKSignRef = $(LJZ_EKKMap_BaseDF() + ":EKSign")
+    EKSignRef = 1
+
     NVAR/Z FL = $(LJZ_EKKMap_BaseDF() + ":FL")
     if (!NVAR_Exists(FL))
         Variable/G $(LJZ_EKKMap_BaseDF() + ":FL") = 0
@@ -506,6 +519,9 @@ Function LJZ_EKKMap_EnsureDF()
     NVAR/Z Geometry = $(LJZ_EKKMap_BaseDF() + ":Geometry")
     if (!NVAR_Exists(Geometry))
         Variable/G $(LJZ_EKKMap_BaseDF() + ":Geometry") = 1
+    else
+        // Legacy compatibility only. Geometry is fixed to the unified WTZ-style rotation model.
+        Geometry = 1
     endif
 
     Wave/T/Z wDisp = $(LJZ_EKKMap_BaseDF() + ":LB_Disp")
@@ -730,10 +746,10 @@ Function LJZ_EKKMap_MakeEKCanonical2D(src2D, dest)
     Wave src2D
     Wave dest
 
-    // 真实 EK 2D 输入是 energy × angle；CalcEK2D 的 canonical 输入是 angle × energy。
-    // 只在临时 wave 上转置数据和 axis scaling，不修改源 wave。
-    Variable nx = DimSize(src2D,1)    // angle
-    Variable ny = DimSize(src2D,0)    // energy
+    // Real EK input is energy × angle. CalcEK2D expects canonical angle × energy.
+    // Therefore dim0(src)=energy becomes dim1(dest), and dim1(src)=angle becomes dim0(dest).
+    Variable nx = DimSize(src2D,1)    // angle points
+    Variable ny = DimSize(src2D,0)    // energy points
 
     LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
     SetScale/P x, DimOffset(src2D,1), DimDelta(src2D,1), WaveUnits(src2D,1), dest
@@ -747,19 +763,21 @@ Function LJZ_EKKMap_MakeSliceFrom3D_EK(src3D, iz, transpose, dest)
     Variable iz, transpose
     Wave dest
 
-    Variable energyN = DimSize(src3D,0)
-    Variable angleN = DimSize(src3D,1)
+    // E-k 3D real input is energy × angle × stack.
+    // CalcEK2D expects canonical angle × energy, so RunEK must call this with transpose=0.
+    // transpose is only for preview display and must not change physical RunEK semantics.
+    Variable nx = DimSize(src3D,1)    // angle points
+    Variable ny = DimSize(src3D,0)    // energy points
 
-    // E-k 3D 真实输入是 energy × angle × stack。
-    // transpose 仅供 preview；Run 阶段必须固定传 0，并输出 CalcEK2D 所需的
-    // canonical angle × energy slice。Transpose is for display only, not physical mapping.
     if (transpose)
-        LJZ_EKKMap_Prepare2DWave(dest, energyN, angleN)
+        // Preview-only: show the raw input orientation, energy × angle.
+        LJZ_EKKMap_Prepare2DWave(dest, ny, nx)
         SetScale/P x, DimOffset(src3D,0), DimDelta(src3D,0), WaveUnits(src3D,0), dest
         SetScale/P y, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
         dest = src3D[p][q][iz]
     else
-        LJZ_EKKMap_Prepare2DWave(dest, angleN, energyN)
+        // Canonical physical slice: angle × energy.
+        LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
         SetScale/P x, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
         SetScale/P y, DimOffset(src3D,0), DimDelta(src3D,0), WaveUnits(src3D,0), dest
         dest = src3D[q][p][iz]
@@ -803,11 +821,21 @@ Function LJZ_EKKMap_BuildPreviewWave()
     endif
 
     if (LJZ_EKKMap_Is2DWave(src))
-        if (Transpose)
-            Duplicate/O src, preview
-            MatrixTranspose preview
+        if (CurrentMode == LJZ_EKKMap_Mode_EK)
+            if (Transpose)
+                // Preview-only: show the raw EK orientation, energy × angle.
+                Duplicate/O src, preview
+            else
+                // Default EK preview follows the canonical physical layout, angle × energy.
+                LJZ_EKKMap_MakeEKCanonical2D(src, preview)
+            endif
         else
-            Duplicate/O src, preview
+            if (Transpose)
+                Duplicate/O src, preview
+                MatrixTranspose preview
+            else
+                Duplicate/O src, preview
+            endif
         endif
         return 0
     endif
@@ -902,9 +930,15 @@ Function LJZ_EKKMap_RefreshWindowControls()
 
     // svSourceDF / svPreviewZ 都绑定到状态变量本身；这里只做 ControlUpdate，
     // 避免把绑定控件重新覆盖成内部字符串造成闪烁或回写异常。
+    // 注意：ControlUpdate 不能带 /Z flag；如果旧 panel 中控件不存在，用 try/catch 防止中断。
     NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
-    ControlUpdate/W=$p svSourceDF
-    ControlUpdate/W=$p svPreviewZ
+    try
+        ControlUpdate/W=$p svSourceDF
+        ControlUpdate/W=$p svPreviewZ
+        ControlUpdate/W=$p cbFLUseEDC
+        ControlUpdate/W=$p svFLSourceDF
+    catch
+    endtry
     PopupMenu/Z pmInputKind,win=$p,mode=InputKind,popvalue=LJZ_EKKMap_InputKindLabel(InputKind)
     return 0
 End
@@ -984,6 +1018,119 @@ Function LJZ_EKKMap_GetEffectiveFL()
         return FL
     endif
     return s / c
+End
+
+
+// Diagnose the EF sequence before a 3D EK run. This does not stop the run;
+// invalid or missing entries will fall back to the manually entered FL.
+Function LJZ_EKKMap_ReportEFSequenceForRun(nz)
+    Variable nz
+
+    NVAR/Z FLUseEDC = $(LJZ_EKKMap_BaseDF() + ":FLUseEDC")
+    SVAR/Z FLSourceDF = $(LJZ_EKKMap_BaseDF() + ":FLSourceDF")
+
+    if (!NVAR_Exists(FLUseEDC) || FLUseEDC == 0)
+        return 0
+    endif
+    if (!SVAR_Exists(FLSourceDF) || strlen(FLSourceDF) == 0)
+        Print "LJZ_EKKMap: Use EDC EF is enabled, but EF DF is empty. Manual Fermi E will be used."
+        return 0
+    endif
+
+    String dfStr = LJZ_EKKMap_df_with_colon(FLSourceDF)
+    Wave/Z efW = $(dfStr + "edc_ff_ef")
+    Wave/Z okW = $(dfStr + "edc_ff_ok")
+    if (!WaveExists(efW))
+        Print "LJZ_EKKMap: edc_ff_ef not found in " + dfStr + ". Manual Fermi E will be used."
+        return 0
+    endif
+    if (numpnts(efW) < nz)
+        Print "LJZ_EKKMap warning: edc_ff_ef is shorter than the EK stack. Missing layers will use manual Fermi E. EF points = " + num2str(numpnts(efW)) + ", stack layers = " + num2str(nz)
+    endif
+
+    Variable i, bad = 0
+    for (i=0; i<min(nz,numpnts(efW)); i+=1)
+        if (numtype(efW[i]) != 0)
+            bad += 1
+            continue
+        endif
+        if (WaveExists(okW) && numtype(okW[i]) == 0 && okW[i] <= 0)
+            bad += 1
+        endif
+    endfor
+    if (bad > 0)
+        Print "LJZ_EKKMap warning: " + num2str(bad) + " EF entries are invalid or marked bad; those layers will use manual Fermi E."
+    endif
+    return 0
+End
+
+// Compute the physical EK output bounds for one canonical angle × energy slice.
+// boundsW[0]=kMin, boundsW[1]=kMax, boundsW[2]=relEMin, boundsW[3]=relEMax.
+Function LJZ_EKKMap_GetEKBounds2D(srcIn, tilt, hv, workFunc, FL, degPixel, latticeA, ekSign, boundsW)
+    Wave srcIn, boundsW
+    Variable tilt, hv, workFunc, FL, degPixel, latticeA, ekSign
+
+    Redimension/D/N=4 boundsW
+    boundsW = NaN
+
+    Duplicate/O srcIn, LJZ_EKKMap_tmpEKBounds_src
+    Wave src = LJZ_EKKMap_tmpEKBounds_src
+    LJZ_EKKMap_SetRawAngleScale2D(src, degPixel)
+
+    Variable rawXMin = LJZ_EKKMap_DimMin(src,0)
+    Variable rawXMax = LJZ_EKKMap_DimMax(src,0)
+    Variable relEMin = LJZ_EKKMap_DimMin(src,1) - FL
+    Variable relEMax = LJZ_EKKMap_DimMax(src,1) - FL
+
+    // Unified geometry: pass raw analyzer angle and tilt separately.
+    // EK is the beta = scanOffset slit slice of the kx-ky geometry, so
+    // k_EK = k0 * sin(rawAngle - tilt). Do not pre-add tilt here.
+    Variable k1 = LJZ_EKKMap_KxFromAngleE(relEMin, rawXMin, tilt, hv, workFunc, latticeA, ekSign)
+    Variable k2 = LJZ_EKKMap_KxFromAngleE(relEMax, rawXMin, tilt, hv, workFunc, latticeA, ekSign)
+    Variable k3 = LJZ_EKKMap_KxFromAngleE(relEMin, rawXMax, tilt, hv, workFunc, latticeA, ekSign)
+    Variable k4 = LJZ_EKKMap_KxFromAngleE(relEMax, rawXMax, tilt, hv, workFunc, latticeA, ekSign)
+
+    Variable kMin = LJZ_EKKMap_MinMaxFrom4(k1,k2,k3,k4,0)
+    Variable kMax = LJZ_EKKMap_MinMaxFrom4(k1,k2,k3,k4,1)
+    KillWaves/Z LJZ_EKKMap_tmpEKBounds_src
+
+    if (!LJZ_EKKMap_IsFinite(kMin) || !LJZ_EKKMap_IsFinite(kMax) || kMin == kMax)
+        return -1
+    endif
+    if (!LJZ_EKKMap_IsFinite(relEMin) || !LJZ_EKKMap_IsFinite(relEMax) || relEMin == relEMax)
+        return -1
+    endif
+
+    boundsW[0] = kMin
+    boundsW[1] = kMax
+    boundsW[2] = relEMin
+    boundsW[3] = relEMax
+    return 0
+End
+
+// Same physics as LJZ_EKKMap_CalcEK2D, but forces all slices onto a common
+// k/E grid. This is needed when different layers use different EF values.
+Function/WAVE LJZ_EKKMap_CalcEK2DOnFixedGrid(srcIn, tilt, hv, workFunc, FL, degPixel, latticeA, mdcKf, ekSign, xMin, xMax, yMin, yMax, nx, ny)
+    Wave srcIn
+    Variable tilt, hv, workFunc, FL, degPixel, latticeA, mdcKf, ekSign, xMin, xMax, yMin, yMax, nx, ny
+
+    Duplicate/O srcIn, LJZ_EKKMap_tmpEKFixed_src
+    Wave src = LJZ_EKKMap_tmpEKFixed_src
+    LJZ_EKKMap_SetRawAngleScale2D(src, degPixel)
+
+    nx = max(2, round(nx))
+    ny = max(2, round(ny))
+    Make/O/D/N=(nx,ny) LJZ_EKKMap_tmpEKFixed, LJZ_EKKMap_tmpEKFixed_phi
+    SetScale/I x, xMin, xMax, LJZ_EKKMap_KUnitA(latticeA), LJZ_EKKMap_tmpEKFixed, LJZ_EKKMap_tmpEKFixed_phi
+    SetScale/I y, yMin, yMax, "eV", LJZ_EKKMap_tmpEKFixed, LJZ_EKKMap_tmpEKFixed_phi
+
+    // x is already shifted by -MDCKf in the output scale; add it back before inverting.
+    // AngleFromKxE returns the raw analyzer angle, not angle-minus-tilt.
+    LJZ_EKKMap_tmpEKFixed_phi = LJZ_EKKMap_AngleFromKxE(x + mdcKf, y, tilt, hv, workFunc, latticeA, ekSign)
+    LJZ_EKKMap_tmpEKFixed = LJZ_EKKMap_ClipToWave2D(src, LJZ_EKKMap_tmpEKFixed_phi(x)(y), y + FL)
+
+    KillWaves/Z LJZ_EKKMap_tmpEKFixed_src, LJZ_EKKMap_tmpEKFixed_phi
+    return LJZ_EKKMap_tmpEKFixed
 End
 
 Function/S LJZ_EKKMap_EnsureOutputDF(subName)
@@ -1377,18 +1524,31 @@ End
 //  Section 4. core kernels
 // ============================================================================
 
-Function LJZ_EKKMap_KxFromAngleE(relE, angleDeg, hv, workFunc, latticeA)
-    Variable relE, angleDeg, hv, workFunc, latticeA
+Function LJZ_EKKMap_NormalizeSign(sgn)
+    Variable sgn
+
+    // Only the sign matters. This protects against accidental 0 or non-unit input.
+    if (sgn < 0)
+        return -1
+    endif
+    return 1
+End
+
+Function LJZ_EKKMap_KxFromAngleE(relE, rawAngleDeg, tiltDeg, hv, workFunc, latticeA, ekSign)
+    Variable relE, rawAngleDeg, tiltDeg, hv, workFunc, latticeA, ekSign
 
     Variable kin = hv - workFunc + relE
     if (kin <= 0)
         return NaN
     endif
-    return LJZ_EKKMap_KScaleA(latticeA) * sqrt(kin) * sin(angleDeg * pi / 180)
+    // Unified WTZ-style geometry for EK:
+    // EK is the beta = scanOffset slit slice of kx-ky, so k_EK = k0*sin(alpha - tilt).
+    // ekSign is kept only for backward compatibility and is intentionally ignored.
+    return LJZ_EKKMap_KScaleA(latticeA) * sqrt(kin) * sin((rawAngleDeg - tiltDeg) * pi / 180)
 End
 
-Function LJZ_EKKMap_AngleFromKxE(kxVal, relE, hv, workFunc, latticeA)
-    Variable kxVal, relE, hv, workFunc, latticeA
+Function LJZ_EKKMap_AngleFromKxE(kxVal, relE, tiltDeg, hv, workFunc, latticeA, ekSign)
+    Variable kxVal, relE, tiltDeg, hv, workFunc, latticeA, ekSign
 
     Variable kin = hv - workFunc + relE
     Variable fac = LJZ_EKKMap_KScaleA(latticeA)
@@ -1396,16 +1556,18 @@ Function LJZ_EKKMap_AngleFromKxE(kxVal, relE, hv, workFunc, latticeA)
         return NaN
     endif
 
+    // Inverse of k = fac*sqrt(Ekin)*sin(alpha - tilt): alpha = asin(k/k0) + tilt.
+    // ekSign is kept only for backward compatibility and is intentionally ignored.
     Variable arg = LJZ_EKKMap_ClampToUnit(kxVal / fac / sqrt(kin))
     if (!LJZ_EKKMap_IsFinite(arg))
         return NaN
     endif
-    return asin(arg) * 180 / pi
+    return asin(arg) * 180 / pi + tiltDeg
 End
 
-Function/WAVE LJZ_EKKMap_CalcEK2D(srcIn, tilt, hv, workFunc, FL, degPixel, latticeA, mdcKf)
+Function/WAVE LJZ_EKKMap_CalcEK2D(srcIn, tilt, hv, workFunc, FL, degPixel, latticeA, mdcKf, ekSign)
     Wave srcIn
-    Variable tilt, hv, workFunc, FL, degPixel, latticeA, mdcKf
+    Variable tilt, hv, workFunc, FL, degPixel, latticeA, mdcKf, ekSign
 
     Duplicate/O srcIn, LJZ_EKKMap_tmpEK_src
     Wave src = LJZ_EKKMap_tmpEK_src
@@ -1415,13 +1577,12 @@ Function/WAVE LJZ_EKKMap_CalcEK2D(srcIn, tilt, hv, workFunc, FL, degPixel, latti
     Variable rawXMax = LJZ_EKKMap_DimMax(src,0)
     Variable relEMin = LJZ_EKKMap_DimMin(src,1) - FL
     Variable relEMax = LJZ_EKKMap_DimMax(src,1) - FL
-    Variable actA1 = rawXMin + tilt
-    Variable actA2 = rawXMax + tilt
 
-    Variable k1 = LJZ_EKKMap_KxFromAngleE(relEMin, actA1, hv, workFunc, latticeA)
-    Variable k2 = LJZ_EKKMap_KxFromAngleE(relEMax, actA1, hv, workFunc, latticeA)
-    Variable k3 = LJZ_EKKMap_KxFromAngleE(relEMin, actA2, hv, workFunc, latticeA)
-    Variable k4 = LJZ_EKKMap_KxFromAngleE(relEMax, actA2, hv, workFunc, latticeA)
+    // Do not pre-add tilt. KxFromAngleE applies the unified rawAngle - tilt convention.
+    Variable k1 = LJZ_EKKMap_KxFromAngleE(relEMin, rawXMin, tilt, hv, workFunc, latticeA, ekSign)
+    Variable k2 = LJZ_EKKMap_KxFromAngleE(relEMax, rawXMin, tilt, hv, workFunc, latticeA, ekSign)
+    Variable k3 = LJZ_EKKMap_KxFromAngleE(relEMin, rawXMax, tilt, hv, workFunc, latticeA, ekSign)
+    Variable k4 = LJZ_EKKMap_KxFromAngleE(relEMax, rawXMax, tilt, hv, workFunc, latticeA, ekSign)
 
     Variable kMin = LJZ_EKKMap_MinMaxFrom4(k1,k2,k3,k4,0)
     Variable kMax = LJZ_EKKMap_MinMaxFrom4(k1,k2,k3,k4,1)
@@ -1437,7 +1598,8 @@ Function/WAVE LJZ_EKKMap_CalcEK2D(srcIn, tilt, hv, workFunc, FL, degPixel, latti
     SetScale/I x, kMin - mdcKf, kMax - mdcKf, LJZ_EKKMap_KUnitA(latticeA), LJZ_EKKMap_tmpEK, LJZ_EKKMap_tmpEK_phi
     SetScale/I y, relEMin, relEMax, "eV", LJZ_EKKMap_tmpEK, LJZ_EKKMap_tmpEK_phi
 
-    LJZ_EKKMap_tmpEK_phi = LJZ_EKKMap_AngleFromKxE(x + mdcKf, y, hv, workFunc, latticeA) - tilt
+    // AngleFromKxE returns the raw analyzer angle directly.
+    LJZ_EKKMap_tmpEK_phi = LJZ_EKKMap_AngleFromKxE(x + mdcKf, y, tilt, hv, workFunc, latticeA, ekSign)
     LJZ_EKKMap_tmpEK = LJZ_EKKMap_ClipToWave2D(src, LJZ_EKKMap_tmpEK_phi(x)(y), y + FL)
 
     KillWaves/Z LJZ_EKKMap_tmpEK_src, LJZ_EKKMap_tmpEK_phi
@@ -1447,6 +1609,10 @@ End
 Function/WAVE LJZ_EKKMap_CalcKxKy2D(srcIn, energyRel, hv, workFunc, tilt, azimuth, scanOffset, degPixel, latticeA, geo)
     Wave srcIn
     Variable energyRel, hv, workFunc, tilt, azimuth, scanOffset, degPixel, latticeA, geo
+
+    // Unified geometry version: retain the geo argument for API compatibility,
+    // but always use the former geo=1 three-dimensional rotation model.
+    geo = 1
 
     Duplicate/O srcIn, LJZ_EKKMap_tmpKxKy_src
     Wave src = LJZ_EKKMap_tmpKxKy_src
@@ -1556,8 +1722,9 @@ Function/WAVE LJZ_EKKMap_CalcKxKz2D(srcIn, energyRel, workFunc, tilt, V0, degPix
     endif
 
     Duplicate/O src, LJZ_EKKMap_tmpKx2D, LJZ_EKKMap_tmpKz2D
-    LJZ_EKKMap_tmpKx2D = (y - workFunc + energyRel) <= 0 ? NaN : facA * sqrt(y - workFunc + energyRel) * sin((x + tilt)*pi/180)
-    LJZ_EKKMap_tmpKz2D = ((y - workFunc + energyRel) * cos((x + tilt)*pi/180)^2 + V0) <= 0 ? NaN : facC * sqrt((y - workFunc + energyRel) * cos((x + tilt)*pi/180)^2 + V0)
+    // Unified tilt convention shared with EK: effective analyzer angle is rawAngle - tilt.
+    LJZ_EKKMap_tmpKx2D = (y - workFunc + energyRel) <= 0 ? NaN : facA * sqrt(y - workFunc + energyRel) * sin((x - tilt)*pi/180)
+    LJZ_EKKMap_tmpKz2D = ((y - workFunc + energyRel) * cos((x - tilt)*pi/180)^2 + V0) <= 0 ? NaN : facC * sqrt((y - workFunc + energyRel) * cos((x - tilt)*pi/180)^2 + V0)
 
     Variable kxMin = WaveMin(LJZ_EKKMap_tmpKx2D)
     Variable kxMax = WaveMax(LJZ_EKKMap_tmpKx2D)
@@ -1577,7 +1744,7 @@ Function/WAVE LJZ_EKKMap_CalcKxKz2D(srcIn, energyRel, workFunc, tilt, V0, degPix
     SetScale/I y, kzMin, kzMax, LJZ_EKKMap_KUnitC(latticeC), LJZ_EKKMap_tmpKxKz, LJZ_EKKMap_tmpHv2D, LJZ_EKKMap_tmpAng2D
 
     LJZ_EKKMap_tmpHv2D = (x/facA)^2 + (y/facC)^2 - V0 + workFunc - energyRel
-    LJZ_EKKMap_tmpAng2D = ((x/facA)^2 + (y/facC)^2 - V0) <= 0 ? NaN : asin(LJZ_EKKMap_ClampToUnit(x/facA / sqrt((x/facA)^2 + (y/facC)^2 - V0))) * 180/pi - tilt
+    LJZ_EKKMap_tmpAng2D = ((x/facA)^2 + (y/facC)^2 - V0) <= 0 ? NaN : asin(LJZ_EKKMap_ClampToUnit(x/facA / sqrt((x/facA)^2 + (y/facC)^2 - V0))) * 180/pi + tilt
     LJZ_EKKMap_tmpKxKz = LJZ_EKKMap_ClipToWave2D(src, LJZ_EKKMap_tmpAng2D(x)(y), LJZ_EKKMap_tmpHv2D(x)(y))
 
     KillWaves/Z LJZ_EKKMap_tmpKxKz_src, LJZ_EKKMap_tmpKx2D, LJZ_EKKMap_tmpKz2D, LJZ_EKKMap_tmpHv2D, LJZ_EKKMap_tmpAng2D
@@ -1593,6 +1760,9 @@ Function LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outPath, hv, workFunc, FL, thetaAngle,
     Wave w
     String outPath
     Variable hv, workFunc, FL, thetaAngle, azimuth, scanOffset, pixel, latticeA, geometry
+
+    // Unified geometry version: retain geometry argument for API compatibility only.
+    geometry = 1
 
     Variable nz = DimSize(w,0)
     if (DimSize(w,1) <= 0 || DimSize(w,2) <= 0 || nz <= 0)
@@ -1836,6 +2006,7 @@ Function LJZ_EKKMap_RunEK()
     NVAR Pixel = $(LJZ_EKKMap_BaseDF() + ":Pixel")
     NVAR LatticeA = $(LJZ_EKKMap_BaseDF() + ":LatticeA")
     NVAR MDCKf = $(LJZ_EKKMap_BaseDF() + ":MDCKf")
+    NVAR EKSign = $(LJZ_EKKMap_BaseDF() + ":EKSign")
     Variable is3D
 
     String outDF = LJZ_EKKMap_EnsureOutputDF("EK")
@@ -1855,56 +2026,74 @@ Function LJZ_EKKMap_RunEK()
         endif
 
         if (LJZ_EKKMap_Is2DWave(w))
-            Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D") = NaN
-            Wave tmpEKCanonical2D = $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D")
-            LJZ_EKKMap_MakeEKCanonical2D(w, tmpEKCanonical2D)
-            Duplicate/O LJZ_EKKMap_CalcEK2D(tmpEKCanonical2D, ThetaAngle, hv, WorkFunc, LJZ_EKKMap_GetEffectiveFL(), Pixel, LatticeA, MDCKf), $(outDF + outName)
+            Variable fl2D = LJZ_EKKMap_GetEffectiveFL()
+            Make/O/D/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D") = NaN
+            Wave tmpEK2D = $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D")
+            LJZ_EKKMap_MakeEKCanonical2D(w, tmpEK2D)
+            Duplicate/O LJZ_EKKMap_CalcEK2D(tmpEK2D, ThetaAngle, hv, WorkFunc, fl2D, Pixel, LatticeA, MDCKf, EKSign), $(outDF + outName)
+            KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D")
+            Make/O/D/N=1 $(outDF + outName + "_FL_used")
+            Wave flUsed2D = $(outDF + outName + "_FL_used")
+            flUsed2D[0] = fl2D
             Wave out2D = $(outDF + outName)
             LJZ_EKKMap_ShowResultWave(out2D, "Im_" + outName)
-            KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D")
         elseif (LJZ_EKKMap_Is3DWave(w))
-            Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D") = NaN
+            Make/O/D/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D") = NaN
+            Make/O/D/N=4 $(LJZ_EKKMap_BaseDF() + ":tmpEKBounds") = NaN
             Wave tmpSlice = $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D")
+            Wave bounds = $(LJZ_EKKMap_BaseDF() + ":tmpEKBounds")
 
             Variable nz = DimSize(w,2)
+            LJZ_EKKMap_ReportEFSequenceForRun(nz)
+            Make/O/D/N=(nz) $(outDF + outName + "_FL_used") = NaN
+            Wave flUsed = $(outDF + outName + "_FL_used")
+
             Variable iz
-            Variable didAlloc = 0
-            Variable baseNX = NaN
-            Variable baseNY = NaN
-            Variable baseX0 = NaN
-            Variable baseDX = NaN
-            Variable baseY0 = NaN
-            Variable baseDY = NaN
+            Variable commonKMin = NaN, commonKMax = NaN
+            Variable commonYMin = NaN, commonYMax = NaN
+            Variable nxOut = NaN, nyOut = NaN
+            Variable nValidBounds = 0
+
+            // First pass: compute the common k/E grid and record the EF used by every layer.
             for (iz=0; iz<nz; iz+=1)
-                // 物理计算固定把 energy × angle × stack slice 规范化为 angle × energy；Transpose 只用于 preview。
-                Variable sliceFL_ek = LJZ_EKKMap_GetSliceFL(iz, FL)
+                flUsed[iz] = LJZ_EKKMap_GetSliceFL(iz, FL)
                 LJZ_EKKMap_MakeSliceFrom3D_EK(w, iz, 0, tmpSlice)
-                Duplicate/O LJZ_EKKMap_CalcEK2D(tmpSlice, ThetaAngle, hv, WorkFunc, sliceFL_ek, Pixel, LatticeA, MDCKf), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
-                Wave map2D = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
-                if (!didAlloc)
-                    Make/O/N=(DimSize(map2D,0), DimSize(map2D,1), nz) $(outDF + outName)
-                    SetScale/P x, DimOffset(map2D,0), DimDelta(map2D,0), WaveUnits(map2D,0), $(outDF + outName)
-                    SetScale/P y, DimOffset(map2D,1), DimDelta(map2D,1), WaveUnits(map2D,1), $(outDF + outName)
-                    SetScale/P z, DimOffset(w,2), DimDelta(w,2), WaveUnits(w,2), $(outDF + outName)
-                    baseNX = DimSize(map2D,0)
-                    baseNY = DimSize(map2D,1)
-                    baseX0 = DimOffset(map2D,0)
-                    baseDX = DimDelta(map2D,0)
-                    baseY0 = DimOffset(map2D,1)
-                    baseDY = DimDelta(map2D,1)
-                    didAlloc = 1
+                nxOut = max(2, DimSize(tmpSlice,0))
+                nyOut = max(2, DimSize(tmpSlice,1))
+                if (LJZ_EKKMap_GetEKBounds2D(tmpSlice, ThetaAngle, hv, WorkFunc, flUsed[iz], Pixel, LatticeA, EKSign, bounds) == 0)
+                    commonKMin = LJZ_EKKMap_Min2(commonKMin, bounds[0])
+                    commonKMax = LJZ_EKKMap_Max2(commonKMax, bounds[1])
+                    commonYMin = LJZ_EKKMap_Min2(commonYMin, bounds[2])
+                    commonYMax = LJZ_EKKMap_Max2(commonYMax, bounds[3])
+                    nValidBounds += 1
                 else
-                    if (DimSize(map2D,0) != baseNX || DimSize(map2D,1) != baseNY || abs(DimOffset(map2D,0)-baseX0) > 1e-9 || abs(DimDelta(map2D,0)-baseDX) > 1e-9 || abs(DimOffset(map2D,1)-baseY0) > 1e-9 || abs(DimDelta(map2D,1)-baseDY) > 1e-9)
-                        Print "LJZ_EKKMap_RunEK warning: slice " + num2str(iz) + " k-grid differs from slice 0 for wave " + NameOfWave(w) + "."
-                    endif
+                    Print "LJZ_EKKMap_RunEK warning: invalid EK bounds for layer " + num2str(iz) + " of " + NameOfWave(w) + "."
                 endif
-                Wave out3D = $(outDF + outName)
+            endfor
+
+            if (nValidBounds <= 0 || !LJZ_EKKMap_IsFinite(commonKMin) || !LJZ_EKKMap_IsFinite(commonKMax) || commonKMin == commonKMax || !LJZ_EKKMap_IsFinite(commonYMin) || !LJZ_EKKMap_IsFinite(commonYMax) || commonYMin == commonYMax)
+                DoAlert 0, NameOfWave(w) + ": cannot compute a valid common EK grid."
+                KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D"), $(LJZ_EKKMap_BaseDF() + ":tmpEKBounds")
+                continue
+            endif
+
+            Make/O/D/N=(nxOut,nyOut,nz) $(outDF + outName) = NaN
+            Wave out3D = $(outDF + outName)
+            SetScale/I x, commonKMin - MDCKf, commonKMax - MDCKf, LJZ_EKKMap_KUnitA(LatticeA), out3D
+            SetScale/I y, commonYMin, commonYMax, "eV", out3D
+            SetScale/P z, DimOffset(w,2), DimDelta(w,2), WaveUnits(w,2), out3D
+
+            // Second pass: map every layer onto the same k/E grid.
+            for (iz=0; iz<nz; iz+=1)
+                LJZ_EKKMap_MakeSliceFrom3D_EK(w, iz, 0, tmpSlice)
+                Duplicate/O LJZ_EKKMap_CalcEK2DOnFixedGrid(tmpSlice, ThetaAngle, hv, WorkFunc, flUsed[iz], Pixel, LatticeA, MDCKf, EKSign, commonKMin - MDCKf, commonKMax - MDCKf, commonYMin, commonYMax, nxOut, nyOut), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
+                Wave map2D = $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
                 out3D[][][iz] = map2D[p][q]
             endfor
-            Wave out3DShow = $(outDF + outName)
-            LJZ_EKKMap_ShowResultWave(out3DShow, "Im_" + outName)
-            KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
-            KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D")
+
+            LJZ_EKKMap_ShowResultWave(out3D, "Im_" + outName)
+            Print "LJZ_EKKMap_RunEK: wrote " + outDF + outName + " with " + num2str(nz) + " layers and " + outDF + outName + "_FL_used."
+            KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D"), $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D"), $(LJZ_EKKMap_BaseDF() + ":tmpEKBounds")
         endif
     endfor
     return 0
@@ -1954,11 +2143,11 @@ Function LJZ_EKKMap_RunKxKy()
         endif
 
         if (LJZ_EKKMap_Is2DWave(w))
-            Duplicate/O LJZ_EKKMap_CalcKxKy2D(w, EnergyRel, hv, WorkFunc, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry), $(outDF + outName)
+            Duplicate/O LJZ_EKKMap_CalcKxKy2D(w, EnergyRel, hv, WorkFunc, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, 1), $(outDF + outName)
             Wave out2D = $(outDF + outName)
             LJZ_EKKMap_ShowResultWave(out2D, "Im_" + outName)
         elseif (LJZ_EKKMap_Is3DWave(w))
-            LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outDF + outName, hv, WorkFunc, LJZ_EKKMap_GetEffectiveFL(), ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry)
+            LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outDF + outName, hv, WorkFunc, LJZ_EKKMap_GetEffectiveFL(), ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, 1)
             Wave out3DShow = $(outDF + outName)
             LJZ_EKKMap_ShowResultWave(out3DShow, "Im_" + outName)
         endif
@@ -2033,7 +2222,7 @@ Function LJZ_EKKMap_RunQuickFSKxKy()
     Variable energyRelQuick = QuickEF - FL
     String outDF = LJZ_EKKMap_EnsureOutputDF("KxKyQuick")
     String outName = "qkxky_" + NameOfWave(w)
-    Duplicate/O LJZ_EKKMap_CalcKxKy2D(tmpQuick, energyRelQuick, hv, WorkFunc, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, Geometry), $(outDF + outName)
+    Duplicate/O LJZ_EKKMap_CalcKxKy2D(tmpQuick, energyRelQuick, hv, WorkFunc, ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, 1), $(outDF + outName)
     Wave outQuick = $(outDF + outName)
     LJZ_EKKMap_ShowResultWave(outQuick, "Im_" + outName)
 
@@ -2223,6 +2412,20 @@ Function LJZ_EKKMap_SetVarProc(ctrlName, varNum, varStr, varName) : SetVariableC
             LJZ_EKKMap_RefreshWindowControls()
             LJZ_EKKMap_ShowCurrentWave()
             break
+        case "svFLSourceDF":
+            SVAR FLSourceDF = $(LJZ_EKKMap_BaseDF() + ":FLSourceDF")
+            if (strlen(varStr) == 0)
+                FLSourceDF = ""
+            else
+                String efDF = LJZ_EKKMap_df_with_colon(varStr)
+                if (!DataFolderExists(efDF))
+                    DoAlert 0, "Invalid EF DF. It should contain edc_ff_ef and optionally edc_ff_ok."
+                else
+                    FLSourceDF = efDF
+                endif
+            endif
+            LJZ_EKKMap_RefreshWindowControls()
+            break
         default:
             LJZ_EKKMap_SetLegacyEnergyCompat()
             LJZ_EKKMap_ShowCurrentWave()
@@ -2258,13 +2461,12 @@ Function LJZ_EKKMap_OpenPanel()
 
     String p = LJZ_EKKMap_PanelName()
     DoWindow/F $p
-    if (V_flag == 0)
-        NewPanel/N=$p /W=(80,80,1040,670) as "E-k / kx-ky / kx-kz"
-    else
-        DoWindow/F $p
-        LJZ_EKKMap_CreateGraphSubwindow()
-        return 0
+    if (V_flag != 0)
+        // Recreate the panel so newly added controls, such as EDC EF controls,
+        // appear immediately after recompiling this procedure.
+        KillWindow/Z $p
     endif
+    NewPanel/N=$p /W=(80,80,1040,670) as "E-k / kx-ky / kx-kz"
 
     SetVariable svSourceDF,pos={10,10},size={455,20},title="Source DF"
     // 绑定到真正的 SourceDF 字符串变量，避免只改控件内部 _STR: 文本。
@@ -2312,8 +2514,7 @@ Function LJZ_EKKMap_OpenPanel()
     SetVariable svQuickDS,pos={265,530},size={135,20},title="QuickDownsample"
     SetVariable svQuickDS,limits={1,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickDownsample"),proc=LJZ_EKKMap_SetVarProc
 
-    CheckBox cbGeometry,pos={265,478},size={120,18},title="WTZ geometry"
-    CheckBox cbGeometry,variable=$(LJZ_EKKMap_BaseDF() + ":Geometry"),proc=LJZ_EKKMap_CheckProc
+    TitleBox tbUnifiedGeom,pos={265,478},size={150,18},frame=0,title="Geometry: unified"
 
     CheckBox cbTranspose,pos={415,478},size={90,18},title="Transpose"
     CheckBox cbTranspose,variable=$(LJZ_EKKMap_BaseDF() + ":Transpose"),proc=LJZ_EKKMap_CheckProc
@@ -2342,14 +2543,15 @@ Function LJZ_EKKMap_OpenPanel()
     SetVariable svV0,pos={825,478},size={100,20},title="V0"
     SetVariable svV0,variable=$(LJZ_EKKMap_BaseDF() + ":V0"),proc=LJZ_EKKMap_SetVarProc
 
-    SetVariable svQuickEF,pos={605,504},size={150,20},title="QuickEF"
-    SetVariable svQuickEF,variable=$(LJZ_EKKMap_BaseDF() + ":QuickEF"),proc=LJZ_EKKMap_SetVarProc
+    CheckBox cbFLUseEDC,pos={605,504},size={115,18},title="Use EDC EF"
+    CheckBox cbFLUseEDC,variable=$(LJZ_EKKMap_BaseDF() + ":FLUseEDC"),proc=LJZ_EKKMap_CheckProc
 
-    SetVariable svQuickHalfN,pos={775,504},size={150,20},title="QuickHalfN"
-    SetVariable svQuickHalfN,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickHalfN"),proc=LJZ_EKKMap_SetVarProc
+    SetVariable svFLSourceDF,pos={730,504},size={195,20},title="EF DF"
+    SetVariable svFLSourceDF,value=root:ARPES_LJZ:EKKMap:FLSourceDF,proc=LJZ_EKKMap_SetVarProc
 
-    SetVariable svQuickDS,pos={605,530},size={150,20},title="QuickDownsample"
-    SetVariable svQuickDS,limits={1,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickDownsample"),proc=LJZ_EKKMap_SetVarProc
+    // EKSign control removed in v4: EK must follow kx-ky sign convention; Gamma centering uses MDCKf.
+
+    TitleBox tbEFNote,pos={730,530},size={205,18},frame=0,title="3D EK: edc_ff_ef[iz]; *_FL_used records EF."
 
     GroupBox gbRun,pos={250,550},size={690,70},title="Run"
     GroupBox gbRun,font="Arial",fSize=10,fStyle=2
@@ -2366,7 +2568,7 @@ Function LJZ_EKKMap_OpenPanel()
     Button btKxKz,pos={675,578},size={100,24},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc
     Button btQuickKxKy,pos={790,578},size={145,24},title="Quick FS kx-ky",proc=LJZ_EKKMap_ButtonProc
 
-    TitleBox tbNote,pos={265,592},size={650,18},frame=0,title="Single-select run target = current preview. 3D run requires matching Input kind to avoid semantic mismatch."
+    TitleBox tbNote,pos={265,592},size={650,18},frame=0,title="Run processes the selected wave; 3D output contains all layers, while graphs display one Preview z slice."
 
     LJZ_EKKMap_CreateGraphSubwindow()
     LJZ_EKKMap_RefreshWindowControls()
