@@ -17,8 +17,8 @@
 //    4) 结果输出到 root:ARPES_LJZ:EKKMapOutput 下
 //
 //  约定（与原 ZWT 代码保持兼容）：
-//    - E-k 的 2D 输入：angle × energy
-//    - E-k 的 3D 输入：angle × energy × stack
+//    - E-k 的 2D 输入：energy × angle
+//    - E-k 的 3D 输入：energy × angle × stack
 //    - kx-ky 的 2D 输入：mode-angle × scan-angle
 //    - kx-ky 的 3D 输入：energy × mode-angle × scan-angle
 //    - kx-kz 的 2D 输入：mode-angle × hv
@@ -131,11 +131,11 @@ Function/S LJZ_EKKMap_InputKindLabel(kind)
     if (kind == LJZ_EKKMap_InputKind_KMapStack)
         return "K-map stack (energy, angle, scan/hv)"
     endif
-    return "EK stack (angle, energy, stack)"
+    return "EK stack (energy, angle, stack)"
 End
 
 Function/S LJZ_EKKMap_InputKindPopupList()
-    return "EK stack (angle, energy, stack);K-map stack (energy, angle, scan/hv)"
+    return "EK stack (energy, angle, stack);K-map stack (energy, angle, scan/hv)"
 End
 
 Function LJZ_EKKMap_IsNumericImageWave(w)
@@ -334,7 +334,7 @@ Function LJZ_EKKMap_GetPreviewDimForMode(w, mode)
     endif
 
     // 3D 输入约定：
-    //   EK:    angle × energy × stack  -> preview 切 dim2
+    //   EK:    energy × angle × stack  -> preview 切 dim2
     //   K maps energy × angle × scan   -> preview 切 dim0
     if (mode == LJZ_EKKMap_Mode_EK)
         return 2
@@ -726,27 +726,43 @@ Function LJZ_EKKMap_MakeSliceFrom3D(src3D, iz, transpose, dest)
     return 0
 End
 
+Function LJZ_EKKMap_MakeEKCanonical2D(src2D, dest)
+    Wave src2D
+    Wave dest
+
+    // 真实 EK 2D 输入是 energy × angle；CalcEK2D 的 canonical 输入是 angle × energy。
+    // 只在临时 wave 上转置数据和 axis scaling，不修改源 wave。
+    Variable nx = DimSize(src2D,1)    // angle
+    Variable ny = DimSize(src2D,0)    // energy
+
+    LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
+    SetScale/P x, DimOffset(src2D,1), DimDelta(src2D,1), WaveUnits(src2D,1), dest
+    SetScale/P y, DimOffset(src2D,0), DimDelta(src2D,0), WaveUnits(src2D,0), dest
+    dest = src2D[q][p]
+    return 0
+End
+
 Function LJZ_EKKMap_MakeSliceFrom3D_EK(src3D, iz, transpose, dest)
     Wave src3D
     Variable iz, transpose
     Wave dest
 
-    Variable nx = DimSize(src3D,0)
-    Variable ny = DimSize(src3D,1)
+    Variable energyN = DimSize(src3D,0)
+    Variable angleN = DimSize(src3D,1)
 
-    // E-k 3D 用：输入是 angle × energy × stack
-    // transpose 仅供 preview；Run 阶段必须固定传 0，保持 angle / energy / stack 不变。
-    // Transpose is for display only, not for physical mapping.
+    // E-k 3D 真实输入是 energy × angle × stack。
+    // transpose 仅供 preview；Run 阶段必须固定传 0，并输出 CalcEK2D 所需的
+    // canonical angle × energy slice。Transpose is for display only, not physical mapping.
     if (transpose)
-        LJZ_EKKMap_Prepare2DWave(dest, ny, nx)
-        SetScale/P x, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
-        SetScale/P y, DimOffset(src3D,0), DimDelta(src3D,0), WaveUnits(src3D,0), dest
-        dest = src3D[q][p][iz]
-    else
-        LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
+        LJZ_EKKMap_Prepare2DWave(dest, energyN, angleN)
         SetScale/P x, DimOffset(src3D,0), DimDelta(src3D,0), WaveUnits(src3D,0), dest
         SetScale/P y, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
         dest = src3D[p][q][iz]
+    else
+        LJZ_EKKMap_Prepare2DWave(dest, angleN, energyN)
+        SetScale/P x, DimOffset(src3D,1), DimDelta(src3D,1), WaveUnits(src3D,1), dest
+        SetScale/P y, DimOffset(src3D,0), DimDelta(src3D,0), WaveUnits(src3D,0), dest
+        dest = src3D[q][p][iz]
     endif
     return 0
 End
@@ -756,7 +772,7 @@ Function LJZ_EKKMap_BuildPreviewWave_EK3D(src3D, iz, transpose, dest)
     Variable iz, transpose
     Wave dest
 
-    // EK 3D: angle × energy × stack，所以 preview z 切 dim2。
+    // EK 3D: energy × angle × stack，所以 preview z 切 dim2。
     return LJZ_EKKMap_MakeSliceFrom3D_EK(src3D, iz, transpose, dest)
 End
 
@@ -1149,9 +1165,9 @@ Function/S LJZ_EKKMap_InputShapeMessage(mode, is3D)
 
     if (mode == LJZ_EKKMap_Mode_EK)
         if (is3D)
-            return "EK 3D expects angle × energy × stack."
+            return "EK 3D expects energy × angle × stack."
         else
-            return "EK 2D expects angle × energy."
+            return "EK 2D expects energy × angle."
         endif
     endif
 
@@ -1174,7 +1190,7 @@ Function/S LJZ_EKKMap_InputKindMismatchMessage(mode)
     Variable mode
 
     if (mode == LJZ_EKKMap_Mode_EK)
-        return "EK 3D expects InputKind = EK stack (angle × energy × stack)."
+        return "EK 3D expects InputKind = EK stack (energy × angle × stack)."
     endif
     if (mode == LJZ_EKKMap_Mode_KxKy)
         return "KxKy 3D expects InputKind = K-map stack (energy × angle × scan)."
@@ -1839,9 +1855,13 @@ Function LJZ_EKKMap_RunEK()
         endif
 
         if (LJZ_EKKMap_Is2DWave(w))
-            Duplicate/O LJZ_EKKMap_CalcEK2D(w, ThetaAngle, hv, WorkFunc, LJZ_EKKMap_GetEffectiveFL(), Pixel, LatticeA, MDCKf), $(outDF + outName)
+            Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D") = NaN
+            Wave tmpEKCanonical2D = $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D")
+            LJZ_EKKMap_MakeEKCanonical2D(w, tmpEKCanonical2D)
+            Duplicate/O LJZ_EKKMap_CalcEK2D(tmpEKCanonical2D, ThetaAngle, hv, WorkFunc, LJZ_EKKMap_GetEffectiveFL(), Pixel, LatticeA, MDCKf), $(outDF + outName)
             Wave out2D = $(outDF + outName)
             LJZ_EKKMap_ShowResultWave(out2D, "Im_" + outName)
+            KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpEKCanonical2D")
         elseif (LJZ_EKKMap_Is3DWave(w))
             Make/O/N=(2,2) $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D") = NaN
             Wave tmpSlice = $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D")
@@ -1856,7 +1876,7 @@ Function LJZ_EKKMap_RunEK()
             Variable baseY0 = NaN
             Variable baseDY = NaN
             for (iz=0; iz<nz; iz+=1)
-                // 物理计算固定按 angle × energy × stack 取 slice；Transpose 只用于 preview。
+                // 物理计算固定把 energy × angle × stack slice 规范化为 angle × energy；Transpose 只用于 preview。
                 Variable sliceFL_ek = LJZ_EKKMap_GetSliceFL(iz, FL)
                 LJZ_EKKMap_MakeSliceFrom3D_EK(w, iz, 0, tmpSlice)
                 Duplicate/O LJZ_EKKMap_CalcEK2D(tmpSlice, ThetaAngle, hv, WorkFunc, sliceFL_ek, Pixel, LatticeA, MDCKf), $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D")
