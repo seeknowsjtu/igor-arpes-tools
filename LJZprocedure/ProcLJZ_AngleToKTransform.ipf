@@ -43,6 +43,172 @@ Function/S a2k1d_norm_list(listStr)
 End
 
 
+
+//============================================================
+// Unified A2K1D / EKKMap geometry compatibility
+//============================================================
+Function a2k1d_sync_legacy_from_unified()
+    a2k1d_ensure_folder()
+
+    NVAR/Z ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    NVAR/Z hv = root:ARPES_LJZ:A2K1D:hv
+    NVAR/Z WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    NVAR/Z EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    NVAR/Z MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    NVAR/Z LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
+    NVAR/Z Pixel = root:ARPES_LJZ:A2K1D:Pixel
+
+    if (!NVAR_Exists(ThetaAngle) || !NVAR_Exists(hv) || !NVAR_Exists(WorkFunc) || !NVAR_Exists(EnergyRel) || !NVAR_Exists(MDCKf) || !NVAR_Exists(LatticeA) || !NVAR_Exists(Pixel))
+        return -1
+    endif
+
+    String df0 = GetDataFolder(1)
+    SetDataFolder root:ARPES_LJZ:A2K1D
+    Variable/G a2k1d_thetaOffset = -ThetaAngle
+    Variable/G a2k1d_hv = hv
+    Variable/G a2k1d_workFunc = WorkFunc
+    Variable/G a2k1d_energyE = EnergyRel
+    Variable/G a2k1d_kShift = MDCKf
+    Variable/G a2k1d_LC = LatticeA
+    Variable/G a2k1d_degPerPix = Pixel
+    SetDataFolder df0
+    return 0
+End
+
+Function a2k1d_sync_unified_from_legacy_if_missing()
+    a2k1d_ensure_folder()
+
+    String df0 = GetDataFolder(1)
+    SetDataFolder root:ARPES_LJZ:A2K1D
+
+    NVAR/Z legacyThetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
+    if (!NVAR_Exists(legacyThetaOffset))
+        Variable/G a2k1d_thetaOffset = 0
+    endif
+    NVAR/Z legacyHv = root:ARPES_LJZ:A2K1D:a2k1d_hv
+    if (!NVAR_Exists(legacyHv))
+        Variable/G a2k1d_hv = 21.2
+    endif
+    NVAR/Z legacyWorkFunc = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
+    if (!NVAR_Exists(legacyWorkFunc))
+        Variable/G a2k1d_workFunc = 4.5
+    endif
+    NVAR/Z legacyEnergyRel = root:ARPES_LJZ:A2K1D:a2k1d_energyE
+    if (!NVAR_Exists(legacyEnergyRel))
+        Variable/G a2k1d_energyE = 0
+    endif
+    NVAR/Z legacyMDCKf = root:ARPES_LJZ:A2K1D:a2k1d_kShift
+    if (!NVAR_Exists(legacyMDCKf))
+        Variable/G a2k1d_kShift = 0
+    endif
+    NVAR/Z legacyLatticeA = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    if (!NVAR_Exists(legacyLatticeA))
+        Variable/G a2k1d_LC = 0
+    endif
+    NVAR/Z legacyPixel = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
+    if (!NVAR_Exists(legacyPixel))
+        Variable/G a2k1d_degPerPix = 0
+    endif
+
+    NVAR legacyThetaOffset2 = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
+    NVAR legacyHv2 = root:ARPES_LJZ:A2K1D:a2k1d_hv
+    NVAR legacyWorkFunc2 = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
+    NVAR legacyEnergyRel2 = root:ARPES_LJZ:A2K1D:a2k1d_energyE
+    NVAR legacyMDCKf2 = root:ARPES_LJZ:A2K1D:a2k1d_kShift
+    NVAR legacyLatticeA2 = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    NVAR legacyPixel2 = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
+
+    NVAR/Z ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    if (!NVAR_Exists(ThetaAngle))
+        Variable/G ThetaAngle = -legacyThetaOffset2
+    endif
+    NVAR/Z hv = root:ARPES_LJZ:A2K1D:hv
+    if (!NVAR_Exists(hv))
+        Variable/G hv = legacyHv2
+    endif
+    NVAR/Z WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    if (!NVAR_Exists(WorkFunc))
+        Variable/G WorkFunc = legacyWorkFunc2
+    endif
+    NVAR/Z EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    if (!NVAR_Exists(EnergyRel))
+        Variable/G EnergyRel = legacyEnergyRel2
+    endif
+    NVAR/Z MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    if (!NVAR_Exists(MDCKf))
+        Variable/G MDCKf = legacyMDCKf2
+    endif
+    NVAR/Z LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
+    if (!NVAR_Exists(LatticeA))
+        Variable/G LatticeA = legacyLatticeA2
+    endif
+    NVAR/Z Pixel = root:ARPES_LJZ:A2K1D:Pixel
+    if (!NVAR_Exists(Pixel))
+        Variable/G Pixel = legacyPixel2
+    endif
+
+    SetDataFolder df0
+    a2k1d_sync_legacy_from_unified()
+    return 0
+End
+
+Static Function a2k1d_KScaleA(latticeA)
+    Variable latticeA
+    Variable kScale = 0.5118
+    if (latticeA != 0)
+        kScale *= latticeA / pi
+    endif
+    return kScale
+End
+
+Static Function a2k1d_EKin(hv, workFunc, energyRel)
+    Variable hv, workFunc, energyRel
+    return hv - workFunc + energyRel
+End
+
+Static Function a2k1d_RawValueToAngle(rawValue, pixel)
+    Variable rawValue, pixel
+    Variable scale = (pixel == 0) ? 1 : pixel
+    return rawValue * scale
+End
+
+Static Function a2k1d_AngleToK_Unified(rawAngleDeg, hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA)
+    Variable rawAngleDeg, hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA
+    Variable ekin = a2k1d_EKin(hv, workFunc, energyRel)
+    if (numtype(ekin) != 0 || ekin <= 0)
+        return NaN
+    endif
+    Variable k0 = a2k1d_KScaleA(latticeA) * sqrt(ekin)
+    return k0 * sin((rawAngleDeg - thetaAngle) * pi / 180) - mdcKf
+End
+
+Static Function a2k1d_KToAngle_Unified(kVal, hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA)
+    Variable kVal, hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA
+    Variable ekin = a2k1d_EKin(hv, workFunc, energyRel)
+    if (numtype(ekin) != 0 || ekin <= 0)
+        return NaN
+    endif
+    Variable k0 = a2k1d_KScaleA(latticeA) * sqrt(ekin)
+    if (k0 == 0)
+        return NaN
+    endif
+    return asin(max(-1, min(1, (kVal + mdcKf) / k0))) * 180 / pi + thetaAngle
+End
+
+Static Function a2k1d_SigmaAngleToK_Unified(rawAngleDeg, sigmaAngle, pixel, hv, workFunc, energyRel, thetaAngle, latticeA)
+    Variable rawAngleDeg, sigmaAngle, pixel, hv, workFunc, energyRel, thetaAngle, latticeA
+    if (numtype(sigmaAngle) != 0 || sigmaAngle < 0)
+        return NaN
+    endif
+    Variable ekin = a2k1d_EKin(hv, workFunc, energyRel)
+    if (numtype(ekin) != 0 || ekin <= 0)
+        return NaN
+    endif
+    Variable scale = (pixel == 0) ? 1 : pixel
+    Variable k0 = a2k1d_KScaleA(latticeA) * sqrt(ekin)
+    return abs(k0 * cos((rawAngleDeg - thetaAngle) * pi / 180) * scale * pi / 180) * sigmaAngle
+End
+
 //============================================================
 // Defaults
 //============================================================
@@ -119,48 +285,10 @@ Function a2k1d_init_defaults_if_needed()
         Variable/G a2k1d_abortFlag = 0
     endif
 
-    // ---------------- parameters ----------------
-    // DegPerPixel: 
-    // NOW INTERPRETED AS: Multiplier for the Y-value (if 0, treated as 1)
-    NVAR/Z a2k1d_degPerPix = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
-    if (!NVAR_Exists(a2k1d_degPerPix))
-        Variable/G a2k1d_degPerPix = 0
-    endif
-
-    NVAR/Z a2k1d_thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-    if (!NVAR_Exists(a2k1d_thetaOffset))
-        Variable/G a2k1d_thetaOffset = 0
-    endif
-
-    NVAR/Z a2k1d_hv = root:ARPES_LJZ:A2K1D:a2k1d_hv
-    if (!NVAR_Exists(a2k1d_hv))
-        Variable/G a2k1d_hv = 21.2
-    endif
-
-    NVAR/Z a2k1d_workFunc = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-    if (!NVAR_Exists(a2k1d_workFunc))
-        Variable/G a2k1d_workFunc = 4.5
-    endif
-
-    // EnergyTermE: Ek = hv + EnergyTermE - WorkFunc
-    NVAR/Z a2k1d_energyE = root:ARPES_LJZ:A2K1D:a2k1d_energyE
-    if (!NVAR_Exists(a2k1d_energyE))
-        Variable/G a2k1d_energyE = 0
-    endif
-
-    // kShift: output value = k_calc - kShift
-    NVAR/Z a2k1d_kShift = root:ARPES_LJZ:A2K1D:a2k1d_kShift
-    if (!NVAR_Exists(a2k1d_kShift))
-        Variable/G a2k1d_kShift = 0
-    endif
-
-    // LatticeConstant:
-    //   ==0 : output in A^-1
-    //   !=0 : output in pi/a
-    NVAR/Z a2k1d_LC = root:ARPES_LJZ:A2K1D:a2k1d_LC
-    if (!NVAR_Exists(a2k1d_LC))
-        Variable/G a2k1d_LC = 0
-    endif
+    // ---------------- unified geometry parameters ----------------
+    // Legacy variables are kept for compatibility only. Core A2K1D geometry
+    // reads ThetaAngle/hv/WorkFunc/EnergyRel/MDCKf/LatticeA/Pixel.
+    a2k1d_sync_unified_from_legacy_if_missing()
 
     // outN: IGNORED in this mode (point-to-point map)
     NVAR/Z a2k1d_outN = root:ARPES_LJZ:A2K1D:a2k1d_outN
@@ -563,12 +691,13 @@ Function a2k1d_btn_spec_run(ctrlName) : ButtonControl
     endif
 
     // 2. Get Parameters
-    NVAR a2k1d_thetaOffset= root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-    NVAR a2k1d_hv         = root:ARPES_LJZ:A2K1D:a2k1d_hv
-    NVAR a2k1d_workFunc   = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-    NVAR a2k1d_energyE    = root:ARPES_LJZ:A2K1D:a2k1d_energyE
-    NVAR a2k1d_kShift     = root:ARPES_LJZ:A2K1D:a2k1d_kShift
-    NVAR a2k1d_LC         = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    a2k1d_sync_unified_from_legacy_if_missing()
+    NVAR ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    NVAR hv = root:ARPES_LJZ:A2K1D:hv
+    NVAR WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    NVAR EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    NVAR MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
     SVAR a2k1d_baseName   = root:ARPES_LJZ:A2K1D:a2k1d_baseName
 
     // baseName: 默认用输入名（layer_show_i）
@@ -589,7 +718,7 @@ Function a2k1d_btn_spec_run(ctrlName) : ButtonControl
 
     // 5. Run (✅ 输出会 Duplicate/O 覆盖已有 *_k_spec)
     Variable rc
-    rc = LJZ_Spectra_Interp_Run(a2k1d_wavePath, useBaseName, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
+    rc = LJZ_Spectra_Interp_Run(a2k1d_wavePath, useBaseName, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA)
 
     SetDataFolder df0
 
@@ -621,13 +750,15 @@ Function a2k1d_btn_run(ctrlName) : ButtonControl
     endif
 
     // gather params
-    NVAR a2k1d_degPerPix  = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
-    NVAR a2k1d_thetaOffset= root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-    NVAR a2k1d_hv         = root:ARPES_LJZ:A2K1D:a2k1d_hv
-    NVAR a2k1d_workFunc   = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-    NVAR a2k1d_energyE    = root:ARPES_LJZ:A2K1D:a2k1d_energyE
-    NVAR a2k1d_kShift     = root:ARPES_LJZ:A2K1D:a2k1d_kShift
-    NVAR a2k1d_LC         = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    a2k1d_sync_unified_from_legacy_if_missing()
+    NVAR Pixel = root:ARPES_LJZ:A2K1D:Pixel
+    a2k1d_sync_unified_from_legacy_if_missing()
+    NVAR ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    NVAR hv = root:ARPES_LJZ:A2K1D:hv
+    NVAR WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    NVAR EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    NVAR MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
     NVAR a2k1d_outN       = root:ARPES_LJZ:A2K1D:a2k1d_outN
     SVAR a2k1d_baseName   = root:ARPES_LJZ:A2K1D:a2k1d_baseName
 
@@ -649,7 +780,7 @@ Function a2k1d_btn_run(ctrlName) : ButtonControl
 	SetDataFolder GetWavesDataFolder(src, 1)   // output next to src
 
     Variable rc
-    rc = LJZ_A2K1D_Run(a2k1d_wavePath, useBaseName, a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC, a2k1d_outN)
+    rc = LJZ_A2K1D_Run(a2k1d_wavePath, useBaseName, Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA, a2k1d_outN)
 
     SetDataFolder df0
 
@@ -688,11 +819,14 @@ Function a2k1d_btn_help(ctrlName) : ButtonControl
     Notebook $nb text="===========================\r"
     Notebook $nb text="Input: Wave where Y = Angle, X = Time/Step.\r"
     Notebook $nb text="Output: Wave where Y = Momentum (k), X = unchanged.\r\r"
-    Notebook $nb text="Formula:\r  k = 0.5118 * sqrt(Ek) * sin(Angle_Deg)\r"
-    Notebook $nb text="  Ek = hv + EnergyE - WorkFunc\r\r"
+    Notebook $nb text="Formula:\r  k = 0.5118 * sqrt(hv - WorkFunc + EnergyRel) * sin(rawAngle - ThetaAngle) - MDCKf\r"
+    Notebook $nb text="  If LatticeA != 0, k is reported in pi/a units by multiplying 0.5118 by LatticeA/pi.\r\r"
     Notebook $nb text="Angle Calculation:\r"
-    Notebook $nb text="  If DegPerPix = 0: Angle = Y_raw + ThetaOffset\r"
-    Notebook $nb text="  If DegPerPix != 0: Angle = Y_raw * DegPerPix + ThetaOffset\r\r"
+    Notebook $nb text="  Pixel=0 means raw values are already in degrees; otherwise rawAngle = rawValue * Pixel.\r"
+    Notebook $nb text="  EKin = hv - WorkFunc + EnergyRel.\r\r"
+    Notebook $nb text="Corrected workflow:\r"
+    Notebook $nb text="  MDCTrack dK_toRef is interpreted as dTheta_toRef by A2K1D; Make Corr Peaks/Layers stay in angle domain.\r"
+    Notebook $nb text="  thetaCorr = thetaCenter + scaleEff*(thetaRaw - thetaCenter) + dThetaEff, then Corr -> K uses the unified helper.\r\r"
     Notebook $nb text="Note: OutN is ignored in this mode.\r"
     return 0
 End
@@ -724,20 +858,20 @@ Window A2K1D_LJZ_P() : Panel
 	// --- Right: Physics params ---
 	TitleBox a2k1d_tp,pos={336,96},size={204,18},title="-- Physics --",frame=0
 
-	SetVariable a2k1d_sv_th,pos={336,116},size={98,19.80},title="ThetaOff"
-	SetVariable a2k1d_sv_th,limits={-360,360,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
+	SetVariable a2k1d_sv_th,pos={336,116},size={98,19.80},title="ThetaAngle"
+	SetVariable a2k1d_sv_th,limits={-360,360,0.01},value= root:ARPES_LJZ:A2K1D:ThetaAngle
 	SetVariable a2k1d_sv_hv,pos={438,116},size={102,19.80},title="hv(eV)"
-	SetVariable a2k1d_sv_hv,limits={0,1e+06,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_hv
+	SetVariable a2k1d_sv_hv,limits={0,1e+06,0.01},value= root:ARPES_LJZ:A2K1D:hv
 
 	SetVariable a2k1d_sv_wf,pos={336,140},size={98,19.80},title="WorkFunc"
-	SetVariable a2k1d_sv_wf,limits={0,100,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-	SetVariable a2k1d_sv_e,pos={438,140},size={102,19.80},title="EnergyE"
-	SetVariable a2k1d_sv_e,limits={-100000,100000,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_energyE
+	SetVariable a2k1d_sv_wf,limits={0,100,0.01},value= root:ARPES_LJZ:A2K1D:WorkFunc
+	SetVariable a2k1d_sv_e,pos={438,140},size={102,19.80},title="EnergyRel"
+	SetVariable a2k1d_sv_e,limits={-100000,100000,0.01},value= root:ARPES_LJZ:A2K1D:EnergyRel
 
-	SetVariable a2k1d_sv_ksh,pos={336,164},size={98,19.80},title="kShift"
-	SetVariable a2k1d_sv_ksh,limits={-100000,100000,0.0001},value= root:ARPES_LJZ:A2K1D:a2k1d_kShift
-	SetVariable a2k1d_sv_lc,pos={438,164},size={102,19.80},title="LC(a)"
-	SetVariable a2k1d_sv_lc,limits={0,1e+06,0.0001},value= root:ARPES_LJZ:A2K1D:a2k1d_LC
+	SetVariable a2k1d_sv_ksh,pos={336,164},size={98,19.80},title="MDCKf"
+	SetVariable a2k1d_sv_ksh,limits={-100000,100000,0.0001},value= root:ARPES_LJZ:A2K1D:MDCKf
+	SetVariable a2k1d_sv_lc,pos={438,164},size={102,19.80},title="LatticeA"
+	SetVariable a2k1d_sv_lc,limits={0,1e+06,0.0001},value= root:ARPES_LJZ:A2K1D:LatticeA
 
 	// --- Right: Single-wave ---
 	TitleBox a2k1d_tp_single,pos={336,192},size={204,18},title="-- Single wave --",frame=0
@@ -745,13 +879,14 @@ Window A2K1D_LJZ_P() : Panel
 	SetVariable a2k1d_sv_bn,pos={336,212},size={204,19.80},title="BaseName"
 	SetVariable a2k1d_sv_bn,value= root:ARPES_LJZ:A2K1D:a2k1d_baseName
 
-	SetVariable a2k1d_sv_deg,pos={336,236},size={98,19.80},title="DegPerPix"
-	SetVariable a2k1d_sv_deg,limits={-999,999,0.001},value= root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
-	SetVariable a2k1d_sv_n,pos={438,236},size={102,19.80},title="OutN"
+	SetVariable a2k1d_sv_deg,pos={336,236},size={98,19.80},title="Pixel"
+	SetVariable a2k1d_sv_deg,limits={-999,999,0.001},value= root:ARPES_LJZ:A2K1D:Pixel
+	SetVariable a2k1d_sv_n,pos={438,260},size={102,19.80},title="OutN"
 	SetVariable a2k1d_sv_n,limits={0,1e+07,1},value= root:ARPES_LJZ:A2K1D:a2k1d_outN
 
-	Button a2k1d_btn_run,pos={336,260},size={204,22},proc=a2k1d_btn_run,title="Run Value Trans (Y=Angle)"
-	Button a2k1d_btn_spec,pos={336,284},size={204,22},proc=a2k1d_btn_spec_run,title="Run Spectra (X=Angle->k Interp)"
+	TitleBox a2k1d_tb_pixel_note,pos={336,260},size={204,36},title="Pixel=0: raw is deg; else rawAngle=raw*Pixel",frame=0
+	Button a2k1d_btn_run,pos={336,284},size={204,22},proc=a2k1d_btn_run,title="Run Value Trans (Y=Angle)"
+	Button a2k1d_btn_spec,pos={336,308},size={204,22},proc=a2k1d_btn_spec_run,title="Run Spectra (X=Angle->k Interp)"
 
 	// --- Right: Batch ---
 	TitleBox a2k1d_tp_batch,pos={336,314},size={204,18},title="-- Batch --",frame=0
@@ -844,10 +979,10 @@ Function/S a2k1d_spec_k_output_name(baseName)
     return CleanupName(outName, 0)
 End
 
-Function LJZ_A2K1D_Run(srcPathStr, baseName, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN)
+Function LJZ_A2K1D_Run(srcPathStr, baseName, pixel, thetaAngle, hv, workFunc, energyRel, mdcKf, latticeA, outN)
     String srcPathStr
     String baseName
-    Variable degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN
+    Variable pixel, thetaAngle, hv, workFunc, energyRel, mdcKf, latticeA, outN
 
     Wave/Z src = $srcPathStr
     if (!WaveExists(src))
@@ -855,7 +990,6 @@ Function LJZ_A2K1D_Run(srcPathStr, baseName, degPerPix, thetaOffset, hv, workFun
         return -1
     endif
 
-    // -------- SAFETY CHECKS (same style as Spectra Interp) --------
     if (WaveType(src) == 0)
         Printf "A2K1D: Skipping '%s' (TEXT wave).\r", NameOfWave(src)
         return -1
@@ -868,61 +1002,49 @@ Function LJZ_A2K1D_Run(srcPathStr, baseName, degPerPix, thetaOffset, hv, workFun
         Printf "A2K1D: Skipping '%s' (insufficient points, N=%g).\r", NameOfWave(src), DimSize(src,0)
         return -1
     endif
-    // ------------------------------------------------------------
 
-    // --- output goes next to source wave ---
+    Variable ekin = a2k1d_EKin(hv, workFunc, energyRel)
+    if (numtype(ekin) != 0 || ekin <= 0)
+        DoAlert 0, "A2K1D: EKin = hv - WorkFunc + EnergyRel must be > 0."
+        return -1
+    endif
+
     String df0 = GetDataFolder(1)
     String outDF = GetWavesDataFolder(src, 1)
     if (strlen(outDF) == 0)
         outDF = "root:"
     endif
-
-    // 1) Calculate Kinetic Energy (do BEFORE SetDataFolder, so early return is clean)
-    Variable Ek = hv + energyE - workFunc
-    if (numtype(Ek) != 0 || Ek <= 0)
-        DoAlert 0, "A2K1D: Ek = hv + EnergyE - WorkFunc must be > 0."
-        return -1
-    endif
-
     SetDataFolder $outDF
 
-    Variable constantV = 0.5118
-    Variable unitFactor = 1
-    if (LC != 0)
-        unitFactor = LC / pi
-    endif
-
-    Variable A = constantV * sqrt(Ek) * unitFactor
-
-    // 2) Prepare Output Wave (clone src)
     String destName = a2k1d_value_k_output_name(baseName)
     Duplicate/O src, $destName
     Wave dest = $destName
 
-    // 3) Transform
-    Variable scale = (degPerPix == 0) ? 1 : degPerPix
-    dest = A * sin( (src * scale + thetaOffset) * pi/180 ) - kShift
+    dest = a2k1d_AngleToK_Unified(a2k1d_RawValueToAngle(src, pixel), hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA)
 
-    // 4) Units
-    if (LC == 0)
+    if (latticeA == 0)
         SetScale d, 0, 0, "Å\\S-1", dest
     else
         SetScale d, 0, 0, "pi/a", dest
     endif
 
-    // 5) Note
+    Variable scale = (pixel == 0) ? 1 : pixel
     Note/K dest
     String noteStr = ""
-    noteStr += "A2K1D Value Transform (LJZ)\r"
+    noteStr += "A2K1D Value Transform (LJZ unified geometry)\r"
     noteStr += "srcPath=" + srcPathStr + "\r"
-    noteStr += "degPerPix (Multiplier)=" + num2str(scale) + "\r"
-    noteStr += "thetaOffset=" + num2str(thetaOffset) + "\r"
+    noteStr += "Pixel=" + num2str(pixel) + "\r"
+    noteStr += "scale=" + num2str(scale) + "\r"
+    noteStr += "ThetaAngle=" + num2str(thetaAngle) + "\r"
     noteStr += "hv=" + num2str(hv) + "\r"
-    noteStr += "Ek=" + num2str(Ek) + "\r"
-    noteStr += "kShift=" + num2str(kShift) + "\r"
+    noteStr += "WorkFunc=" + num2str(workFunc) + "\r"
+    noteStr += "EnergyRel=" + num2str(energyRel) + "\r"
+    noteStr += "MDCKf=" + num2str(mdcKf) + "\r"
+    noteStr += "LatticeA=" + num2str(latticeA) + "\r"
+    noteStr += "EKin=" + num2str(ekin) + "\r"
+    noteStr += "formulaVersion=A2K1D_unified_with_EKKMap_v1\r"
     Note dest, noteStr
 
-    // 6) Show optional
     NVAR/Z showGraph = root:ARPES_LJZ:A2K1D:a2k1d_showGraph
     Variable doGraph = 1
     if (NVAR_Exists(showGraph))
@@ -936,21 +1058,15 @@ Function LJZ_A2K1D_Run(srcPathStr, baseName, degPerPix, thetaOffset, hv, workFun
         ModifyGraph/W=$gname mode=0
     endif
 
-    Printf "A2K1D Transformed: %s -> %s (Ek=%.2f)\r", NameOfWave(src), destName, Ek
+    Printf "A2K1D Transformed: %s -> %s (EKin=%.2f)\r", NameOfWave(src), destName, ekin
     SetDataFolder df0
     return 0
 End
 
-
-//============================================================
-// Sigma transform (error propagation)
-// Given: peakAngleWave (angleRaw) and sigmaAngleWave (sigma in same raw units)
-// Output: sigma_k wave (same X as sigma wave), named baseName+"_k"
-//============================================================
-Function LJZ_A2K1D_Run_Sigma(peakPathStr, sigmaPathStr, baseName, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC)
+Function LJZ_A2K1D_Run_Sigma(peakPathStr, sigmaPathStr, baseName, pixel, thetaAngle, hv, workFunc, energyRel, mdcKf, latticeA)
     String peakPathStr, sigmaPathStr
     String baseName
-    Variable degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC
+    Variable pixel, thetaAngle, hv, workFunc, energyRel, mdcKf, latticeA
 
     Wave/Z wPeak = $peakPathStr
     Wave/Z wSig  = $sigmaPathStr
@@ -959,7 +1075,6 @@ Function LJZ_A2K1D_Run_Sigma(peakPathStr, sigmaPathStr, baseName, degPerPix, the
         return -1
     endif
 
-    // numeric + 1D
     if (WaveType(wPeak)==0 || WaveType(wSig)==0)
         Printf "A2K1D Sigma: peak/sigma must be numeric waves.\r"
         return -1
@@ -973,7 +1088,12 @@ Function LJZ_A2K1D_Run_Sigma(peakPathStr, sigmaPathStr, baseName, degPerPix, the
         return -1
     endif
 
-    // output next to sigma wave (or peak wave; choose sigma as anchor)
+    Variable ekin = a2k1d_EKin(hv, workFunc, energyRel)
+    if (numtype(ekin)!=0 || ekin<=0)
+        Printf "A2K1D Sigma: EKin must be >0.\r"
+        return -1
+    endif
+
     String df0 = GetDataFolder(1)
     String outDF = GetWavesDataFolder(wSig, 1)
     if (strlen(outDF)==0)
@@ -981,93 +1101,48 @@ Function LJZ_A2K1D_Run_Sigma(peakPathStr, sigmaPathStr, baseName, degPerPix, the
     endif
     SetDataFolder $outDF
 
-    Variable Ek = hv + energyE - workFunc
-    if (numtype(Ek)!=0 || Ek<=0)
-        Printf "A2K1D Sigma: Ek must be >0.\r"
-        SetDataFolder df0
-        return -1
-    endif
-
-    Variable constantV = 0.5118
-    Variable unitFactor = 1
-    if (LC != 0)
-        unitFactor = LC / pi
-    endif
-    Variable A = constantV * sqrt(Ek) * unitFactor
-
-    // IMPORTANT: derivative uses scale
-    Variable scale = (degPerPix == 0) ? 1 : degPerPix
-    Variable dth_draw = scale * pi/180.0
-
     String destName = a2k1d_value_k_output_name(baseName)
     Duplicate/O wSig, $destName
     Wave dest = $destName
 
-    // theta(rad) = (peakRaw*scale + thetaOffset) * pi/180
-    // sigma_k = |A*cos(theta)*dtheta/draw| * sigma_raw
-    dest = abs( A * cos( (wPeak * scale + thetaOffset) * pi/180.0 ) * dth_draw ) * wSig
+    dest = a2k1d_SigmaAngleToK_Unified(a2k1d_RawValueToAngle(wPeak, pixel), wSig, pixel, hv, workFunc, energyRel, thetaAngle, latticeA)
 
-    // units
-    if (LC == 0)
+    if (latticeA == 0)
         SetScale d, 0, 0, "Å\\S-1", dest
     else
         SetScale d, 0, 0, "pi/a", dest
     endif
 
+    Variable scale = (pixel == 0) ? 1 : pixel
     Note/K dest
     String noteStr=""
-    noteStr += "A2K1D Sigma Transform (LJZ)\r"
+    noteStr += "A2K1D Sigma Transform (LJZ unified geometry)\r"
     noteStr += "peak=" + peakPathStr + "\r"
     noteStr += "sigma=" + sigmaPathStr + "\r"
+    noteStr += "Pixel=" + num2str(pixel) + "\r"
     noteStr += "scale=" + num2str(scale) + "\r"
-    noteStr += "thetaOffset=" + num2str(thetaOffset) + "\r"
-    noteStr += "Ek=" + num2str(Ek) + "\r"
+    noteStr += "ThetaAngle=" + num2str(thetaAngle) + "\r"
+    noteStr += "hv=" + num2str(hv) + "\r"
+    noteStr += "WorkFunc=" + num2str(workFunc) + "\r"
+    noteStr += "EnergyRel=" + num2str(energyRel) + "\r"
+    noteStr += "MDCKf=" + num2str(mdcKf) + "\r"
+    noteStr += "LatticeA=" + num2str(latticeA) + "\r"
+    noteStr += "EKin=" + num2str(ekin) + "\r"
+    noteStr += "formulaVersion=A2K1D_unified_with_EKKMap_v1\r"
     Note dest, noteStr
 
     SetDataFolder df0
     return 0
 End
 
-Static Function a2k1d_angle_to_k(angle, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC)
-    Variable angle, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC
-
-    Variable Ek = hv + energyE - workFunc
-    if (numtype(Ek) != 0 || Ek <= 0)
-        return NaN
-    endif
-
-    Variable scale = (degPerPix == 0) ? 1 : degPerPix
-    Variable constantV = 0.5118
-    Variable unitFactor = 1
-    if (LC != 0)
-        unitFactor = LC / pi
-    endif
-
-    Variable A = constantV * sqrt(Ek) * unitFactor
-    return A * sin((angle * scale + thetaOffset) * pi / 180) - kShift
+Static Function a2k1d_angle_to_k(rawValue, pixel, thetaAngle, hv, workFunc, energyRel, mdcKf, latticeA)
+    Variable rawValue, pixel, thetaAngle, hv, workFunc, energyRel, mdcKf, latticeA
+    return a2k1d_AngleToK_Unified(a2k1d_RawValueToAngle(rawValue, pixel), hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA)
 End
 
-Static Function a2k1d_sigma_angle_to_k(angle, sigma_angle, degPerPix, thetaOffset, hv, workFunc, energyE, LC)
-    Variable angle, sigma_angle, degPerPix, thetaOffset, hv, workFunc, energyE, LC
-
-    if (numtype(sigma_angle) != 0 || sigma_angle < 0)
-        return NaN
-    endif
-
-    Variable Ek = hv + energyE - workFunc
-    if (numtype(Ek) != 0 || Ek <= 0)
-        return NaN
-    endif
-
-    Variable scale = (degPerPix == 0) ? 1 : degPerPix
-    Variable constantV = 0.5118
-    Variable unitFactor = 1
-    if (LC != 0)
-        unitFactor = LC / pi
-    endif
-
-    Variable A = constantV * sqrt(Ek) * unitFactor
-    return abs(A * cos((angle * scale + thetaOffset) * pi / 180) * scale * pi / 180) * sigma_angle
+Static Function a2k1d_sigma_angle_to_k(rawValue, sigmaRaw, pixel, thetaAngle, hv, workFunc, energyRel, latticeA)
+    Variable rawValue, sigmaRaw, pixel, thetaAngle, hv, workFunc, energyRel, latticeA
+    return a2k1d_SigmaAngleToK_Unified(a2k1d_RawValueToAngle(rawValue, pixel), sigmaRaw, pixel, hv, workFunc, energyRel, thetaAngle, latticeA)
 End
 
 Function LJZ_A2K1D_TransformLongTable(fitHPDF)
@@ -1101,22 +1176,23 @@ Function LJZ_A2K1D_TransformLongTable(fitHPDF)
     Wave/Z wSigmaAngle = $(fdf + "Long_SigmaAngle")
     Variable hasSigmaAngle = WaveExists(wSigmaAngle)
 
-    NVAR/Z degPerPix = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
-    NVAR/Z thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-    NVAR/Z hv = root:ARPES_LJZ:A2K1D:a2k1d_hv
-    NVAR/Z workFunc = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-    NVAR/Z energyE = root:ARPES_LJZ:A2K1D:a2k1d_energyE
-    NVAR/Z kShift = root:ARPES_LJZ:A2K1D:a2k1d_kShift
-    NVAR/Z LC = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    a2k1d_sync_unified_from_legacy_if_missing()
+    NVAR/Z Pixel = root:ARPES_LJZ:A2K1D:Pixel
+    NVAR/Z ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    NVAR/Z hv = root:ARPES_LJZ:A2K1D:hv
+    NVAR/Z WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    NVAR/Z EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    NVAR/Z MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    NVAR/Z LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
 
-    if (!NVAR_Exists(degPerPix) || !NVAR_Exists(thetaOffset) || !NVAR_Exists(hv) || !NVAR_Exists(workFunc) || !NVAR_Exists(energyE) || !NVAR_Exists(kShift) || !NVAR_Exists(LC))
-        DoAlert 0, "A2K1D LongTable: required ATKT panel parameters are missing."
+    if (!NVAR_Exists(Pixel) || !NVAR_Exists(ThetaAngle) || !NVAR_Exists(hv) || !NVAR_Exists(WorkFunc) || !NVAR_Exists(EnergyRel) || !NVAR_Exists(MDCKf) || !NVAR_Exists(LatticeA))
+        DoAlert 0, "A2K1D LongTable: required unified geometry parameters are missing."
         return -1
     endif
 
-    Variable Ek = hv + energyE - workFunc
-    if (numtype(Ek) != 0 || Ek <= 0)
-        DoAlert 0, "A2K1D LongTable: Ek = hv + EnergyE - WorkFunc must be > 0."
+    Variable EKin = a2k1d_EKin(hv, WorkFunc, EnergyRel)
+    if (numtype(EKin) != 0 || EKin <= 0)
+        DoAlert 0, "A2K1D LongTable: EKin = hv - WorkFunc + EnergyRel must be > 0."
         return -1
     endif
 
@@ -1124,7 +1200,7 @@ Function LJZ_A2K1D_TransformLongTable(fitHPDF)
     Variable converted = 0
     Variable skipped = 0
     Variable failed = 0
-    Variable scale = (degPerPix == 0) ? 1 : degPerPix
+    Variable scale = (Pixel == 0) ? 1 : Pixel
 
     for (i = 0; i < nRows; i += 1)
         angleV = wAngle[i]
@@ -1135,7 +1211,7 @@ Function LJZ_A2K1D_TransformLongTable(fitHPDF)
             continue
         endif
 
-        kV = a2k1d_angle_to_k(angleV, degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC)
+        kV = a2k1d_angle_to_k(angleV, Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA)
         if (numtype(kV) != 0)
             wK[i] = NaN
             wSigmaK[i] = NaN
@@ -1147,7 +1223,7 @@ Function LJZ_A2K1D_TransformLongTable(fitHPDF)
         converted += 1
 
         if (hasSigmaAngle)
-            sigmaV = a2k1d_sigma_angle_to_k(angleV, wSigmaAngle[i], degPerPix, thetaOffset, hv, workFunc, energyE, LC)
+            sigmaV = a2k1d_sigma_angle_to_k(angleV, wSigmaAngle[i], Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, LatticeA)
             wSigmaK[i] = sigmaV
         else
             wSigmaK[i] = NaN
@@ -1157,31 +1233,31 @@ Function LJZ_A2K1D_TransformLongTable(fitHPDF)
     Note/K wK
     String noteK = ""
     noteK += "A2K1D LongTable PeakAngle->PeakK\r"
-    noteK += "degPerPix=" + num2str(degPerPix) + "\r"
+    noteK += "Pixel=" + num2str(Pixel) + "\r"
     noteK += "scale=" + num2str(scale) + "\r"
-    noteK += "thetaOffset=" + num2str(thetaOffset) + "\r"
+    noteK += "ThetaAngle=" + num2str(ThetaAngle) + "\r"
     noteK += "hv=" + num2str(hv) + "\r"
-    noteK += "workFunc=" + num2str(workFunc) + "\r"
-    noteK += "energyE=" + num2str(energyE) + "\r"
-    noteK += "kShift=" + num2str(kShift) + "\r"
-    noteK += "LC=" + num2str(LC) + "\r"
-    noteK += "Ek=" + num2str(Ek) + "\r"
-    noteK += "formulaVersion=LJZ_A2K1D_Run_equivalent_v1\r"
+    noteK += "WorkFunc=" + num2str(WorkFunc) + "\r"
+    noteK += "EnergyRel=" + num2str(EnergyRel) + "\r"
+    noteK += "MDCKf=" + num2str(MDCKf) + "\r"
+    noteK += "LatticeA=" + num2str(LatticeA) + "\r"
+    noteK += "EKin=" + num2str(EKin) + "\r"
+    noteK += "formulaVersion=A2K1D_unified_with_EKKMap_v1\r"
     Note wK, noteK
 
     Note/K wSigmaK
     String noteSigma = ""
     noteSigma += "A2K1D LongTable SigmaAngle->SigmaK\r"
-    noteSigma += "degPerPix=" + num2str(degPerPix) + "\r"
+    noteSigma += "Pixel=" + num2str(Pixel) + "\r"
     noteSigma += "scale=" + num2str(scale) + "\r"
-    noteSigma += "thetaOffset=" + num2str(thetaOffset) + "\r"
+    noteSigma += "ThetaAngle=" + num2str(ThetaAngle) + "\r"
     noteSigma += "hv=" + num2str(hv) + "\r"
-    noteSigma += "workFunc=" + num2str(workFunc) + "\r"
-    noteSigma += "energyE=" + num2str(energyE) + "\r"
-    noteSigma += "kShift=" + num2str(kShift) + "\r"
-    noteSigma += "LC=" + num2str(LC) + "\r"
-    noteSigma += "Ek=" + num2str(Ek) + "\r"
-    noteSigma += "formulaVersion=LJZ_A2K1D_RunSigma_equivalent_v1\r"
+    noteSigma += "WorkFunc=" + num2str(WorkFunc) + "\r"
+    noteSigma += "EnergyRel=" + num2str(EnergyRel) + "\r"
+    noteSigma += "MDCKf=" + num2str(MDCKf) + "\r"
+    noteSigma += "LatticeA=" + num2str(LatticeA) + "\r"
+    noteSigma += "EKin=" + num2str(EKin) + "\r"
+    noteSigma += "formulaVersion=A2K1D_unified_with_EKKMap_v1\r"
     Note wSigmaK, noteSigma
 
     Variable syncRc = LJZ_A2K1D_SyncAllTableFromLong(fdf)
@@ -1304,38 +1380,35 @@ End
 // Input: Wave where X = Angle, Y = Intensity
 // Output: Wave where X = k (Linear), Y = Intensity (Interpolated)
 //============================================================
-Function LJZ_Spectra_Interp_Run(srcPathStr, baseName, thetaOffset, hv, workFunc, energyE, kShift, LC)
+Function LJZ_Spectra_Interp_Run(srcPathStr, baseName, thetaAngle, hv, workFunc, energyRel, mdcKf, latticeA)
     String srcPathStr, baseName
-    Variable thetaOffset, hv, workFunc, energyE, kShift, LC
+    Variable thetaAngle, hv, workFunc, energyRel, mdcKf, latticeA
 
     Wave/Z src = $srcPathStr
     if (!WaveExists(src))
         DoAlert 0, "A2K1D: src wave not found: " + srcPathStr
         return -1
     endif
-    
-    // --- SAFETY CHECKS (CORRECTED) ---
-    // 1. Check if wave is Text. 
-    // In Igor, WaveType returns 0 for Text, non-zero for Numeric.
+
     if (WaveType(src) == 0)
         Printf "Skipping '%s': It is a TEXT wave.\r", NameOfWave(src)
         return -1
     endif
-    
-    // 2. Check Dimensions (Must be 1D)
     if (WaveDims(src) != 1)
         Printf "Skipping '%s': It is not a 1D wave (Dims=%g).\r", NameOfWave(src), WaveDims(src)
         return -1
     endif
-    
-    // 3. Check Points (Must not be empty)
     if (DimSize(src, 0) <= 1)
         Printf "Skipping '%s': Wave has insufficient points (N=%g).\r", NameOfWave(src), DimSize(src, 0)
         return -1
     endif
-    // ---------------------------------------------
 
-    // --- output goes next to source wave ---
+    Variable EKin = a2k1d_EKin(hv, workFunc, energyRel)
+    if (numtype(EKin) != 0 || EKin <= 0)
+        Printf "Error for '%s': EKin (%.2f) must be > 0. Check hv, WorkFunc, EnergyRel.\r", NameOfWave(src), EKin
+        return -1
+    endif
+
     String df0 = GetDataFolder(1)
     String outDF = GetWavesDataFolder(src, 1)
     if (strlen(outDF) == 0)
@@ -1343,90 +1416,64 @@ Function LJZ_Spectra_Interp_Run(srcPathStr, baseName, thetaOffset, hv, workFunc,
     endif
     SetDataFolder $outDF
 
-    // 1. Calculate Kinetic Energy & Constants
-    Variable Ek = hv + energyE - workFunc
-    if (numtype(Ek) != 0 || Ek <= 0)
-        SetDataFolder df0
-        Printf "Error for '%s': Ek (%.2f) must be > 0. Check hv, WorkFunc, EnergyE.\r", NameOfWave(src), Ek
-        return -1
-    endif
-
-    Variable constantV = 0.5118
-    Variable unitFactor = 1 // Default A^-1
     String unitStr = "A\\S-1"
-    
-    if (LC != 0)
-        unitFactor = LC / pi
+    if (latticeA != 0)
         unitStr = "pi/a"
     endif
 
-    // Pre-factor for k = C * sin(theta)
-    Variable C = constantV * sqrt(Ek) * unitFactor
-
-    // 2. Determine K-Range from Source Angle Range
     Variable thetaMin = LeftX(src)
     Variable thetaMax = RightX(src)
-    
-    // Convert edges to k
-    Variable k_start = C * sin((thetaMin + thetaOffset) * pi/180) - kShift
-    Variable k_end   = C * sin((thetaMax + thetaOffset) * pi/180) - kShift
-//   Printf "DBG %s | thetaMin=%.6g thetaMax=%.6g thetaOffset=%.6g\r", NameOfWave(src), thetaMin, thetaMax, thetaOffset
-//Printf "DBG hv=%.6g workFunc=%.6g energyE=%.6g => Ek=%.6g\r", hv, workFunc, energyE, Ek
-//Printf "DBG LC=%.6g unitFactor=%.6g C=%.6g\r", LC, unitFactor, C
-//Printf "DBG k_start=%.9g k_end=%.9g (span=%.9g)\r", k_start, k_end, abs(k_end-k_start)
+    Variable k_start = a2k1d_AngleToK_Unified(thetaMin, hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA)
+    Variable k_end   = a2k1d_AngleToK_Unified(thetaMax, hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA)
  
-    if (abs(k_start - k_end) < 1e-9)
+    if (numtype(k_start) != 0 || numtype(k_end) != 0 || abs(k_start - k_end) < 1e-9)
         SetDataFolder df0
-        Printf "Error for '%s': Calculated k-range is near zero. Check input scaling.\r", NameOfWave(src)
+        Printf "Error for '%s': Calculated k-range is invalid or near zero. Check input scaling.\r", NameOfWave(src)
         return -1
     endif
 
-    // 3. Create Destination Wave (Linear k grid)
-    Variable nPoints = DimSize(src, 0)
     String destName = a2k1d_spec_k_output_name(baseName)
-    
     Duplicate/O src, $destName
     Wave dest = $destName
-    
+
     Variable kLo = min(k_start, k_end)
-	Variable kHi = max(k_start, k_end)
-	SetScale/I x, kLo, kHi, unitStr, dest
+    Variable kHi = max(k_start, k_end)
+    SetScale/I x, kLo, kHi, unitStr, dest
 
-// 4. Interpolation Logic  (with angle clamp)
-// 注意：LeftX/RightX 可能出现反向刻度，因此用 min/max 构造角度合法域
-Variable angLo = min(LeftX(src), RightX(src))
-Variable angHi = max(LeftX(src), RightX(src))
+    Variable angLo = min(LeftX(src), RightX(src))
+    Variable angHi = max(LeftX(src), RightX(src))
+    dest = src(a2k1d_clamp(a2k1d_KToAngle_Unified(x, hv, workFunc, energyRel, thetaAngle, mdcKf, latticeA), angLo, angHi))
 
-// 反解得到 angle（deg），再 clamp 到 [angLo, angHi]，避免外推/NaN
-dest = src( a2k1d_clamp( (asin( max(-1, min(1, (x + kShift)/C )) ) * 180 / pi) - thetaOffset, angLo, angHi ) )
-
-    // 5. Clean up units and notes
     SetScale d, 0, 0, WaveUnits(src, -1), dest 
-    
+
     Note/K dest
     String noteStr = ""
-    noteStr += "A2K1D Spectra Interpolation (LJZ)\r"
+    noteStr += "A2K1D Spectra Interpolation (LJZ unified geometry)\r"
     noteStr += "Method: Linear k-grid generation -> Inverse Angle Mapping -> Interpolation\r"
     noteStr += "Source=" + srcPathStr + "\r"
-    noteStr += "ThetaOffset=" + num2str(thetaOffset) + "\r"
-    noteStr += "Ek=" + num2str(Ek) + "\r"
+    noteStr += "ThetaAngle=" + num2str(thetaAngle) + "\r"
+    noteStr += "hv=" + num2str(hv) + "\r"
+    noteStr += "WorkFunc=" + num2str(workFunc) + "\r"
+    noteStr += "EnergyRel=" + num2str(energyRel) + "\r"
+    noteStr += "MDCKf=" + num2str(mdcKf) + "\r"
+    noteStr += "LatticeA=" + num2str(latticeA) + "\r"
+    noteStr += "EKin=" + num2str(EKin) + "\r"
     noteStr += "k_range=" + num2str(kLo) + " to " + num2str(kHi) + "\r"
+    noteStr += "formulaVersion=A2K1D_unified_with_EKKMap_v1\r"
     Note dest, noteStr
 
-    // 6. Display (single fixed window; optional)
     NVAR/Z showGraph = root:ARPES_LJZ:A2K1D:a2k1d_showGraph
     Variable doGraph = 1
     if (NVAR_Exists(showGraph))
         doGraph = showGraph
     endif
 
-if (doGraph)
-    String gname = "A2K1D_Check_Spec"
-    DoWindow/K $gname
-    Display/K=1/N=$gname dest
-    ModifyGraph/W=$gname mode=0
-endif
-
+    if (doGraph)
+        String gname = "A2K1D_Check_Spec"
+        DoWindow/K $gname
+        Display/K=1/N=$gname dest
+        ModifyGraph/W=$gname mode=0
+    endif
 
     Printf "A2K1D Spectra: %s converted to k-space.\r", destName
 
@@ -1603,15 +1650,16 @@ End
 Function a2k1d_btn_batch_layers_interp(ctrlName) : ButtonControl
     String ctrlName
 
+    a2k1d_sync_unified_from_legacy_if_missing()
     SVAR a2k1d_baseDF      = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
     NVAR a2k1d_recursive   = root:ARPES_LJZ:A2K1D:a2k1d_recursive
 
-    NVAR a2k1d_thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-    NVAR a2k1d_hv          = root:ARPES_LJZ:A2K1D:a2k1d_hv
-    NVAR a2k1d_workFunc    = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-    NVAR a2k1d_energyE     = root:ARPES_LJZ:A2K1D:a2k1d_energyE
-    NVAR a2k1d_kShift      = root:ARPES_LJZ:A2K1D:a2k1d_kShift
-    NVAR a2k1d_LC          = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    NVAR ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    NVAR hv = root:ARPES_LJZ:A2K1D:hv
+    NVAR WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    NVAR EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    NVAR MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
 
     NVAR a2k1d_abortFlag   = root:ARPES_LJZ:A2K1D:a2k1d_abortFlag
     NVAR a2k1d_showGraph   = root:ARPES_LJZ:A2K1D:a2k1d_showGraph
@@ -1660,7 +1708,7 @@ Function a2k1d_btn_batch_layers_interp(ctrlName) : ButtonControl
         endif
 
         // 输出 baseName = 原始名（或你也可以用 a2k1d_baseName，但这里按 raw 名更稳）
-        Variable rc = LJZ_Spectra_Interp_Run(wp, wn, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
+        Variable rc = LJZ_Spectra_Interp_Run(wp, wn, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA)
         if (rc == 0)
             ok += 1
         else
@@ -1697,13 +1745,14 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
     SVAR a2k1d_baseDF      = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
     NVAR a2k1d_recursive   = root:ARPES_LJZ:A2K1D:a2k1d_recursive
 
-    NVAR a2k1d_degPerPix   = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
-    NVAR a2k1d_thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-    NVAR a2k1d_hv          = root:ARPES_LJZ:A2K1D:a2k1d_hv
-    NVAR a2k1d_workFunc    = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-    NVAR a2k1d_energyE     = root:ARPES_LJZ:A2K1D:a2k1d_energyE
-    NVAR a2k1d_kShift      = root:ARPES_LJZ:A2K1D:a2k1d_kShift
-    NVAR a2k1d_LC          = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    a2k1d_sync_unified_from_legacy_if_missing()
+    NVAR Pixel = root:ARPES_LJZ:A2K1D:Pixel
+    NVAR ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    NVAR hv = root:ARPES_LJZ:A2K1D:hv
+    NVAR WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    NVAR EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    NVAR MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
     NVAR a2k1d_outN        = root:ARPES_LJZ:A2K1D:a2k1d_outN
 
     NVAR a2k1d_abortFlag   = root:ARPES_LJZ:A2K1D:a2k1d_abortFlag
@@ -1776,7 +1825,7 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
             continue
         endif
 
-        Variable rc = LJZ_A2K1D_Run(wp, wn, a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC, a2k1d_outN)
+        Variable rc = LJZ_A2K1D_Run(wp, wn, Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA, a2k1d_outN)
         if (rc == 0)
             okP += 1
         else
@@ -1810,7 +1859,7 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
         String s1Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Sigmap1K")
         if (strlen(p1Raw) > 0 && strlen(s1Raw) > 0)
             Wave/Z wS1RawName = $s1Raw
-            Variable rc1 = LJZ_A2K1D_Run_Sigma(p1Raw, s1Raw, NameOfWave(wS1RawName), a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
+            Variable rc1 = LJZ_A2K1D_Run_Sigma(p1Raw, s1Raw, NameOfWave(wS1RawName), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA)
             if (rc1 == 0)
                 okS += 1
             else
@@ -1825,7 +1874,7 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
         String s2Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Sigmap2K")
         if (strlen(p2Raw) > 0 && strlen(s2Raw) > 0)
             Wave/Z wS2RawName = $s2Raw
-            Variable rc2 = LJZ_A2K1D_Run_Sigma(p2Raw, s2Raw, NameOfWave(wS2RawName), a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
+            Variable rc2 = LJZ_A2K1D_Run_Sigma(p2Raw, s2Raw, NameOfWave(wS2RawName), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA)
             if (rc2 == 0)
                 okS += 1
             else
@@ -1840,7 +1889,7 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
         String s3Raw = a2k1d_find_wave_tail_in_df_ci(fdf, "Sigmap3K")
         if (strlen(p3Raw) > 0 && strlen(s3Raw) > 0)
             Wave/Z wS3RawName = $s3Raw
-            Variable rc3 = LJZ_A2K1D_Run_Sigma(p3Raw, s3Raw, NameOfWave(wS3RawName), a2k1d_degPerPix, a2k1d_thetaOffset, a2k1d_hv, a2k1d_workFunc, a2k1d_energyE, a2k1d_kShift, a2k1d_LC)
+            Variable rc3 = LJZ_A2K1D_Run_Sigma(p3Raw, s3Raw, NameOfWave(wS3RawName), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA)
             if (rc3 == 0)
                 okS += 1
             else
@@ -2261,7 +2310,8 @@ Function a2k1d_btn_plot_peaks_err(ctrlName) : ButtonControl
     NVAR a2k1d_recursive = root:ARPES_LJZ:A2K1D:a2k1d_recursive
     NVAR a2k1d_hmUnitMode = root:ARPES_LJZ:A2K1D:a2k1d_hmUnitMode
     SVAR a2k1d_baseName  = root:ARPES_LJZ:A2K1D:a2k1d_baseName
-    NVAR a2k1d_LC        = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    a2k1d_sync_unified_from_legacy_if_missing()
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
     NVAR useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
 
     String base = a2k1d_df_with_colon(a2k1d_baseDF)
@@ -2369,7 +2419,7 @@ Function a2k1d_btn_plot_peaks_err(ctrlName) : ButtonControl
 
     ModifyGraph/W=$wname mirror=2
 
-    if (a2k1d_LC == 0)
+    if (LatticeA == 0)
         Label/W=$wname left, "k (Å\\S-1\\M)"
     else
         Label/W=$wname left, "k (π/a)"
@@ -3054,13 +3104,14 @@ Function a2k1d_batch_corr_peaks_to_k(baseDF, recursive)
         return -1
     endif
 
-    NVAR degPerPix   = root:ARPES_LJZ:A2K1D:a2k1d_degPerPix
-    NVAR thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-    NVAR hv          = root:ARPES_LJZ:A2K1D:a2k1d_hv
-    NVAR workFunc    = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-    NVAR energyE     = root:ARPES_LJZ:A2K1D:a2k1d_energyE
-    NVAR kShift      = root:ARPES_LJZ:A2K1D:a2k1d_kShift
-    NVAR LC          = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    a2k1d_sync_unified_from_legacy_if_missing()
+    NVAR Pixel = root:ARPES_LJZ:A2K1D:Pixel
+    NVAR ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    NVAR hv = root:ARPES_LJZ:A2K1D:hv
+    NVAR WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    NVAR EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    NVAR MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
     NVAR outN        = root:ARPES_LJZ:A2K1D:a2k1d_outN
 
     String p1 = a2k1d_find_wave_by_tail_ci(base, recursive, "Peak1K_corr")
@@ -3084,7 +3135,7 @@ Function a2k1d_batch_corr_peaks_to_k(baseDF, recursive)
 
     if (strlen(p1) > 0)
         Wave/Z wP1 = $p1
-        if (WaveExists(wP1) && LJZ_A2K1D_Run(p1, NameOfWave(wP1), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN) == 0)
+        if (WaveExists(wP1) && LJZ_A2K1D_Run(p1, NameOfWave(wP1), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA, outN) == 0)
             okP += 1
         else
             failP += 1
@@ -3095,7 +3146,7 @@ Function a2k1d_batch_corr_peaks_to_k(baseDF, recursive)
 
     if (strlen(p2) > 0)
         Wave/Z wP2 = $p2
-        if (WaveExists(wP2) && LJZ_A2K1D_Run(p2, NameOfWave(wP2), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN) == 0)
+        if (WaveExists(wP2) && LJZ_A2K1D_Run(p2, NameOfWave(wP2), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA, outN) == 0)
             okP += 1
         else
             failP += 1
@@ -3106,7 +3157,7 @@ Function a2k1d_batch_corr_peaks_to_k(baseDF, recursive)
 
     if (strlen(p3) > 0)
         Wave/Z wP3 = $p3
-        if (WaveExists(wP3) && LJZ_A2K1D_Run(p3, NameOfWave(wP3), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC, outN) == 0)
+        if (WaveExists(wP3) && LJZ_A2K1D_Run(p3, NameOfWave(wP3), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA, outN) == 0)
             okP += 1
         else
             failP += 1
@@ -3117,7 +3168,7 @@ Function a2k1d_batch_corr_peaks_to_k(baseDF, recursive)
 
     if (strlen(p1) > 0 && strlen(s1) > 0)
         Wave/Z wS1 = $s1
-        if (WaveExists(wS1) && LJZ_A2K1D_Run_Sigma(p1, s1, NameOfWave(wS1), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC) == 0)
+        if (WaveExists(wS1) && LJZ_A2K1D_Run_Sigma(p1, s1, NameOfWave(wS1), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA) == 0)
             okS += 1
         else
             failS += 1
@@ -3128,7 +3179,7 @@ Function a2k1d_batch_corr_peaks_to_k(baseDF, recursive)
 
     if (strlen(p2) > 0 && strlen(s2) > 0)
         Wave/Z wS2 = $s2
-        if (WaveExists(wS2) && LJZ_A2K1D_Run_Sigma(p2, s2, NameOfWave(wS2), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC) == 0)
+        if (WaveExists(wS2) && LJZ_A2K1D_Run_Sigma(p2, s2, NameOfWave(wS2), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA) == 0)
             okS += 1
         else
             failS += 1
@@ -3139,7 +3190,7 @@ Function a2k1d_batch_corr_peaks_to_k(baseDF, recursive)
 
     if (strlen(p3) > 0 && strlen(s3) > 0)
         Wave/Z wS3 = $s3
-        if (WaveExists(wS3) && LJZ_A2K1D_Run_Sigma(p3, s3, NameOfWave(wS3), degPerPix, thetaOffset, hv, workFunc, energyE, kShift, LC) == 0)
+        if (WaveExists(wS3) && LJZ_A2K1D_Run_Sigma(p3, s3, NameOfWave(wS3), Pixel, ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA) == 0)
             okS += 1
         else
             failS += 1
@@ -3261,12 +3312,12 @@ Function a2k1d_batch_corr_layers_to_k(baseDF, recursive, corrRunDF)
         return -1
     endif
 
-    NVAR thetaOffset = root:ARPES_LJZ:A2K1D:a2k1d_thetaOffset
-    NVAR hv          = root:ARPES_LJZ:A2K1D:a2k1d_hv
-    NVAR workFunc    = root:ARPES_LJZ:A2K1D:a2k1d_workFunc
-    NVAR energyE     = root:ARPES_LJZ:A2K1D:a2k1d_energyE
-    NVAR kShift      = root:ARPES_LJZ:A2K1D:a2k1d_kShift
-    NVAR LC          = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    NVAR ThetaAngle = root:ARPES_LJZ:A2K1D:ThetaAngle
+    NVAR hv = root:ARPES_LJZ:A2K1D:hv
+    NVAR WorkFunc = root:ARPES_LJZ:A2K1D:WorkFunc
+    NVAR EnergyRel = root:ARPES_LJZ:A2K1D:EnergyRel
+    NVAR MDCKf = root:ARPES_LJZ:A2K1D:MDCKf
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
     NVAR corrMode    = root:ARPES_LJZ:A2K1D:a2k1d_corrMode
     NVAR skipFlagged = root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
     NVAR showGraph   = root:ARPES_LJZ:A2K1D:a2k1d_showGraph
@@ -3324,7 +3375,7 @@ Function a2k1d_batch_corr_layers_to_k(baseDF, recursive, corrRunDF)
             continue
         endif
 
-        if (LJZ_Spectra_Interp_Run(corrPath, NameOfWave(corrWave), thetaOffset, hv, workFunc, energyE, kShift, LC) == 0)
+        if (LJZ_Spectra_Interp_Run(corrPath, NameOfWave(corrWave), ThetaAngle, hv, WorkFunc, EnergyRel, MDCKf, LatticeA) == 0)
             okK += 1
         else
             fail += 1
@@ -4234,7 +4285,7 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     NVAR a2k1d_hmDY       = root:ARPES_LJZ:A2K1D:a2k1d_hmDY
     NVAR a2k1d_hmYMul     = root:ARPES_LJZ:A2K1D:a2k1d_hmYMul
     NVAR a2k1d_hmUnitMode = root:ARPES_LJZ:A2K1D:a2k1d_hmUnitMode
-    NVAR a2k1d_LC         = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
 
     String base = a2k1d_df_with_colon(a2k1d_baseDF)
     if (!a2k1d_df_exists(base))
@@ -4480,7 +4531,7 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     ModifyGraph/W=$wname mirror=2
 
     Label/W=$wname bottom a2k1d_heat_unit_label(a2k1d_hmUnitMode)
-    if (a2k1d_LC == 0)
+    if (LatticeA == 0)
         Label/W=$wname left "k\\B//\\M (Å\\S-1\\M)"
     else
         Label/W=$wname left "k (π/a)"
@@ -4966,7 +5017,8 @@ Function a2k1d_btn_plot_delta_err(ctrlName) : ButtonControl
     NVAR a2k1d_recursive = root:ARPES_LJZ:A2K1D:a2k1d_recursive
     NVAR a2k1d_hmUnitMode  = root:ARPES_LJZ:A2K1D:a2k1d_hmUnitMode
     SVAR a2k1d_baseName  = root:ARPES_LJZ:A2K1D:a2k1d_baseName
-    NVAR a2k1d_LC        = root:ARPES_LJZ:A2K1D:a2k1d_LC
+    a2k1d_sync_unified_from_legacy_if_missing()
+    NVAR LatticeA = root:ARPES_LJZ:A2K1D:LatticeA
     NVAR useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
 
     String base = a2k1d_df_with_colon(a2k1d_baseDF)
@@ -5043,7 +5095,7 @@ Function a2k1d_btn_plot_delta_err(ctrlName) : ButtonControl
         ErrorBars/W=$wname/RGB=(0,0,0) $NameOfWave(wD12) Y, wave=(wSD12, wSD12)
     endif
 
-    if (a2k1d_LC == 0)
+    if (LatticeA == 0)
         Label/W=$wname left "Δk\\B12\\M (Å\\S-1\\M)"
     else
         Label/W=$wname left "Δk\\B12\\M (π/a)"
