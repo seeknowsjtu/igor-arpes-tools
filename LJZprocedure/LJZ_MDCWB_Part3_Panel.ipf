@@ -140,6 +140,11 @@ Function LJZ_MDCWB_EnsurePanelState()
         Variable/G $(base + ":UI_carryFitToNext") = 1
     endif
 
+    NVAR/Z showComp = $(base + ":UI_showFitComponents")
+    if (!NVAR_Exists(showComp))
+        Variable/G $(base + ":UI_showFitComponents") = 1
+    endif
+
     return 0
 End
 
@@ -701,6 +706,62 @@ Function LJZ_MDCWB_BuildPreviewGuess(wData)
     return 0
 End
 
+Function LJZ_MDCWB_ClearPreviewFitComponents()
+    String base = LJZ_MDCWB_BaseDF()
+    KillWaves/Z $(base + ":Preview_fit_bg")
+
+    Variable i
+    for (i = 0; i < LJZ_MDCWB_MaxPeaks(); i += 1)
+        KillWaves/Z $(base + ":Preview_fit_peakOnly_" + num2str(i))
+        KillWaves/Z $(base + ":Preview_fit_peakBG_" + num2str(i))
+    endfor
+
+    return 0
+End
+
+Function LJZ_MDCWB_BuildPreviewFitComponents(wData)
+    Wave wData
+
+    LJZ_MDCWB_EnsureBaseDF()
+    LJZ_MDCWB_ClearPreviewFitComponents()
+
+    if (!LJZ_MDCWB_HasFitRecord(wData) || !LJZ_MDCWB_ReadFitOK(wData))
+        return -1
+    endif
+
+    Wave/Z coefW = $(LJZ_MDCWB_PathFitCoef(wData))
+    if (!WaveExists(coefW))
+        return -1
+    endif
+
+    String base = LJZ_MDCWB_BaseDF()
+
+    Duplicate/O wData, $(base + ":Preview_fit_bg")
+    Wave bgW = $(base + ":Preview_fit_bg")
+    if (LJZ_MDCWB_EvaluateBackgroundFromCoef(wData, coefW, bgW) != 0)
+        return -1
+    endif
+
+    Variable nPeak = LJZ_MDCWB_WorkNumPeaks()
+    Variable ip
+
+    for (ip = 0; ip < nPeak; ip += 1)
+        Duplicate/O wData, $(base + ":Preview_fit_peakOnly_" + num2str(ip))
+        Duplicate/O wData, $(base + ":Preview_fit_peakBG_" + num2str(ip))
+
+        Wave pkOnly = $(base + ":Preview_fit_peakOnly_" + num2str(ip))
+        Wave pkBG   = $(base + ":Preview_fit_peakBG_" + num2str(ip))
+
+        if (LJZ_MDCWB_EvaluatePeakComponentFromCoef(wData, coefW, ip, pkOnly) == 0)
+            pkBG = bgW[p] + pkOnly[p]
+        else
+            pkBG = NaN
+        endif
+    endfor
+
+    return 0
+End
+
 Function LJZ_MDCWB_RefreshPreviewGraph()
     String panel = LJZ_MDCWB_PanelName()
     DoWindow $panel
@@ -780,6 +841,33 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
         hasCleanFit = 1
     endif
 
+    NVAR/Z showComp = $(LJZ_MDCWB_BaseDF() + ":UI_showFitComponents")
+    Variable doComp = 1
+    if (NVAR_Exists(showComp))
+        doComp = showComp
+    endif
+
+    Variable canShowComp = hasCleanFit && (!dirty) && doComp
+    if (canShowComp)
+        if (LJZ_MDCWB_BuildPreviewFitComponents(wData) == 0)
+            Wave/Z bgW = $(LJZ_MDCWB_BaseDF() + ":Preview_fit_bg")
+            if (WaveExists(bgW))
+                AppendToGraph/W=$pvPath bgW
+            endif
+
+            Variable ip, nPeak
+            nPeak = LJZ_MDCWB_WorkNumPeaks()
+            for (ip = 0; ip < nPeak; ip += 1)
+                Wave/Z pkBG = $(LJZ_MDCWB_BaseDF() + ":Preview_fit_peakBG_" + num2str(ip))
+                if (WaveExists(pkBG))
+                    AppendToGraph/W=$pvPath pkBG
+                endif
+            endfor
+        endif
+    else
+        LJZ_MDCWB_ClearPreviewFitComponents()
+    endif
+
     if (hasCleanFit && WaveExists(fitW))
         AppendToGraph/W=$pvPath fitW/TN=fitData
     endif
@@ -789,8 +877,32 @@ Function LJZ_MDCWB_RefreshPreviewGraph()
     if (previewOK && WaveExists(guessW))
         ModifyGraph/W=$pvPath rgb(guessData)=(0,0,65535), lstyle(guessData)=2
     endif
+    if (canShowComp)
+        Wave/Z bgW2 = $(LJZ_MDCWB_BaseDF() + ":Preview_fit_bg")
+        if (WaveExists(bgW2))
+            ModifyGraph/W=$pvPath rgb($NameOfWave(bgW2))=(35000,35000,35000), lstyle($NameOfWave(bgW2))=3, lsize($NameOfWave(bgW2))=1.0
+        endif
+
+        Variable ip2, nPeak2, cSel
+        nPeak2 = LJZ_MDCWB_WorkNumPeaks()
+        for (ip2 = 0; ip2 < nPeak2; ip2 += 1)
+            Wave/Z pkBG2 = $(LJZ_MDCWB_BaseDF() + ":Preview_fit_peakBG_" + num2str(ip2))
+            if (WaveExists(pkBG2))
+                cSel = mod(ip2, 4)
+                if (cSel == 0)
+                    ModifyGraph/W=$pvPath rgb($NameOfWave(pkBG2))=(0,35000,0), lstyle($NameOfWave(pkBG2))=1, lsize($NameOfWave(pkBG2))=1.0
+                elseif (cSel == 1)
+                    ModifyGraph/W=$pvPath rgb($NameOfWave(pkBG2))=(65535,32000,0), lstyle($NameOfWave(pkBG2))=1, lsize($NameOfWave(pkBG2))=1.0
+                elseif (cSel == 2)
+                    ModifyGraph/W=$pvPath rgb($NameOfWave(pkBG2))=(35000,0,50000), lstyle($NameOfWave(pkBG2))=1, lsize($NameOfWave(pkBG2))=1.0
+                else
+                    ModifyGraph/W=$pvPath rgb($NameOfWave(pkBG2))=(0,45000,60000), lstyle($NameOfWave(pkBG2))=1, lsize($NameOfWave(pkBG2))=1.0
+                endif
+            endif
+        endfor
+    endif
     if (hasCleanFit && WaveExists(fitW))
-        ModifyGraph/W=$pvPath rgb(fitData)=(65535,0,0)
+        ModifyGraph/W=$pvPath rgb(fitData)=(65535,0,0), lsize(fitData)=1.8
     endif
 
     SetAxis/W=$pvPath bottom showLo, showHi
@@ -1134,8 +1246,10 @@ Button btnGuess,          pos={848,55}, size={58,20}, proc=LJZ_MDCWB_ButtonProc,
 Button btnFit,            pos={912,55}, size={50,20}, proc=LJZ_MDCWB_ButtonProc, title="Fit", fSize=10
 CheckBox cbCsr,           pos={972,58}, size={82,16}, proc=LJZ_MDCWB_CheckProc, title="cursor ROI", fSize=10
 CheckBox cbCsr,           value=1
-CheckBox cbCarryFit,      pos={1060,58}, size={76,16}, proc=LJZ_MDCWB_CheckProc, title="Carry fit", fSize=10
+CheckBox cbCarryFit,      pos={1060,58}, size={72,16}, proc=LJZ_MDCWB_CheckProc, title="Carry fit", fSize=10
 CheckBox cbCarryFit,      variable=$(LJZ_MDCWB_BaseDF() + ":UI_carryFitToNext")
+CheckBox cbShowFitComp,   pos={1142,58}, size={86,16}, proc=LJZ_MDCWB_CheckProc, title="Pk+BG", fSize=10
+CheckBox cbShowFitComp,   variable=$(LJZ_MDCWB_BaseDF() + ":UI_showFitComponents")
 
     // ---- left wave list ----
     ListBox lbMDC, pos={12,58}, size={280,590}, proc=LJZ_MDCWB_LBProc, fSize=11
@@ -1430,6 +1544,12 @@ Function LJZ_MDCWB_CheckProc(cba) : CheckBoxControl
     if (StringMatch(c, "cbCarryFit"))
         NVAR carryOn = $(LJZ_MDCWB_BaseDF() + ":UI_carryFitToNext")
         carryOn = on
+        return 0
+    endif
+    if (StringMatch(c, "cbShowFitComp"))
+        NVAR showComp = $(LJZ_MDCWB_BaseDF() + ":UI_showFitComponents")
+        showComp = on
+        LJZ_MDCWB_RefreshPreviewGraph()
         return 0
     endif
 

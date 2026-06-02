@@ -1621,6 +1621,88 @@ End
 //  draw individual peaks). Independent of FuncFit, no Active_* needed.
 // ============================================================================
 
+Function LJZ_MDCWB_EvaluateBackgroundFromCoef(wData, coefW, outBG)
+    Wave wData, coefW, outBG
+
+    if (numpnts(coefW) < LJZ_MDCWB_FlatBaseSlots())
+        return -1
+    endif
+
+    if (numpnts(outBG) != numpnts(wData))
+        Redimension/N=(numpnts(wData)) outBG
+    endif
+    SetScale/P x, DimOffset(wData, 0), DimDelta(wData, 0), outBG
+
+    Wave/Z wBG = $(LJZ_MDCWB_BaseDF() + ":Work_bg")
+    Variable xRef = 0
+    if (WaveExists(wBG) && numpnts(wBG) >= 6 && numtype(wBG[5]) == 0)
+        xRef = wBG[5]
+    endif
+
+    Variable c0 = coefW[0]
+    Variable c1 = coefW[1]
+    Variable c2 = coefW[2]
+
+    outBG = c0 + c1 * (x - xRef) + c2 * (x - xRef) * (x - xRef)
+    return 0
+End
+
+Function LJZ_MDCWB_EvaluatePeakComponentFromCoef(wData, coefW, idx, outPeak)
+    Wave wData, coefW, outPeak
+    Variable idx
+
+    LJZ_MDCWB_EnsureBaseDF()
+
+    Wave wPN = $(LJZ_MDCWB_BaseDF() + ":Work_peaks_num")
+    Variable nPeak = DimSize(wPN, 0)
+
+    if (idx < 0 || idx >= nPeak)
+        return -1
+    endif
+
+    Make/FREE/N=1 types, slots
+    if (LJZ_MDCWB_BuildLayoutFromPeaksNum(wPN, types, slots) != 0)
+        return -1
+    endif
+    if (numpnts(coefW) < LJZ_MDCWB_FlatBaseSlots())
+        outPeak = NaN
+        return -1
+    endif
+
+    Variable s = slots[idx]
+    Variable t = round(types[idx])
+    Variable resH = max(LJZ_MDCWB_MinResH(), abs(coefW[3]))
+
+    if (numpnts(outPeak) != numpnts(wData))
+        Redimension/N=(numpnts(wData)) outPeak
+    endif
+    SetScale/P x, DimOffset(wData, 0), DimDelta(wData, 0), outPeak
+
+    if (t == LJZ_MDCWB_PeakTypeAsymPV())
+        if (numpnts(coefW) < s + 5)
+            outPeak = NaN
+            return -1
+        endif
+        outPeak = LJZ_MDCWB_AsymPVKernel(coefW[s + 3], x, coefW[s + 0], coefW[s + 1], coefW[s + 2], coefW[s + 4], resH)
+    else
+        if (numpnts(coefW) < s + 4)
+            outPeak = NaN
+            return -1
+        endif
+
+        Variable etaUse = coefW[s + 3]
+        if (t == LJZ_MDCWB_PeakTypeLor())
+            etaUse = 1
+        elseif (t == LJZ_MDCWB_PeakTypeGau())
+            etaUse = 0
+        endif
+
+        outPeak = LJZ_MDCWB_PVKernel(coefW[s + 2], x, coefW[s + 0], coefW[s + 1], etaUse, resH)
+    endif
+
+    return 0
+End
+
 Function LJZ_MDCWB_EvaluatePeakComponent(wData, idx, outComponent)
     Wave wData, outComponent
     Variable idx
