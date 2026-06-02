@@ -985,10 +985,10 @@ Function LJZ_EKKMap_CreateGraphSubwindow()
     Wave preview = $(LJZ_EKKMap_BaseDF() + ":Preview2D")
     if (!WaveExists(preview))
         Wave stub = $(LJZ_EKKMap_BaseDF() + ":GraphStub")
-        Display/HOST=$panelName/N=$graphName/W=(280,45,1190,455)
+        Display/HOST=$panelName/N=$graphName/W=(300,40,1260,440)
         AppendImage/W=$graphPath stub
     else
-        Display/HOST=$panelName/N=$graphName/W=(280,45,1190,455)
+        Display/HOST=$panelName/N=$graphName/W=(300,40,1260,440)
         AppendImage/W=$graphPath preview
     endif
     LJZ_EKKMap_ApplyImageCtab(graphPath)
@@ -2725,101 +2725,102 @@ Function LJZ_EKKMap_OpenPanel()
         // Recreate the panel so newly added controls appear immediately.
         KillWindow/Z $p
     endif
-    NewPanel/N=$p /W=(80,80,1220,760) as "E-k / kx-ky / kx-kz"
+    NewPanel/N=$p /W=(50,50,1320,730) as "E-k / kx-ky / kx-kz"
 
+    // Compact panel layout, scaled down from the large layout by about 0.85.
     // Left file / mode column.
-    SetVariable svSourceDF,pos={10,10},size={255,20},title="Source DF"
+    SetVariable svSourceDF,pos={10,10},size={275,22},title="Source DF",fSize=11
     SetVariable svSourceDF,value=root:ARPES_LJZ:EKKMap:SourceDF,proc=LJZ_EKKMap_SetVarProc
 
-    Button btCurrent,pos={10,38},size={78,24},title="Current",proc=LJZ_EKKMap_ButtonProc
-    Button btScan,pos={96,38},size={78,24},title="Scan",proc=LJZ_EKKMap_ButtonProc
-    Button btRefresh,pos={182,38},size={78,24},title="Refresh",proc=LJZ_EKKMap_ButtonProc
+    Button btCurrent,pos={10,38},size={82,24},title="Current",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btScan,pos={102,38},size={82,24},title="Scan",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btRefresh,pos={194,38},size={82,24},title="Refresh",proc=LJZ_EKKMap_ButtonProc,fSize=11
 
     Wave/T/Z wDisp = $(LJZ_EKKMap_BaseDF() + ":LB_Disp")
     Wave/Z wSel = $(LJZ_EKKMap_BaseDF() + ":LB_Sel")
-    ListBox lbWave,pos={10,72},size={255,480},listWave=$(LJZ_EKKMap_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EKKMap_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_EKKMap_ListBoxProc
+    ListBox lbWave,pos={10,70},size={275,475},listWave=$(LJZ_EKKMap_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EKKMap_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_EKKMap_ListBoxProc,fSize=11
 
-    Button btPrevZ,pos={10,560},size={54,24},title="Z-",proc=LJZ_EKKMap_ButtonProc
-    Button btNextZ,pos={72,560},size={54,24},title="Z+",proc=LJZ_EKKMap_ButtonProc
-    Button btModeEK,pos={10,595},size={72,24},title="EK",proc=LJZ_EKKMap_ButtonProc
-    Button btModeKxKy,pos={96,595},size={72,24},title="KxKy",proc=LJZ_EKKMap_ButtonProc
-    Button btModeKxKz,pos={182,595},size={72,24},title="KxKz",proc=LJZ_EKKMap_ButtonProc
+    Button btPrevZ,pos={10,552},size={60,24},title="Z-",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btNextZ,pos={80,552},size={60,24},title="Z+",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btModeEK,pos={10,582},size={80,24},title="EK",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btModeKxKy,pos={100,582},size={80,24},title="KxKy",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btModeKxKz,pos={190,582},size={80,24},title="KxKz",proc=LJZ_EKKMap_ButtonProc,fSize=11
 
     // Preview graph and short status bars.
-    TitleBox tbCur,pos={280,462},size={700,18},frame=0,title="Current: none"
-    TitleBox tbLayer,pos={280,484},size={280,18},frame=0,title="z = 0, idx 0/0"
-    TitleBox tbDim,pos={580,484},size={420,18},frame=0,title="dim: n/a"
+    TitleBox tbCur,pos={300,445},size={780,18},frame=0,title="Current: none",fSize=11
+    TitleBox tbLayer,pos={300,465},size={280,18},frame=0,title="z = 0, idx 0/0",fSize=11
+    TitleBox tbDim,pos={590,465},size={460,18},frame=0,title="dim: n/a",fSize=11
 
     // Geometry group.
-    GroupBox gbGeom,pos={280,515},size={220,155},title="Geometry"
-    GroupBox gbGeom,font="Arial",fSize=10,fStyle=2
-    SetVariable svTilt,pos={295,538},size={185,20},title="Tilt"
+    GroupBox gbGeom,pos={300,490},size={240,155},title="Geometry"
+    GroupBox gbGeom,font="Arial",fSize=11,fStyle=2
+    SetVariable svTilt,pos={312,512},size={205,20},title="Tilt",fSize=11
     SetVariable svTilt,variable=$(LJZ_EKKMap_BaseDF() + ":ThetaAngle"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svAz,pos={295,564},size={185,20},title="Azimuth"
+    SetVariable svAz,pos={312,537},size={205,20},title="Azimuth",fSize=11
     SetVariable svAz,variable=$(LJZ_EKKMap_BaseDF() + ":Azimuth"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svOffset,pos={295,590},size={185,20},title="Scan offset"
+    SetVariable svOffset,pos={312,562},size={205,20},title="Scan offset",fSize=11
     SetVariable svOffset,variable=$(LJZ_EKKMap_BaseDF() + ":ScanOffset"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svEnergy,pos={295,616},size={185,20},title="E_rel"
+    SetVariable svEnergy,pos={312,587},size={205,20},title="E_rel",fSize=11
     SetVariable svEnergy,variable=$(LJZ_EKKMap_BaseDF() + ":EnergyRel"),proc=LJZ_EKKMap_SetVarProc
-    CheckBox cbTranspose,pos={295,644},size={90,18},title="Transpose"
+    CheckBox cbTranspose,pos={312,615},size={100,18},title="Transpose",fSize=11
     CheckBox cbTranspose,variable=$(LJZ_EKKMap_BaseDF() + ":Transpose"),proc=LJZ_EKKMap_CheckProc
 
     // Photon / lattice group.
-    GroupBox gbPhoto,pos={515,515},size={260,190},title="Photon / lattice"
-    GroupBox gbPhoto,font="Arial",fSize=10,fStyle=2
-    SetVariable svHv,pos={530,538},size={110,20},title="hv"
+    GroupBox gbPhoto,pos={550,490},size={280,155},title="Photon / lattice"
+    GroupBox gbPhoto,font="Arial",fSize=11,fStyle=2
+    SetVariable svHv,pos={562,512},size={120,20},title="hv",fSize=11
     SetVariable svHv,variable=$(LJZ_EKKMap_BaseDF() + ":hv"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svWF,pos={650,538},size={110,20},title="WorkFunc"
+    SetVariable svWF,pos={690,512},size={120,20},title="WorkFunc",fSize=11
     SetVariable svWF,variable=$(LJZ_EKKMap_BaseDF() + ":WorkFunc"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svFL,pos={530,564},size={110,20},title="Fermi E"
+    SetVariable svFL,pos={562,537},size={120,20},title="Fermi E",fSize=11
     SetVariable svFL,variable=$(LJZ_EKKMap_BaseDF() + ":FL"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svPixel,pos={650,564},size={110,20},title="deg/pixel"
+    SetVariable svPixel,pos={690,537},size={120,20},title="deg/pixel",fSize=11
     SetVariable svPixel,variable=$(LJZ_EKKMap_BaseDF() + ":Pixel"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svA,pos={530,590},size={70,20},title="a"
+    SetVariable svA,pos={562,562},size={80,20},title="a",fSize=11
     SetVariable svA,variable=$(LJZ_EKKMap_BaseDF() + ":LatticeA"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svC,pos={610,590},size={70,20},title="c"
+    SetVariable svC,pos={650,562},size={80,20},title="c",fSize=11
     SetVariable svC,variable=$(LJZ_EKKMap_BaseDF() + ":LatticeC"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svV0,pos={690,590},size={70,20},title="V0"
+    SetVariable svV0,pos={738,562},size={80,20},title="V0",fSize=11
     SetVariable svV0,variable=$(LJZ_EKKMap_BaseDF() + ":V0"),proc=LJZ_EKKMap_SetVarProc
-    CheckBox cbFLUseEDC,pos={530,618},size={115,18},title="Use EDC EF"
+    CheckBox cbFLUseEDC,pos={562,587},size={115,18},title="Use EDC EF",fSize=11
     CheckBox cbFLUseEDC,variable=$(LJZ_EKKMap_BaseDF() + ":FLUseEDC"),proc=LJZ_EKKMap_CheckProc
-    SetVariable svFLSourceDF,pos={530,644},size={230,20},title="EF DF"
+    SetVariable svFLSourceDF,pos={562,610},size={255,20},title="EF DF",fSize=11
     SetVariable svFLSourceDF,value=root:ARPES_LJZ:EKKMap:FLSourceDF,proc=LJZ_EKKMap_SetVarProc
-    TitleBox tbEFNote,pos={530,674},size={170,18},frame=0,title="EF per slice optional"
+    TitleBox tbEFNote,pos={562,632},size={180,18},frame=0,title="EF per slice optional",fSize=11
 
     // Preview / output group.
-    GroupBox gbPreview,pos={790,515},size={210,190},title="Preview / output"
-    GroupBox gbPreview,font="Arial",fSize=10,fStyle=2
-    SetVariable svPreviewZ,pos={805,538},size={175,20},title="z index"
+    GroupBox gbPreview,pos={840,490},size={230,185},title="Preview / output"
+    GroupBox gbPreview,font="Arial",fSize=11,fStyle=2
+    SetVariable svPreviewZ,pos={852,512},size={185,20},title="z index",fSize=11
     SetVariable svPreviewZ,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":PreviewZ"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svPreviewCoord,pos={805,564},size={175,20},title="z value"
+    SetVariable svPreviewCoord,pos={852,537},size={185,20},title="z value",fSize=11
     SetVariable svPreviewCoord,variable=$(LJZ_EKKMap_BaseDF() + ":PreviewCoord"),proc=LJZ_EKKMap_SetVarProc
     SVAR PreviewCtab = $(LJZ_EKKMap_BaseDF() + ":PreviewCtab")
-    PopupMenu pmCtab,pos={805,592},size={175,20},title="colortable"
+    PopupMenu pmCtab,pos={852,562},size={185,20},title="colortable",fSize=11
     PopupMenu pmCtab,popvalue=PreviewCtab,value=#"CTabList()",proc=LJZ_EKKMap_PopupProc
-    CheckBox cbOutputSlices,pos={805,622},size={115,18},title="Output slices"
+    CheckBox cbOutputSlices,pos={852,587},size={115,18},title="Output slices",fSize=11
     CheckBox cbOutputSlices,variable=$(LJZ_EKKMap_BaseDF() + ":OutputSlices"),proc=LJZ_EKKMap_CheckProc
-    CheckBox cbOpenSliceGraphs,pos={805,648},size={140,18},title="Open slice graphs"
+    CheckBox cbOpenSliceGraphs,pos={852,610},size={140,18},title="Open slice graphs",fSize=11
     CheckBox cbOpenSliceGraphs,variable=$(LJZ_EKKMap_BaseDF() + ":OpenSliceGraphs"),proc=LJZ_EKKMap_CheckProc
+    SetVariable svQuickEF,pos={852,632},size={85,20},title="QuickEF",fSize=11
+    SetVariable svQuickEF,variable=$(LJZ_EKKMap_BaseDF() + ":QuickEF"),proc=LJZ_EKKMap_SetVarProc
+    SetVariable svQuickHalfN,pos={945,632},size={85,20},title="HalfN",fSize=11
+    SetVariable svQuickHalfN,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickHalfN"),proc=LJZ_EKKMap_SetVarProc
 
     // Run group.
-    GroupBox gbRun,pos={1015,515},size={175,190},title="Run"
-    GroupBox gbRun,font="Arial",fSize=10,fStyle=2
+    GroupBox gbRun,pos={1080,490},size={180,185},title="Run"
+    GroupBox gbRun,font="Arial",fSize=11,fStyle=2
     NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
-    PopupMenu pmInputKind,pos={1030,538},size={145,20},title="Input kind"
+    PopupMenu pmInputKind,pos={1092,508},size={145,20},title="Input kind",fSize=11
     PopupMenu pmInputKind,mode=InputKind,popvalue=LJZ_EKKMap_InputKindLabel(InputKind),value=#"LJZ_EKKMap_InputKindPopupList()",proc=LJZ_EKKMap_PopupProc
-    SetVariable svMDCKf,pos={1030,566},size={145,20},title="MDC K_F"
+    SetVariable svMDCKf,pos={1092,532},size={145,20},title="MDC K_F",fSize=11
     SetVariable svMDCKf,variable=$(LJZ_EKKMap_BaseDF() + ":MDCKf"),proc=LJZ_EKKMap_SetVarProc
-    Button btEK,pos={1030,595},size={145,24},title="Calc E-k",proc=LJZ_EKKMap_ButtonProc
-    Button btKxKy,pos={1030,623},size={145,24},title="Calc kx-ky",proc=LJZ_EKKMap_ButtonProc
-    Button btKxKz,pos={1030,651},size={145,24},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc
-    Button btQuickKxKy,pos={1030,679},size={145,24},title="Quick FS",proc=LJZ_EKKMap_ButtonProc
+    Button btEK,pos={1092,556},size={145,24},title="Calc E-k",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btKxKy,pos={1092,582},size={145,24},title="Calc kx-ky",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btKxKz,pos={1092,608},size={145,24},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc,fSize=11
+    Button btQuickKxKy,pos={1092,634},size={145,24},title="Quick FS",proc=LJZ_EKKMap_ButtonProc,fSize=11
 
-    SetVariable svQuickEF,pos={805,674},size={85,20},title="QuickEF"
-    SetVariable svQuickEF,variable=$(LJZ_EKKMap_BaseDF() + ":QuickEF"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svQuickHalfN,pos={900,674},size={85,20},title="HalfN"
-    SetVariable svQuickHalfN,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickHalfN"),proc=LJZ_EKKMap_SetVarProc
-    SetVariable svQuickDS,pos={805,700},size={180,20},title="Quick downsample"
+    SetVariable svQuickDS,pos={852,654},size={185,20},title="Quick downsample",fSize=11
     SetVariable svQuickDS,limits={1,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickDownsample"),proc=LJZ_EKKMap_SetVarProc
 
     Print "LJZ_EKKMap help: 3D EK previews dim2 stack scaling; 3D kx-ky/kx-kz previews dim0 energy scaling. Run keeps 3D output and can write per-layer 2D slice waves. Transpose affects preview only."
