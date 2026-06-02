@@ -346,6 +346,89 @@ Function LJZ_EKKMap_GetPreviewDimForMode(w, mode)
     return 0
 End
 
+Function/S LJZ_EKKMap_ValidateCtabName(ctabName)
+    String ctabName
+
+    String list = CTabList()
+    if (WhichListItem(ctabName, list, ";", 0, 0) >= 0)
+        return ctabName
+    endif
+    if (WhichListItem("PlanetEarth", list, ";", 0, 0) >= 0)
+        return "PlanetEarth"
+    endif
+    if (WhichListItem("Rainbow", list, ";", 0, 0) >= 0)
+        return "Rainbow"
+    endif
+    if (WhichListItem("Grays256", list, ";", 0, 0) >= 0)
+        return "Grays256"
+    endif
+    return StringFromList(0, list, ";")
+End
+
+Function/S LJZ_EKKMap_GetPreviewUnit(w)
+    Wave/Z w
+
+    if (!WaveExists(w) || !LJZ_EKKMap_Is3DWave(w))
+        return "index"
+    endif
+    NVAR CurrentMode = $(LJZ_EKKMap_BaseDF() + ":CurrentMode")
+    Variable previewDim = LJZ_EKKMap_GetPreviewDimForMode(w, CurrentMode)
+    if (previewDim < 0)
+        return "index"
+    endif
+    String unit = WaveUnits(w, previewDim)
+    if (strlen(unit) == 0)
+        return "index"
+    endif
+    return unit
+End
+
+Function LJZ_EKKMap_GetPreviewCoord(w)
+    Wave/Z w
+
+    NVAR PreviewZ = $(LJZ_EKKMap_BaseDF() + ":PreviewZ")
+    if (!WaveExists(w) || !LJZ_EKKMap_Is3DWave(w))
+        return 0
+    endif
+    NVAR CurrentMode = $(LJZ_EKKMap_BaseDF() + ":CurrentMode")
+    Variable previewDim = LJZ_EKKMap_GetPreviewDimForMode(w, CurrentMode)
+    if (previewDim < 0)
+        return 0
+    endif
+    return DimOffset(w, previewDim) + round(PreviewZ) * DimDelta(w, previewDim)
+End
+
+Function LJZ_EKKMap_SyncPreviewCoordToCurrentWave()
+    NVAR PreviewCoord = $(LJZ_EKKMap_BaseDF() + ":PreviewCoord")
+    SVAR sWave = $(LJZ_EKKMap_BaseDF() + ":WaveSel")
+    Wave/Z w = $sWave
+    PreviewCoord = LJZ_EKKMap_GetPreviewCoord(w)
+    return 0
+End
+
+Function LJZ_EKKMap_SetPreviewFromCoord(value)
+    Variable value
+
+    NVAR PreviewZ = $(LJZ_EKKMap_BaseDF() + ":PreviewZ")
+    SVAR sWave = $(LJZ_EKKMap_BaseDF() + ":WaveSel")
+    NVAR CurrentMode = $(LJZ_EKKMap_BaseDF() + ":CurrentMode")
+    Wave/Z w = $sWave
+    if (!WaveExists(w) || !LJZ_EKKMap_Is3DWave(w))
+        PreviewZ = 0
+        LJZ_EKKMap_ClampPreviewZToCurrentWave()
+        return 0
+    endif
+
+    Variable previewDim = LJZ_EKKMap_GetPreviewDimForMode(w, CurrentMode)
+    if (previewDim < 0 || DimDelta(w, previewDim) == 0)
+        PreviewZ = 0
+    else
+        PreviewZ = round((value - DimOffset(w, previewDim)) / DimDelta(w, previewDim))
+    endif
+    LJZ_EKKMap_ClampPreviewZToCurrentWave()
+    return 0
+End
+
 
 Function LJZ_EKKMap_Prepare2DWave(dest, nx, ny)
     Wave dest
@@ -392,6 +475,33 @@ Function LJZ_EKKMap_EnsureDF()
     NVAR/Z PreviewZ = $(LJZ_EKKMap_BaseDF() + ":PreviewZ")
     if (!NVAR_Exists(PreviewZ))
         Variable/G $(LJZ_EKKMap_BaseDF() + ":PreviewZ") = 0
+    endif
+
+    NVAR/Z PreviewCoord = $(LJZ_EKKMap_BaseDF() + ":PreviewCoord")
+    if (!NVAR_Exists(PreviewCoord))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":PreviewCoord") = 0
+    endif
+
+    SVAR/Z PreviewCtab = $(LJZ_EKKMap_BaseDF() + ":PreviewCtab")
+    if (!SVAR_Exists(PreviewCtab))
+        String/G $(LJZ_EKKMap_BaseDF() + ":PreviewCtab") = "PlanetEarth"
+    endif
+    SVAR PreviewCtabRef = $(LJZ_EKKMap_BaseDF() + ":PreviewCtab")
+    PreviewCtabRef = LJZ_EKKMap_ValidateCtabName(PreviewCtabRef)
+
+    NVAR/Z OutputSlices = $(LJZ_EKKMap_BaseDF() + ":OutputSlices")
+    if (!NVAR_Exists(OutputSlices))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":OutputSlices") = 1
+    endif
+
+    NVAR/Z OpenSliceGraphs = $(LJZ_EKKMap_BaseDF() + ":OpenSliceGraphs")
+    if (!NVAR_Exists(OpenSliceGraphs))
+        Variable/G $(LJZ_EKKMap_BaseDF() + ":OpenSliceGraphs") = 0
+    endif
+
+    SVAR/Z LastResultGraph = $(LJZ_EKKMap_BaseDF() + ":LastResultGraph")
+    if (!SVAR_Exists(LastResultGraph))
+        String/G $(LJZ_EKKMap_BaseDF() + ":LastResultGraph") = ""
     endif
 
     NVAR/Z CurrentMode = $(LJZ_EKKMap_BaseDF() + ":CurrentMode")
@@ -701,6 +811,7 @@ Function LJZ_EKKMap_ClampPreviewZToCurrentWave()
 
     if (!WaveExists(w))
         PreviewZ = 0
+        LJZ_EKKMap_SyncPreviewCoordToCurrentWave()
         return 0
     endif
 
@@ -714,6 +825,7 @@ Function LJZ_EKKMap_ClampPreviewZToCurrentWave()
     else
         PreviewZ = 0
     endif
+    LJZ_EKKMap_SyncPreviewCoordToCurrentWave()
     return 0
 End
 
@@ -873,18 +985,41 @@ Function LJZ_EKKMap_CreateGraphSubwindow()
     Wave preview = $(LJZ_EKKMap_BaseDF() + ":Preview2D")
     if (!WaveExists(preview))
         Wave stub = $(LJZ_EKKMap_BaseDF() + ":GraphStub")
-        Display/HOST=$panelName/N=$graphName/W=(250,40,980,360)
+        Display/HOST=$panelName/N=$graphName/W=(280,45,1190,455)
         AppendImage/W=$graphPath stub
     else
-        Display/HOST=$panelName/N=$graphName/W=(250,40,980,360)
+        Display/HOST=$panelName/N=$graphName/W=(280,45,1190,455)
         AppendImage/W=$graphPath preview
     endif
+    LJZ_EKKMap_ApplyImageCtab(graphPath)
 
     ModifyGraph/W=$graphPath margin(left)=52,margin(bottom)=36,margin(right)=16,margin(top)=12,mirror=2
     ModifyGraph/W=$graphPath width=0,height=0
     Label/W=$graphPath left "Y"
     Label/W=$graphPath bottom "X"
     return 0
+End
+
+Function LJZ_EKKMap_ApplyImageCtab(graphPath)
+    String graphPath
+
+    SVAR PreviewCtab = $(LJZ_EKKMap_BaseDF() + ":PreviewCtab")
+    PreviewCtab = LJZ_EKKMap_ValidateCtabName(PreviewCtab)
+    String imName = StringFromList(0, ImageNameList(graphPath, ";"), ";")
+    if (strlen(imName) <= 0 || strlen(PreviewCtab) <= 0)
+        return 0
+    endif
+    Execute "ModifyImage/W=" + graphPath + " " + imName + " ctab={*,*," + PreviewCtab + ",0}"
+    return 0
+End
+
+Function/S LJZ_EKKMap_FormatCoordValue(v)
+    Variable v
+
+    if (!LJZ_EKKMap_IsFinite(v))
+        return "NaN"
+    endif
+    return num2str(v)
 End
 
 Function LJZ_EKKMap_RefreshTitleBoxes()
@@ -899,19 +1034,35 @@ Function LJZ_EKKMap_RefreshTitleBoxes()
     Wave/Z w = $sWave
 
     String t = "Current: none"
+    String zt = "z = 0, idx 0/0"
+    String dt = "dim: n/a"
     if (WaveExists(w))
         NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
-        t = "Current: " + NameOfWave(w) + "   mode = " + LJZ_EKKMap_ModeName(CurrentMode) + "   input = " + LJZ_EKKMap_InputKindLabel(InputKind)
+        t = "Current: " + NameOfWave(w) + "   " + LJZ_EKKMap_ModeName(CurrentMode) + "   " + LJZ_EKKMap_InputKindLabel(InputKind)
         if (LJZ_EKKMap_Is3DWave(w))
-            if (CurrentMode == LJZ_EKKMap_Mode_EK)
-                t += "   preview stack = " + num2str(PreviewZ)
-            else
-                t += "   preview energy slice = " + num2str(PreviewZ)
+            Variable previewDim = LJZ_EKKMap_GetPreviewDimForMode(w, CurrentMode)
+            Variable nz = DimSize(w, previewDim)
+            Variable coord = LJZ_EKKMap_GetPreviewCoord(w)
+            String unit = LJZ_EKKMap_GetPreviewUnit(w)
+            String label = (CurrentMode == LJZ_EKKMap_Mode_EK) ? "z" : "energy"
+            if (CurrentMode == LJZ_EKKMap_Mode_EK && strlen(WaveUnits(w, previewDim)) == 0)
+                label = "stack"
             endif
+            zt = label + " = " + LJZ_EKKMap_FormatCoordValue(coord)
+            if (strlen(unit) > 0 && !StringMatch(unit, "index"))
+                zt += " " + unit
+            endif
+            zt += ", idx " + num2istr(round(PreviewZ)) + "/" + num2istr(max(0, nz - 1))
+            dt = "dim" + num2istr(previewDim) + ": offset=" + num2str(DimOffset(w, previewDim)) + ", delta=" + num2str(DimDelta(w, previewDim)) + ", unit=" + unit
+        else
+            zt = "idx 0/0"
+            dt = "2D input"
         endif
     endif
 
     TitleBox/Z tbCur, win=$p, title=t
+    TitleBox/Z tbLayer, win=$p, title=zt
+    TitleBox/Z tbDim, win=$p, title=dt
     return 0
 End
 
@@ -932,14 +1083,19 @@ Function LJZ_EKKMap_RefreshWindowControls()
     // 避免把绑定控件重新覆盖成内部字符串造成闪烁或回写异常。
     // 注意：ControlUpdate 不能带 /Z flag；如果旧 panel 中控件不存在，用 try/catch 防止中断。
     NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
+    SVAR/Z PreviewCtab = $(LJZ_EKKMap_BaseDF() + ":PreviewCtab")
     try
         ControlUpdate/W=$p svSourceDF
         ControlUpdate/W=$p svPreviewZ
+        ControlUpdate/W=$p svPreviewCoord
         ControlUpdate/W=$p cbFLUseEDC
         ControlUpdate/W=$p svFLSourceDF
     catch
     endtry
     PopupMenu/Z pmInputKind,win=$p,mode=InputKind,popvalue=LJZ_EKKMap_InputKindLabel(InputKind)
+    if (SVAR_Exists(PreviewCtab))
+        PopupMenu/Z pmCtab,win=$p,popvalue=PreviewCtab
+    endif
     return 0
 End
 
@@ -1473,12 +1629,18 @@ Function LJZ_EKKMap_ShowResultWave(w, graphName)
 
     if (LJZ_EKKMap_Is3DWave(w))
         NVAR PreviewZ = $(LJZ_EKKMap_BaseDF() + ":PreviewZ")
+        Variable nz = DimSize(w,2)
+        Variable useZ = LJZ_EKKMap_Clamp(round(PreviewZ), 0, nz-1)
         Make/O/N=(2,2) $(LJZ_EKKMap_TempDisplaySlicePath(graphName)) = NaN
         Wave dispSlice = $(LJZ_EKKMap_TempDisplaySlicePath(graphName))
-        LJZ_EKKMap_MakeDisplaySliceFrom3D(w, PreviewZ, dispSlice)
+        LJZ_EKKMap_MakeDisplaySliceFrom3D(w, useZ, dispSlice)
         AppendImage/W=$graphName dispSlice
         ModifyGraph/W=$graphName width=0,height=0
         ModifyGraph/W=$graphName mirror=2
+        Variable zCoord = DimOffset(w,2) + useZ * DimDelta(w,2)
+        String zUnit = WaveUnits(w,2)
+        TextBox/W=$graphName/C/N=tbSlice/A=LT "z=" + num2str(zCoord) + " " + zUnit + ", idx " + num2istr(useZ) + "/" + num2istr(max(0,nz-1))
+        Note/K dispSlice, "source=" + GetWavesDataFolder(w,2) + "\rsource z index=" + num2istr(useZ) + "\rsource z coordinate=" + num2str(zCoord) + " " + zUnit
     else
         AppendImage/W=$graphName w
         ModifyGraph/W=$graphName width=0,height=0
@@ -1490,7 +1652,81 @@ Function LJZ_EKKMap_ShowResultWave(w, graphName)
         if (strlen(imNameQuick) > 0)
             ModifyImage/W=$graphName $imNameQuick ctab={*,*,PlanetEarth,0}
         endif
+    else
+        LJZ_EKKMap_ApplyImageCtab(graphName)
     endif
+
+    SVAR LastResultGraph = $(LJZ_EKKMap_BaseDF() + ":LastResultGraph")
+    LastResultGraph = graphName
+    return 0
+End
+
+Function/S LJZ_EKKMap_EnsureSliceOutputDF(groupName, outName)
+    String groupName, outName
+
+    String groupDF = LJZ_EKKMap_EnsureOutputDF(groupName)
+    String sliceDFName = CleanupName(outName + "_slices", 0)
+    NewDataFolder/O $(groupDF + sliceDFName)
+    return groupDF + sliceDFName + ":"
+End
+
+Function/S LJZ_EKKMap_ZeroPad3(n)
+    Variable n
+
+    String s = num2istr(round(n))
+    if (strlen(s) == 1)
+        return "00" + s
+    endif
+    if (strlen(s) == 2)
+        return "0" + s
+    endif
+    return s
+End
+
+Function LJZ_EKKMap_Write3DSlices(out3D, groupName, outName, sourcePath, modeName)
+    Wave out3D
+    String groupName, outName, sourcePath, modeName
+
+    NVAR/Z OutputSlices = $(LJZ_EKKMap_BaseDF() + ":OutputSlices")
+    NVAR/Z OpenSliceGraphs = $(LJZ_EKKMap_BaseDF() + ":OpenSliceGraphs")
+    if (NVAR_Exists(OutputSlices) && OutputSlices == 0)
+        return 0
+    endif
+
+    String sliceDF = LJZ_EKKMap_EnsureSliceOutputDF(groupName, outName)
+    Variable nz = DimSize(out3D,2)
+    Make/O/D/N=(nz) $(sliceDF + CleanupName(outName + "_slice_coord", 0)) = NaN
+    Wave coordW = $(sliceDF + CleanupName(outName + "_slice_coord", 0))
+    SetScale/P x, DimOffset(out3D,2), DimDelta(out3D,2), WaveUnits(out3D,2), coordW
+    coordW = DimOffset(out3D,2) + p * DimDelta(out3D,2)
+
+    NVAR hv = $(LJZ_EKKMap_BaseDF() + ":hv")
+    NVAR WorkFunc = $(LJZ_EKKMap_BaseDF() + ":WorkFunc")
+    NVAR ThetaAngle = $(LJZ_EKKMap_BaseDF() + ":ThetaAngle")
+    NVAR Azimuth = $(LJZ_EKKMap_BaseDF() + ":Azimuth")
+    NVAR ScanOffset = $(LJZ_EKKMap_BaseDF() + ":ScanOffset")
+    NVAR FL = $(LJZ_EKKMap_BaseDF() + ":FL")
+    Wave/Z flUsedW = $(GetWavesDataFolder(out3D, 1) + NameOfWave(out3D) + "_FL_used")
+
+    Variable iz
+    for (iz=0; iz<nz; iz+=1)
+        String sliceName = CleanupName(outName + "_z" + LJZ_EKKMap_ZeroPad3(iz), 0)
+        Make/O/D/N=(DimSize(out3D,0),DimSize(out3D,1)) $(sliceDF + sliceName) = NaN
+        Wave slice = $(sliceDF + sliceName)
+        SetScale/P x, DimOffset(out3D,0), DimDelta(out3D,0), WaveUnits(out3D,0), slice
+        SetScale/P y, DimOffset(out3D,1), DimDelta(out3D,1), WaveUnits(out3D,1), slice
+        slice = out3D[p][q][iz]
+        Variable zCoord = coordW[iz]
+        Variable flNote = FL
+        if (WaveExists(flUsedW) && iz < numpnts(flUsedW) && LJZ_EKKMap_IsFinite(flUsedW[iz]))
+            flNote = flUsedW[iz]
+        endif
+        Note/K slice, "source wave=" + sourcePath + "\rsource z index=" + num2istr(iz) + "\rsource z coordinate=" + num2str(zCoord) + " " + WaveUnits(out3D,2) + "\rmode=" + modeName + "\rhv=" + num2str(hv) + "\rWorkFunc=" + num2str(WorkFunc) + "\rTilt=" + num2str(ThetaAngle) + "\rAzimuth=" + num2str(Azimuth) + "\rScanOffset=" + num2str(ScanOffset) + "\rFL used=" + num2str(flNote)
+        if (NVAR_Exists(OpenSliceGraphs) && OpenSliceGraphs != 0)
+            LJZ_EKKMap_ShowResultWave(slice, "Im_" + sliceName)
+        endif
+    endfor
+    Print "LJZ_EKKMap: wrote " + num2str(nz) + " slices to " + sliceDF
     return 0
 End
 
@@ -2091,6 +2327,7 @@ Function LJZ_EKKMap_RunEK()
                 out3D[][][iz] = map2D[p][q]
             endfor
 
+            LJZ_EKKMap_Write3DSlices(out3D, "EK", outName, wPath, "E-k")
             LJZ_EKKMap_ShowResultWave(out3D, "Im_" + outName)
             Print "LJZ_EKKMap_RunEK: wrote " + outDF + outName + " with " + num2str(nz) + " layers and " + outDF + outName + "_FL_used."
             KillWaves/Z $(LJZ_EKKMap_BaseDF() + ":tmpMapped2D"), $(LJZ_EKKMap_BaseDF() + ":tmpSlice2D"), $(LJZ_EKKMap_BaseDF() + ":tmpEKBounds")
@@ -2149,6 +2386,7 @@ Function LJZ_EKKMap_RunKxKy()
         elseif (LJZ_EKKMap_Is3DWave(w))
             LJZ_EKKMap_RunKxKy_3D_TwoPass(w, outDF + outName, hv, WorkFunc, LJZ_EKKMap_GetEffectiveFL(), ThetaAngle, Azimuth, ScanOffset, Pixel, LatticeA, 1)
             Wave out3DShow = $(outDF + outName)
+            LJZ_EKKMap_Write3DSlices(out3DShow, "KxKy", outName, wPath, "kx-ky")
             LJZ_EKKMap_ShowResultWave(out3DShow, "Im_" + outName)
         endif
     endfor
@@ -2278,6 +2516,7 @@ Function LJZ_EKKMap_RunKxKz()
         elseif (LJZ_EKKMap_Is3DWave(w))
             LJZ_EKKMap_RunKxKz_3D_TwoPass(w, outDF + outName, WorkFunc, LJZ_EKKMap_GetEffectiveFL(), ThetaAngle, V0, Pixel, LatticeA, LatticeC)
             Wave out3DShow = $(outDF + outName)
+            LJZ_EKKMap_Write3DSlices(out3DShow, "KxKz", outName, wPath, "kx-kz")
             LJZ_EKKMap_ShowResultWave(out3DShow, "Im_" + outName)
         endif
     endfor
@@ -2389,6 +2628,16 @@ Function LJZ_EKKMap_PopupProc(ctrlName, popNum, popStr) : PopupMenuControl
             LJZ_EKKMap_RefreshWindowControls()
             LJZ_EKKMap_RefreshTitleBoxes()
             break
+        case "pmCtab":
+            SVAR PreviewCtab = $(LJZ_EKKMap_BaseDF() + ":PreviewCtab")
+            PreviewCtab = LJZ_EKKMap_ValidateCtabName(popStr)
+            LJZ_EKKMap_ApplyImageCtab(LJZ_EKKMap_GraphPath())
+            SVAR LastResultGraph = $(LJZ_EKKMap_BaseDF() + ":LastResultGraph")
+            if (strlen(LastResultGraph) > 0 && WinType(LastResultGraph) != 0)
+                LJZ_EKKMap_ApplyImageCtab(LastResultGraph)
+            endif
+            LJZ_EKKMap_RefreshWindowControls()
+            break
     endswitch
 End
 
@@ -2409,6 +2658,11 @@ Function LJZ_EKKMap_SetVarProc(ctrlName, varNum, varStr, varName) : SetVariableC
             NVAR PreviewZ = $(LJZ_EKKMap_BaseDF() + ":PreviewZ")
             PreviewZ = round(varNum)
             LJZ_EKKMap_ClampPreviewZToCurrentWave()
+            LJZ_EKKMap_RefreshWindowControls()
+            LJZ_EKKMap_ShowCurrentWave()
+            break
+        case "svPreviewCoord":
+            LJZ_EKKMap_SetPreviewFromCoord(varNum)
             LJZ_EKKMap_RefreshWindowControls()
             LJZ_EKKMap_ShowCurrentWave()
             break
@@ -2462,114 +2716,107 @@ Function LJZ_EKKMap_OpenPanel()
     String p = LJZ_EKKMap_PanelName()
     DoWindow/F $p
     if (V_flag != 0)
-        // Recreate the panel so newly added controls, such as EDC EF controls,
-        // appear immediately after recompiling this procedure.
+        // Recreate the panel so newly added controls appear immediately.
         KillWindow/Z $p
     endif
-    NewPanel/N=$p /W=(80,80,1040,670) as "E-k / kx-ky / kx-kz"
+    NewPanel/N=$p /W=(80,80,1220,760) as "E-k / kx-ky / kx-kz"
 
-    SetVariable svSourceDF,pos={10,10},size={455,20},title="Source DF"
-    // 绑定到真正的 SourceDF 字符串变量，避免只改控件内部 _STR: 文本。
+    // Left file / mode column.
+    SetVariable svSourceDF,pos={10,10},size={255,20},title="Source DF"
     SetVariable svSourceDF,value=root:ARPES_LJZ:EKKMap:SourceDF,proc=LJZ_EKKMap_SetVarProc
 
-    Button btCurrent,pos={480,8},size={80,24},title="Current",proc=LJZ_EKKMap_ButtonProc
-    Button btScan,pos={575,8},size={70,24},title="Scan",proc=LJZ_EKKMap_ButtonProc
+    Button btCurrent,pos={10,38},size={78,24},title="Current",proc=LJZ_EKKMap_ButtonProc
+    Button btScan,pos={96,38},size={78,24},title="Scan",proc=LJZ_EKKMap_ButtonProc
+    Button btRefresh,pos={182,38},size={78,24},title="Refresh",proc=LJZ_EKKMap_ButtonProc
 
-    // 严格单选：当前 preview / run / WaveSel 始终对应同一行。
-    ListBox lbWave,pos={10,42},size={225,360},listWave=$(LJZ_EKKMap_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EKKMap_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_EKKMap_ListBoxProc
+    Wave/T/Z wDisp = $(LJZ_EKKMap_BaseDF() + ":LB_Disp")
+    Wave/Z wSel = $(LJZ_EKKMap_BaseDF() + ":LB_Sel")
+    ListBox lbWave,pos={10,72},size={255,480},listWave=$(LJZ_EKKMap_BaseDF() + ":LB_Disp"),selWave=$(LJZ_EKKMap_BaseDF() + ":LB_Sel"),mode=1,proc=LJZ_EKKMap_ListBoxProc
 
-    Button btRefresh,pos={10,414},size={80,26},title="Refresh",proc=LJZ_EKKMap_ButtonProc
-    Button btPrevZ,pos={100,414},size={54,26},title="Z-",proc=LJZ_EKKMap_ButtonProc
-    Button btNextZ,pos={160,414},size={54,26},title="Z+",proc=LJZ_EKKMap_ButtonProc
-    SetVariable svPreviewZ,pos={10,448},size={205,20},title="Preview z"
-    SetVariable svPreviewZ,variable=$(LJZ_EKKMap_BaseDF() + ":PreviewZ"),proc=LJZ_EKKMap_SetVarProc
+    Button btPrevZ,pos={10,560},size={54,24},title="Z-",proc=LJZ_EKKMap_ButtonProc
+    Button btNextZ,pos={72,560},size={54,24},title="Z+",proc=LJZ_EKKMap_ButtonProc
+    Button btModeEK,pos={10,595},size={72,24},title="EK",proc=LJZ_EKKMap_ButtonProc
+    Button btModeKxKy,pos={96,595},size={72,24},title="KxKy",proc=LJZ_EKKMap_ButtonProc
+    Button btModeKxKz,pos={182,595},size={72,24},title="KxKz",proc=LJZ_EKKMap_ButtonProc
 
-    Button btModeEK,pos={10,478},size={64,22},title="EK",proc=LJZ_EKKMap_ButtonProc
-    Button btModeKxKy,pos={80,478},size={64,22},title="KxKy",proc=LJZ_EKKMap_ButtonProc
-    Button btModeKxKz,pos={150,478},size={64,22},title="KxKz",proc=LJZ_EKKMap_ButtonProc
+    // Preview graph and short status bars.
+    TitleBox tbCur,pos={280,462},size={700,18},frame=0,title="Current: none"
+    TitleBox tbLayer,pos={280,484},size={280,18},frame=0,title="z = 0, idx 0/0"
+    TitleBox tbDim,pos={580,484},size={420,18},frame=0,title="dim: n/a"
 
-    TitleBox tbCur,pos={250,370},size={700,18},frame=0,title="Current: none"
-
-    GroupBox gbGeom,pos={250,402},size={320,118},title="Geometry / Energy"
+    // Geometry group.
+    GroupBox gbGeom,pos={280,515},size={220,155},title="Geometry"
     GroupBox gbGeom,font="Arial",fSize=10,fStyle=2
-
-    SetVariable svTilt,pos={265,424},size={135,20},title="Tilt"
+    SetVariable svTilt,pos={295,538},size={185,20},title="Tilt"
     SetVariable svTilt,variable=$(LJZ_EKKMap_BaseDF() + ":ThetaAngle"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svAz,pos={415,424},size={135,20},title="Azimuth"
+    SetVariable svAz,pos={295,564},size={185,20},title="Azimuth"
     SetVariable svAz,variable=$(LJZ_EKKMap_BaseDF() + ":Azimuth"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svOffset,pos={265,450},size={135,20},title="Scan offset"
+    SetVariable svOffset,pos={295,590},size={185,20},title="Scan offset"
     SetVariable svOffset,variable=$(LJZ_EKKMap_BaseDF() + ":ScanOffset"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svEnergy,pos={415,450},size={135,20},title="E_rel"
+    SetVariable svEnergy,pos={295,616},size={185,20},title="E_rel"
     SetVariable svEnergy,variable=$(LJZ_EKKMap_BaseDF() + ":EnergyRel"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svQuickEF,pos={265,504},size={135,20},title="QuickEF"
-    SetVariable svQuickEF,variable=$(LJZ_EKKMap_BaseDF() + ":QuickEF"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svQuickHalfN,pos={415,504},size={135,20},title="QuickHalfN"
-    SetVariable svQuickHalfN,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickHalfN"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svQuickDS,pos={265,530},size={135,20},title="QuickDownsample"
-    SetVariable svQuickDS,limits={1,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickDownsample"),proc=LJZ_EKKMap_SetVarProc
-
-    TitleBox tbUnifiedGeom,pos={265,478},size={150,18},frame=0,title="Geometry: unified"
-
-    CheckBox cbTranspose,pos={415,478},size={90,18},title="Transpose"
+    CheckBox cbTranspose,pos={295,644},size={90,18},title="Transpose"
     CheckBox cbTranspose,variable=$(LJZ_EKKMap_BaseDF() + ":Transpose"),proc=LJZ_EKKMap_CheckProc
 
-    GroupBox gbPhoto,pos={590,402},size={350,144},title="Photon / lattice"
+    // Photon / lattice group.
+    GroupBox gbPhoto,pos={515,515},size={260,190},title="Photon / lattice"
     GroupBox gbPhoto,font="Arial",fSize=10,fStyle=2
-
-    SetVariable svHv,pos={605,424},size={150,20},title="hv"
+    SetVariable svHv,pos={530,538},size={110,20},title="hv"
     SetVariable svHv,variable=$(LJZ_EKKMap_BaseDF() + ":hv"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svWF,pos={775,424},size={150,20},title="WorkFunc"
+    SetVariable svWF,pos={650,538},size={110,20},title="WorkFunc"
     SetVariable svWF,variable=$(LJZ_EKKMap_BaseDF() + ":WorkFunc"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svFL,pos={605,450},size={150,20},title="Fermi E"
+    SetVariable svFL,pos={530,564},size={110,20},title="Fermi E"
     SetVariable svFL,variable=$(LJZ_EKKMap_BaseDF() + ":FL"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svPixel,pos={775,450},size={150,20},title="deg/pixel"
+    SetVariable svPixel,pos={650,564},size={110,20},title="deg/pixel"
     SetVariable svPixel,variable=$(LJZ_EKKMap_BaseDF() + ":Pixel"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svA,pos={605,478},size={100,20},title="a"
+    SetVariable svA,pos={530,590},size={70,20},title="a"
     SetVariable svA,variable=$(LJZ_EKKMap_BaseDF() + ":LatticeA"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svC,pos={715,478},size={100,20},title="c"
+    SetVariable svC,pos={610,590},size={70,20},title="c"
     SetVariable svC,variable=$(LJZ_EKKMap_BaseDF() + ":LatticeC"),proc=LJZ_EKKMap_SetVarProc
-
-    SetVariable svV0,pos={825,478},size={100,20},title="V0"
+    SetVariable svV0,pos={690,590},size={70,20},title="V0"
     SetVariable svV0,variable=$(LJZ_EKKMap_BaseDF() + ":V0"),proc=LJZ_EKKMap_SetVarProc
-
-    CheckBox cbFLUseEDC,pos={605,504},size={115,18},title="Use EDC EF"
+    CheckBox cbFLUseEDC,pos={530,618},size={115,18},title="Use EDC EF"
     CheckBox cbFLUseEDC,variable=$(LJZ_EKKMap_BaseDF() + ":FLUseEDC"),proc=LJZ_EKKMap_CheckProc
-
-    SetVariable svFLSourceDF,pos={730,504},size={195,20},title="EF DF"
+    SetVariable svFLSourceDF,pos={530,644},size={230,20},title="EF DF"
     SetVariable svFLSourceDF,value=root:ARPES_LJZ:EKKMap:FLSourceDF,proc=LJZ_EKKMap_SetVarProc
+    TitleBox tbEFNote,pos={530,674},size={170,18},frame=0,title="EF per slice optional"
 
-    // EKSign control removed in v4: EK must follow kx-ky sign convention; Gamma centering uses MDCKf.
+    // Preview / output group.
+    GroupBox gbPreview,pos={790,515},size={210,190},title="Preview / output"
+    GroupBox gbPreview,font="Arial",fSize=10,fStyle=2
+    SetVariable svPreviewZ,pos={805,538},size={175,20},title="z index"
+    SetVariable svPreviewZ,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":PreviewZ"),proc=LJZ_EKKMap_SetVarProc
+    SetVariable svPreviewCoord,pos={805,564},size={175,20},title="z value"
+    SetVariable svPreviewCoord,variable=$(LJZ_EKKMap_BaseDF() + ":PreviewCoord"),proc=LJZ_EKKMap_SetVarProc
+    SVAR PreviewCtab = $(LJZ_EKKMap_BaseDF() + ":PreviewCtab")
+    PopupMenu pmCtab,pos={805,592},size={175,20},title="colortable"
+    PopupMenu pmCtab,popvalue=PreviewCtab,value=#"CTabList()",proc=LJZ_EKKMap_PopupProc
+    CheckBox cbOutputSlices,pos={805,622},size={115,18},title="Output slices"
+    CheckBox cbOutputSlices,variable=$(LJZ_EKKMap_BaseDF() + ":OutputSlices"),proc=LJZ_EKKMap_CheckProc
+    CheckBox cbOpenSliceGraphs,pos={805,648},size={140,18},title="Open slice graphs"
+    CheckBox cbOpenSliceGraphs,variable=$(LJZ_EKKMap_BaseDF() + ":OpenSliceGraphs"),proc=LJZ_EKKMap_CheckProc
 
-    TitleBox tbEFNote,pos={730,530},size={205,18},frame=0,title="3D EK: edc_ff_ef[iz]; *_FL_used records EF."
-
-    GroupBox gbRun,pos={250,550},size={690,70},title="Run"
+    // Run group.
+    GroupBox gbRun,pos={1015,515},size={175,190},title="Run"
     GroupBox gbRun,font="Arial",fSize=10,fStyle=2
-
-    SetVariable svMDCKf,pos={265,578},size={150,20},title="MDC K_F shift"
-    SetVariable svMDCKf,variable=$(LJZ_EKKMap_BaseDF() + ":MDCKf"),proc=LJZ_EKKMap_SetVarProc
-
     NVAR InputKind = $(LJZ_EKKMap_BaseDF() + ":InputKind")
-    PopupMenu pmInputKind,pos={265,552},size={265,20},title="Input kind"
+    PopupMenu pmInputKind,pos={1030,538},size={145,20},title="Input kind"
     PopupMenu pmInputKind,mode=InputKind,popvalue=LJZ_EKKMap_InputKindLabel(InputKind),value=#"LJZ_EKKMap_InputKindPopupList()",proc=LJZ_EKKMap_PopupProc
+    SetVariable svMDCKf,pos={1030,566},size={145,20},title="MDC K_F"
+    SetVariable svMDCKf,variable=$(LJZ_EKKMap_BaseDF() + ":MDCKf"),proc=LJZ_EKKMap_SetVarProc
+    Button btEK,pos={1030,595},size={145,24},title="Calc E-k",proc=LJZ_EKKMap_ButtonProc
+    Button btKxKy,pos={1030,623},size={145,24},title="Calc kx-ky",proc=LJZ_EKKMap_ButtonProc
+    Button btKxKz,pos={1030,651},size={145,24},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc
+    Button btQuickKxKy,pos={1030,679},size={145,24},title="Quick FS",proc=LJZ_EKKMap_ButtonProc
 
-    Button btEK,pos={445,578},size={100,24},title="Calc E-k",proc=LJZ_EKKMap_ButtonProc
-    Button btKxKy,pos={560,578},size={100,24},title="Calc kx-ky",proc=LJZ_EKKMap_ButtonProc
-    Button btKxKz,pos={675,578},size={100,24},title="Calc kx-kz",proc=LJZ_EKKMap_ButtonProc
-    Button btQuickKxKy,pos={790,578},size={145,24},title="Quick FS kx-ky",proc=LJZ_EKKMap_ButtonProc
+    SetVariable svQuickEF,pos={805,674},size={85,20},title="QuickEF"
+    SetVariable svQuickEF,variable=$(LJZ_EKKMap_BaseDF() + ":QuickEF"),proc=LJZ_EKKMap_SetVarProc
+    SetVariable svQuickHalfN,pos={900,674},size={85,20},title="HalfN"
+    SetVariable svQuickHalfN,limits={0,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickHalfN"),proc=LJZ_EKKMap_SetVarProc
+    SetVariable svQuickDS,pos={805,700},size={180,20},title="Quick downsample"
+    SetVariable svQuickDS,limits={1,inf,1},variable=$(LJZ_EKKMap_BaseDF() + ":QuickDownsample"),proc=LJZ_EKKMap_SetVarProc
 
-    TitleBox tbNote,pos={265,592},size={650,18},frame=0,title="Run processes the selected wave; 3D output contains all layers, while graphs display one Preview z slice."
-
+    Print "LJZ_EKKMap help: 3D EK previews dim2 stack scaling; 3D kx-ky/kx-kz previews dim0 energy scaling. Run keeps 3D output and can write per-layer 2D slice waves. Transpose affects preview only."
     LJZ_EKKMap_CreateGraphSubwindow()
     LJZ_EKKMap_RefreshWindowControls()
     LJZ_EKKMap_RefreshTitleBoxes()
