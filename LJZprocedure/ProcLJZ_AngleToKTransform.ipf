@@ -1158,115 +1158,111 @@ End
 
 Window A2K1D_LJZ_P() : Panel
 	PauseUpdate; Silent 1
-	NewPanel /W=(420,60,982.2,790.0) as "Angle->k (Value & Spectra) (LJZ)"
+	NewPanel /W=(420,60,1220,850) as "Angle->k (A2K1D LJZ)"
 	ModifyPanel frameStyle=1
 	ShowTools/A
 
 	// --- Status bar ---
-	TitleBox a2k1d_t0,pos={12,9},size={312,18},title="Transform: Value or Spectra Interpolation",frame=0
-	TitleBox a2k1d_status,pos={12,27},size={312,18},title="Selected: (none)",frame=0
-	TitleBox a2k1d_runstat,pos={12,45},size={312,18},title="Status: idle",frame=0
+	TitleBox a2k1d_t0,pos={12,8},size={360,18},title="A2K1D: Angle -> k",frame=0
+	TitleBox a2k1d_status,pos={12,28},size={760,18},title="Selected: (none)",frame=0
+	TitleBox a2k1d_runstat,pos={12,48},size={760,18},title="Status: idle",frame=0
 
 	// --- Base DF row ---
-	TitleBox a2k1d_tdf,pos={12,69},size={48,18},title="Base DF:",frame=0
-	SetVariable a2k1d_sv_df,pos={64,66},size={260,19.80},proc=a2k1d_sv_df_proc
-	SetVariable a2k1d_sv_df,value= root:ARPES_LJZ:A2K1D:a2k1d_baseDF
-	CheckBox a2k1d_ck_rec,pos={336,69},size={80,18},title="Recursive"
-	CheckBox a2k1d_ck_rec,variable= root:ARPES_LJZ:A2K1D:a2k1d_recursive
-	Button a2k1d_btn_scan,pos={432,66},size={72,21},proc=a2k1d_btn_scan,title="Scan"
+	TitleBox a2k1d_tdf,pos={12,76},size={32,18},title="DF",frame=0
+	SetVariable a2k1d_sv_df,pos={48,72},size={520,20},bodyWidth=460,proc=a2k1d_sv_df_proc,title=""
+	SetVariable a2k1d_sv_df,value=root:ARPES_LJZ:A2K1D:a2k1d_baseDF
+	CheckBox a2k1d_ck_rec,pos={580,74},size={80,18},title="Recursive"
+	CheckBox a2k1d_ck_rec,variable=root:ARPES_LJZ:A2K1D:a2k1d_recursive
+	Button a2k1d_btn_scan,pos={670,70},size={90,24},proc=a2k1d_btn_scan,title="Scan"
 
 	// --- Left: ListBox ---
-	ListBox a2k1d_lb,pos={12,96},size={312,348},proc=a2k1d_lb_proc
+	ListBox a2k1d_lb,pos={12,104},size={370,500},proc=a2k1d_lb_proc
 	ListBox a2k1d_lb,listWave=root:ARPES_LJZ:A2K1D:LB_Items
 	ListBox a2k1d_lb,selWave=root:ARPES_LJZ:A2K1D:LB_Sel,mode=1,selRow=0
 
 	// --- Right: Physics params ---
-	TitleBox a2k1d_tp,pos={336,96},size={204,18},title="-- Physics --",frame=0
-
-	SetVariable a2k1d_sv_th,pos={336,116},size={98,19.80},title="ThetaAngle"
-	SetVariable a2k1d_sv_th,limits={-360,360,0.01},value= root:ARPES_LJZ:A2K1D:ThetaAngle
-	SetVariable a2k1d_sv_hv,pos={438,116},size={102,19.80},title="hv(eV)"
-	SetVariable a2k1d_sv_hv,limits={0,1e+06,0.01},value= root:ARPES_LJZ:A2K1D:hv
-
-	SetVariable a2k1d_sv_wf,pos={336,140},size={98,19.80},title="WorkFunc"
-	SetVariable a2k1d_sv_wf,limits={0,100,0.01},value= root:ARPES_LJZ:A2K1D:WorkFunc
-	SetVariable a2k1d_sv_e,pos={438,140},size={102,19.80},title="EnergyRel"
-	SetVariable a2k1d_sv_e,limits={-100000,100000,0.01},value= root:ARPES_LJZ:A2K1D:EnergyRel
-
-	SetVariable a2k1d_sv_ksh,pos={336,164},size={98,19.80},title="MDCKf"
-	SetVariable a2k1d_sv_ksh,limits={-100000,100000,0.0001},value= root:ARPES_LJZ:A2K1D:MDCKf
-	SetVariable a2k1d_sv_lc,pos={438,164},size={102,19.80},title="LatticeA"
-	SetVariable a2k1d_sv_lc,limits={0,1e+06,0.0001},value= root:ARPES_LJZ:A2K1D:LatticeA
+	TitleBox a2k1d_tp,pos={400,104},size={160,18},title="Physics",frame=0
+	SetVariable a2k1d_sv_th,pos={400,128},size={170,20},bodyWidth=80,title="Theta"
+	SetVariable a2k1d_sv_th,limits={-360,360,0.01},value=root:ARPES_LJZ:A2K1D:ThetaAngle
+	SetVariable a2k1d_sv_hv,pos={590,128},size={150,20},bodyWidth=80,title="hv"
+	SetVariable a2k1d_sv_hv,limits={0,1e+06,0.01},value=root:ARPES_LJZ:A2K1D:hv
+	SetVariable a2k1d_sv_wf,pos={400,154},size={170,20},bodyWidth=80,title="WF"
+	SetVariable a2k1d_sv_wf,limits={0,100,0.01},value=root:ARPES_LJZ:A2K1D:WorkFunc
+	SetVariable a2k1d_sv_e,pos={590,154},size={150,20},bodyWidth=80,title="Erel"
+	SetVariable a2k1d_sv_e,limits={-100000,100000,0.01},value=root:ARPES_LJZ:A2K1D:EnergyRel
+	SetVariable a2k1d_sv_ksh,pos={400,180},size={170,20},bodyWidth=80,title="kF"
+	SetVariable a2k1d_sv_ksh,limits={-100000,100000,0.0001},value=root:ARPES_LJZ:A2K1D:MDCKf
+	SetVariable a2k1d_sv_lc,pos={590,180},size={150,20},bodyWidth=80,title="a"
+	SetVariable a2k1d_sv_lc,limits={0,1e+06,0.0001},value=root:ARPES_LJZ:A2K1D:LatticeA
 
 	// --- Right: Single-wave ---
-	TitleBox a2k1d_tp_single,pos={336,192},size={204,18},title="-- Single wave --",frame=0
-
-	SetVariable a2k1d_sv_bn,pos={336,212},size={204,19.80},title="BaseName"
-	SetVariable a2k1d_sv_bn,value= root:ARPES_LJZ:A2K1D:a2k1d_baseName
-
-	SetVariable a2k1d_sv_deg,pos={336,236},size={98,19.80},title="Pixel"
-	SetVariable a2k1d_sv_deg,limits={-999,999,0.001},value= root:ARPES_LJZ:A2K1D:Pixel
-	SetVariable a2k1d_sv_n,pos={438,260},size={102,19.80},title="OutN"
-	SetVariable a2k1d_sv_n,limits={0,1e+07,1},value= root:ARPES_LJZ:A2K1D:a2k1d_outN
-
-	TitleBox a2k1d_tb_pixel_note,pos={336,260},size={204,36},title="Pixel=0: raw is deg; else rawAngle=raw*Pixel",frame=0
-	Button a2k1d_btn_run,pos={336,284},size={204,22},proc=a2k1d_btn_run,title="Run Value Trans (Y=Angle)"
-	Button a2k1d_btn_spec,pos={336,308},size={204,22},proc=a2k1d_btn_spec_run,title="Run Spectra (X=Angle->k Interp)"
+	TitleBox a2k1d_tp_single,pos={400,214},size={160,18},title="Single",frame=0
+	SetVariable a2k1d_sv_bn,pos={400,238},size={340,20},bodyWidth=250,title="Name"
+	SetVariable a2k1d_sv_bn,value=root:ARPES_LJZ:A2K1D:a2k1d_baseName
+	SetVariable a2k1d_sv_deg,pos={400,264},size={170,20},bodyWidth=80,title="Pixel"
+	SetVariable a2k1d_sv_deg,limits={-999,999,0.001},value=root:ARPES_LJZ:A2K1D:Pixel
+	SetVariable a2k1d_sv_n,pos={590,264},size={150,20},bodyWidth=80,title="OutN"
+	SetVariable a2k1d_sv_n,limits={0,1e+07,1},value=root:ARPES_LJZ:A2K1D:a2k1d_outN
+	TitleBox a2k1d_tb_pixel_note,pos={400,288},size={340,18},title="Pixel=0: degrees",frame=0
+	Button a2k1d_btn_run,pos={400,314},size={165,24},proc=a2k1d_btn_run,title="Value -> k"
+	Button a2k1d_btn_spec,pos={575,314},size={165,24},proc=a2k1d_btn_spec_run,title="Spectra -> k"
 
 	// --- Right: Batch ---
-	TitleBox a2k1d_tp_batch,pos={336,314},size={204,18},title="-- Batch --",frame=0
+	TitleBox a2k1d_tp_batch,pos={400,354},size={160,18},title="Batch",frame=0
+	Button a2k1d_btn_batch_layer,pos={400,378},size={165,24},proc=a2k1d_btn_batch_layers_interp,title="Layers -> k"
+	Button a2k1d_btn_batch_peak,pos={575,378},size={165,24},proc=a2k1d_btn_batch_peaks_valuetrans,title="Peaks -> k"
+	Button a2k1d_btn_table_peak_k,pos={400,406},size={340,24},proc=a2k1d_btn_table_peak_k,title="Table Peak -> k"
 
-	Button a2k1d_btn_batch_layer,pos={336,334},size={204,22},proc=a2k1d_btn_batch_layers_interp,title="Batch: layer_xx Spectra->k"
-	Button a2k1d_btn_batch_peak,pos={336,358},size={204,22},proc=a2k1d_btn_batch_peaks_valuetrans,title="Batch: peak/sigmap Value->k"
-	Button a2k1d_btn_table_peak_k,pos={336,382},size={204,22},proc=a2k1d_btn_table_peak_k,title="Table Peak->K"
+	// --- Right: Correction ---
+	TitleBox a2k1d_tp_corr,pos={400,444},size={160,18},title="Correction",frame=0
+	SetVariable a2k1d_sv_corr_df,pos={400,468},size={340,20},bodyWidth=250,title="CorrDF"
+	SetVariable a2k1d_sv_corr_df,value=root:ARPES_LJZ:A2K1D:a2k1d_corrRunDF
+	CheckBox a2k1d_ck_angle_corr,pos={400,494},size={100,18},title="Use corr"
+	CheckBox a2k1d_ck_angle_corr,variable=root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
+	CheckBox a2k1d_ck_corr_skip,pos={505,494},size={100,18},title="Skip bad"
+	CheckBox a2k1d_ck_corr_skip,variable=root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
+	SetVariable a2k1d_sv_corr_mode,pos={610,492},size={130,20},bodyWidth=50,title="Mode"
+	SetVariable a2k1d_sv_corr_mode,limits={0,2,1},value=root:ARPES_LJZ:A2K1D:a2k1d_corrMode
+	TitleBox a2k1d_tb_corr_mode,pos={400,518},size={340,18},title="Mode: 0 full, 1 first, 2 mean",frame=0
+	Button a2k1d_btn_corr_peaks,pos={400,544},size={165,24},proc=a2k1d_btn_make_corr_peaks,title="Make Corr Peaks"
+	Button a2k1d_btn_corr_layers,pos={575,544},size={165,24},proc=a2k1d_btn_make_corr_layers,title="Make Corr Layers"
+	Button a2k1d_btn_corr_peaks_k,pos={400,572},size={165,24},proc=a2k1d_btn_corr_peaks_to_k,title="Corr Peaks -> k"
+	Button a2k1d_btn_corr_layers_k,pos={575,572},size={165,24},proc=a2k1d_btn_corr_layers_to_k,title="Corr Layers -> k"
 
-	SetVariable a2k1d_sv_corr_df,pos={336,410},size={204,19.80},title="CorrRunDF"
-	SetVariable a2k1d_sv_corr_df,value= root:ARPES_LJZ:A2K1D:a2k1d_corrRunDF
-	CheckBox a2k1d_ck_angle_corr,pos={336,434},size={104,18},title="Use angle corr"
-	CheckBox a2k1d_ck_angle_corr,variable= root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
-	CheckBox a2k1d_ck_corr_skip,pos={444,434},size={96,18},title="skip flagged"
-	CheckBox a2k1d_ck_corr_skip,variable= root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
-	SetVariable a2k1d_sv_corr_mode,pos={336,456},size={98,19.80},title="CorrMode"
-	SetVariable a2k1d_sv_corr_mode,limits={0,2,1},value= root:ARPES_LJZ:A2K1D:a2k1d_corrMode
-	TitleBox a2k1d_tb_corr_mode,pos={438,458},size={102,18},title="0 full, 1 first, 2 mean",frame=0
-	Button a2k1d_btn_corr_peaks,pos={336,480},size={98,22},proc=a2k1d_btn_make_corr_peaks,title="Make Corr Peaks"
-	Button a2k1d_btn_corr_layers,pos={442,480},size={98,22},proc=a2k1d_btn_make_corr_layers,title="Make Corr Layers"
-	Button a2k1d_btn_corr_peaks_k,pos={336,506},size={98,22},proc=a2k1d_btn_corr_peaks_to_k,title="Corr Peaks -> K"
-	Button a2k1d_btn_corr_layers_k,pos={442,506},size={98,22},proc=a2k1d_btn_corr_layers_to_k,title="Corr Layers -> K"
-
-	Button a2k1d_btn_cleanup,pos={336,532},size={204,22},proc=a2k1d_btn_cleanup_proc,title="Clean generated waves"
-	Button a2k1d_btn_cleanup_preview,pos={336,556},size={204,22},proc=a2k1d_btn_cleanup_preview,title="Preview cleanup list"
-	Button a2k1d_btn_abort,pos={336,580},size={204,22},proc=a2k1d_btn_abort,title="Abort"
-	Button a2k1d_btn_help,pos={336,606},size={98,22},proc=a2k1d_btn_help,title="Help"
-	Button a2k1d_btn_close,pos={442,606},size={98,22},proc=a2k1d_btn_close,title="Close"
+	// --- Right: Utility ---
+	TitleBox a2k1d_tp_util,pos={400,610},size={160,18},title="Utility",frame=0
+	Button a2k1d_btn_cleanup,pos={400,634},size={165,24},proc=a2k1d_btn_cleanup_proc,title="Clean outputs"
+	Button a2k1d_btn_cleanup_preview,pos={575,634},size={165,24},proc=a2k1d_btn_cleanup_preview,title="Preview clean"
+	Button a2k1d_btn_abort,pos={400,664},size={340,24},proc=a2k1d_btn_abort,title="Abort"
+	Button a2k1d_btn_help,pos={400,694},size={165,24},proc=a2k1d_btn_help,title="Help"
+	Button a2k1d_btn_close,pos={575,694},size={165,24},proc=a2k1d_btn_close,title="Close"
 
 	// --- Bottom: Plot / Visualization ---
+	TitleBox a2k1d_tp_plot,pos={12,620},size={160,18},title="Plot",frame=0
+	Button a2k1d_btn_plot_peaks,pos={12,644},size={110,24},proc=a2k1d_btn_plot_peaks_err,title="Plot Peaks"
+	Button a2k1d_btn_plot_delta,pos={132,644},size={110,24},proc=a2k1d_btn_plot_delta_err,title="Plot Dk12"
+	SetVariable a2k1d_sv_kvary,pos={252,646},size={120,20},bodyWidth=70,title="kVary"
+	SetVariable a2k1d_sv_kvary,limits={-1e+06,1e+06,0.001},value=root:ARPES_LJZ:A2K1D:a2k1d_kvary
+	Button a2k1d_btn_plot_layers,pos={12,676},size={360,24},proc=a2k1d_btn_plot_layers_stack,title="Plot stack"
 
-	// Row 1: peak plots | kVary | stack
-	Button a2k1d_btn_plot_peaks,pos={12,636},size={90,22},proc=a2k1d_btn_plot_peaks_err,title="Plot Peaks"
-	Button a2k1d_btn_plot_delta,pos={108,636},size={90,22},proc=a2k1d_btn_plot_delta_err,title="Plot Dk12"
-	SetVariable a2k1d_sv_kvary,pos={210,638},size={108,19.80},title="kVary"
-	SetVariable a2k1d_sv_kvary,limits={-1e+06,1e+06,0.001},value= root:ARPES_LJZ:A2K1D:a2k1d_kvary
-	Button a2k1d_btn_plot_layers,pos={324,636},size={216,22},proc=a2k1d_btn_plot_layers_stack,title="Plot: stack layer_*_k_spec"
+	// --- Bottom: Color / heatmap ---
+	CheckBox a2k1d_ck_useCT,pos={12,712},size={80,18},title="Grad"
+	CheckBox a2k1d_ck_useCT,variable=root:ARPES_LJZ:A2K1D:a2k1d_useCT
+	CheckBox a2k1d_ck_invCT,pos={100,712},size={70,18},title="Invert"
+	CheckBox a2k1d_ck_invCT,variable=root:ARPES_LJZ:A2K1D:a2k1d_ctInvert
+	TitleBox a2k1d_tb_ct_current,pos={180,712},size={120,18},title="CT",frame=0
+	Button a2k1d_btn_browse_ct,pos={305,708},size={40,22},proc=a2k1d_btn_open_ct_browser,title="..."
+	Button a2k1d_btn_plot_heat,pos={12,740},size={360,26},proc=a2k1d_btn_plot_layers_heatmap,title="Plot heatmap"
 
-	// Row 2: color table | heatmap
-	CheckBox a2k1d_ck_useCT,pos={12,664},size={72,18},title="GradColor"
-	CheckBox a2k1d_ck_useCT,variable= root:ARPES_LJZ:A2K1D:a2k1d_useCT
-	CheckBox a2k1d_ck_invCT,pos={88,664},size={52,18},title="Invert"
-	CheckBox a2k1d_ck_invCT,variable= root:ARPES_LJZ:A2K1D:a2k1d_ctInvert
-	TitleBox a2k1d_tb_ct_current,pos={144,664},size={88,18},title="CT: NeonClash",frame=0
-	Button a2k1d_btn_browse_ct,pos={236,662},size={38,20},proc=a2k1d_btn_open_ct_browser,title="..."
-	Button a2k1d_btn_plot_heat,pos={282,660},size={258,24},proc=a2k1d_btn_plot_layers_heatmap,title="Plot: 2D Heatmap"
-
-	// Row 3: heatmap axis params
-	SetVariable a2k1d_sv_hmY0,pos={12,690},size={116,19.80},title="HM y0"
-	SetVariable a2k1d_sv_hmY0,limits={-1e+09,1e+09,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_hmY0
-	SetVariable a2k1d_sv_hmDY,pos={132,690},size={116,19.80},title="HM dY"
-	SetVariable a2k1d_sv_hmDY,limits={-1e+09,1e+09,0.01},value= root:ARPES_LJZ:A2K1D:a2k1d_hmDY
-	PopupMenu a2k1d_pm_hmUnit,pos={252,690},size={152,20.40},proc=a2k1d_pm_hm_unit_proc,title="HM Unit"
-	PopupMenu a2k1d_pm_hmUnit,mode=3,popvalue="Fluence(uJ/cm^2)",value= #"\"Delay(ps);Temperature(K);Fluence(uJ/cm^2);Frame Index\""
-	SetVariable a2k1d_sv_hmMul,pos={408,690},size={132,19.80},title="HM mul"
-	SetVariable a2k1d_sv_hmMul,limits={-1e+09,1e+09,0.0001},value= root:ARPES_LJZ:A2K1D:a2k1d_hmYMul
+	// --- Bottom: Heatmap params ---
+	SetVariable a2k1d_sv_hmY0,pos={400,740},size={115,20},bodyWidth=65,title="y0"
+	SetVariable a2k1d_sv_hmY0,limits={-1e+09,1e+09,0.01},value=root:ARPES_LJZ:A2K1D:a2k1d_hmY0
+	SetVariable a2k1d_sv_hmDY,pos={525,740},size={115,20},bodyWidth=65,title="dY"
+	SetVariable a2k1d_sv_hmDY,limits={-1e+09,1e+09,0.01},value=root:ARPES_LJZ:A2K1D:a2k1d_hmDY
+	PopupMenu a2k1d_pm_hmUnit,pos={400,766},size={160,20},proc=a2k1d_pm_hm_unit_proc,title="Y"
+	PopupMenu a2k1d_pm_hmUnit,mode=3,popvalue="Fluence",value=#"\"Delay;Temp;Fluence;Index\""
+	SetVariable a2k1d_sv_hmMul,pos={575,766},size={115,20},bodyWidth=65,title="mul"
+	SetVariable a2k1d_sv_hmMul,limits={-1e+09,1e+09,0.0001},value=root:ARPES_LJZ:A2K1D:a2k1d_hmYMul
 
 EndMacro
 
