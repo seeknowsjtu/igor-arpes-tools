@@ -1044,7 +1044,13 @@ Function LJZ_EKKMap_RefreshTitleBoxes()
             Variable nz = DimSize(w, previewDim)
             Variable coord = LJZ_EKKMap_GetPreviewCoord(w)
             String unit = LJZ_EKKMap_GetPreviewUnit(w)
-            String label = (CurrentMode == LJZ_EKKMap_Mode_EK) ? "z" : "energy"
+            String label
+
+if (CurrentMode == LJZ_EKKMap_Mode_EK)
+    label = "stack"
+else
+    label = "energy"
+endif
             if (CurrentMode == LJZ_EKKMap_Mode_EK && strlen(WaveUnits(w, previewDim)) == 0)
                 label = "stack"
             endif
