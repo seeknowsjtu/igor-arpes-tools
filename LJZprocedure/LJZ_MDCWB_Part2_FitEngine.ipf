@@ -1633,10 +1633,21 @@ Function LJZ_MDCWB_EvaluateBackgroundFromCoef(wData, coefW, outBG)
     endif
     SetScale/P x, DimOffset(wData, 0), DimDelta(wData, 0), outBG
 
-    Wave/Z wBG = $(LJZ_MDCWB_BaseDF() + ":Work_bg")
     Variable xRef = 0
-    if (WaveExists(wBG) && numpnts(wBG) >= 6 && numtype(wBG[5]) == 0)
-        xRef = wBG[5]
+
+    Wave/Z wInfo = $(LJZ_MDCWB_PathFitInfo(wData))
+    if (WaveExists(wInfo) && numpnts(wInfo) >= LJZ_MDCWB_FitInfoSize() && numtype(wInfo[2]) == 0 && numtype(wInfo[3]) == 0)
+        xRef = 0.5 * (wInfo[2] + wInfo[3])
+    else
+        Wave/Z savedBG = $(LJZ_MDCWB_PathBG(wData))
+        if (WaveExists(savedBG) && numpnts(savedBG) >= 6 && numtype(savedBG[5]) == 0)
+            xRef = savedBG[5]
+        else
+            Wave/Z wBG = $(LJZ_MDCWB_BaseDF() + ":Work_bg")
+            if (WaveExists(wBG) && numpnts(wBG) >= 6 && numtype(wBG[5]) == 0)
+                xRef = wBG[5]
+            endif
+        endif
     endif
 
     Variable c0 = coefW[0]
@@ -1647,21 +1658,14 @@ Function LJZ_MDCWB_EvaluateBackgroundFromCoef(wData, coefW, outBG)
     return 0
 End
 
-Function LJZ_MDCWB_EvaluatePeakComponentFromCoef(wData, coefW, idx, outPeak)
-    Wave wData, coefW, outPeak
+Function LJZ_MDCWB_EvaluatePeakComponentFromLayout(wData, coefW, peakTypes, slotMap, idx, outPeak)
+    Wave wData, coefW, peakTypes, slotMap, outPeak
     Variable idx
 
-    LJZ_MDCWB_EnsureBaseDF()
-
-    Wave wPN = $(LJZ_MDCWB_BaseDF() + ":Work_peaks_num")
-    Variable nPeak = DimSize(wPN, 0)
-
-    if (idx < 0 || idx >= nPeak)
+    if (idx < 0 || idx >= numpnts(peakTypes))
         return -1
     endif
-
-    Make/FREE/N=1 types, slots
-    if (LJZ_MDCWB_BuildLayoutFromPeaksNum(wPN, types, slots) != 0)
+    if (numpnts(slotMap) < numpnts(peakTypes) + 1)
         return -1
     endif
     if (numpnts(coefW) < LJZ_MDCWB_FlatBaseSlots())
@@ -1669,8 +1673,8 @@ Function LJZ_MDCWB_EvaluatePeakComponentFromCoef(wData, coefW, idx, outPeak)
         return -1
     endif
 
-    Variable s = slots[idx]
-    Variable t = round(types[idx])
+    Variable s = slotMap[idx]
+    Variable t = round(peakTypes[idx])
     Variable resH = max(LJZ_MDCWB_MinResH(), abs(coefW[3]))
 
     if (numpnts(outPeak) != numpnts(wData))
@@ -1701,6 +1705,21 @@ Function LJZ_MDCWB_EvaluatePeakComponentFromCoef(wData, coefW, idx, outPeak)
     endif
 
     return 0
+End
+
+Function LJZ_MDCWB_EvaluatePeakComponentFromCoef(wData, coefW, idx, outPeak)
+    Wave wData, coefW, outPeak
+    Variable idx
+
+    LJZ_MDCWB_EnsureBaseDF()
+
+    Wave wPN = $(LJZ_MDCWB_BaseDF() + ":Work_peaks_num")
+    Make/FREE/N=1 types, slots
+    if (LJZ_MDCWB_BuildLayoutFromPeaksNum(wPN, types, slots) != 0)
+        return -1
+    endif
+
+    return LJZ_MDCWB_EvaluatePeakComponentFromLayout(wData, coefW, types, slots, idx, outPeak)
 End
 
 Function LJZ_MDCWB_EvaluatePeakComponent(wData, idx, outComponent)
