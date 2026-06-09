@@ -763,27 +763,8 @@ Function/S a2k1d_cleanup_generated_recursive(dfPath, dryRun)
 End
 
 Function/S a2k1d_list_output_temp_waves()
-    String outDF = "root:ARPES_LJZ:OUTPUT:A2K1D:"
-    if (!DataFolderExists(outDF))
-        return ""
-    endif
-
-    String oldDF = GetDataFolder(1)
-    SetDataFolder $outDF
-    String list = WaveList("*", ";", "")
-    SetDataFolder oldDF
-
-    String out = ""
-    Variable i, n
-    n = ItemsInList(list, ";")
-    for (i = 0; i < n; i += 1)
-        String wn = StringFromList(i, list, ";")
-        if (strlen(wn) > 0)
-            out += outDF + wn + ";"
-        endif
-    endfor
-
-    return out
+    Print "a2k1d_list_output_temp_waves is deprecated. Use a2k1d_cleanup_output_temp_for_group(groupTag, dryRun)."
+    return ""
 End
 
 Function/S a2k1d_cleanup_output_temp_for_group(groupTag, dryRun)
@@ -797,7 +778,7 @@ Function/S a2k1d_cleanup_output_temp_for_group(groupTag, dryRun)
 
     groupTag = CleanupName(groupTag, 0)
     if (strlen(groupTag) == 0)
-        Print "A2K1D cleanup output temp: empty groupTag; skip global temp cleanup."
+        Print "A2K1D cleanup output temp: empty groupTag; skip."
         return ""
     endif
 
@@ -805,11 +786,11 @@ Function/S a2k1d_cleanup_output_temp_for_group(groupTag, dryRun)
     SetDataFolder $outDF
 
     String list = WaveList("*", ";", "")
-    String deletedList = ""
+    String outList = ""
 
     Variable i, n
-    String wn, lw, prefix
-    prefix = LowerStr(groupTag + "_")
+    String wn, lw
+    String prefix = LowerStr(groupTag + "_")
 
     n = ItemsInList(list, ";")
     for (i = 0; i < n; i += 1)
@@ -820,11 +801,11 @@ Function/S a2k1d_cleanup_output_temp_for_group(groupTag, dryRun)
 
         lw = LowerStr(wn)
 
-        // Only clean this group, e.g. p3d5mW_*.
+        // Only this group, e.g. p3d5mW_*.
         // Do NOT clean p1mW_*, p2mW_*, p4mW_*.
-        // Do NOT clean generic a2k1d_* temp waves here.
+        // Do NOT clean generic a2k1d_* temporary waves here.
         if (StringMatch(lw, prefix + "*"))
-            deletedList += outDF + wn + ";"
+            outList += outDF + wn + ";"
             if (!dryRun)
                 KillWaves/Z $wn
             endif
@@ -834,28 +815,37 @@ Function/S a2k1d_cleanup_output_temp_for_group(groupTag, dryRun)
     SetDataFolder oldDF
 
     if (dryRun)
-        if (ItemsInList(deletedList, ";") > 0)
-            Print "DryRun: would clear A2K1D plotting waves for group '" + groupTag + "' under " + outDF
+        if (ItemsInList(outList, ";") > 0)
+            Print "DryRun: A2K1D plotting candidates for group '" + groupTag + "':"
+            for (i = 0; i < ItemsInList(outList, ";"); i += 1)
+                Print "  " + StringFromList(i, outList, ";")
+            endfor
         else
             Print "DryRun: no A2K1D plotting waves found for group '" + groupTag + "' under " + outDF
         endif
     endif
 
-    return deletedList
+    return outList
 End
 
 Function a2k1d_preview_cleanup_candidates(base, recursive)
     String base
     Variable recursive
 
-    String candidates
+    String candidates = ""
+
     if (recursive)
         candidates = a2k1d_cleanup_generated_recursive(base, 1)
     else
         candidates = a2k1d_cleanup_generated_in_df(base, 1)
     endif
 
-    candidates += a2k1d_list_output_temp_waves()
+    SVAR/Z baseName = root:ARPES_LJZ:A2K1D:a2k1d_baseName
+    if (SVAR_Exists(baseName) && strlen(baseName) > 0)
+        candidates += a2k1d_cleanup_output_temp_for_group(baseName, 1)
+    else
+        Print "A2K1D Cleanup preview: baseName is empty; skip OUTPUT:A2K1D group cleanup."
+    endif
 
     Variable n = ItemsInList(candidates, ";")
     if (n <= 0)
@@ -868,9 +858,7 @@ Function a2k1d_preview_cleanup_candidates(base, recursive)
     for (i = 0; i < n; i += 1)
         Print "  " + StringFromList(i, candidates, ";")
     endfor
-SVAR baseName = root:ARPES_LJZ:A2K1D:a2k1d_baseName
-String tempCandidates = a2k1d_cleanup_output_temp_for_group(baseName, 1)
-candidates += tempCandidates
+
     return n
 End
 
@@ -903,6 +891,7 @@ Function a2k1d_btn_cleanup_proc(ctrlName) : ButtonControl
 
     SVAR baseDF = root:ARPES_LJZ:A2K1D:a2k1d_baseDF
     NVAR recursive = root:ARPES_LJZ:A2K1D:a2k1d_recursive
+    SVAR/Z baseName = root:ARPES_LJZ:A2K1D:a2k1d_baseName
 
     String base = a2k1d_df_with_colon(baseDF)
     if (!DataFolderExists(base))
@@ -910,15 +899,18 @@ Function a2k1d_btn_cleanup_proc(ctrlName) : ButtonControl
         return 0
     endif
 
-    // First do dry run and print candidates.
-    String candidates
+    String candidates = ""
     if (recursive)
         candidates = a2k1d_cleanup_generated_recursive(base, 1)
     else
         candidates = a2k1d_cleanup_generated_in_df(base, 1)
     endif
 
-    candidates += a2k1d_list_output_temp_waves()
+    if (SVAR_Exists(baseName) && strlen(baseName) > 0)
+        candidates += a2k1d_cleanup_output_temp_for_group(baseName, 1)
+    else
+        Print "A2K1D Cleanup: baseName is empty; skip OUTPUT:A2K1D group cleanup."
+    endif
 
     Variable n = ItemsInList(candidates, ";")
     if (n <= 0)
@@ -931,11 +923,19 @@ Function a2k1d_btn_cleanup_proc(ctrlName) : ButtonControl
     for (i = 0; i < n; i += 1)
         Print "  " + StringFromList(i, candidates, ";")
     endfor
-SVAR baseName = root:ARPES_LJZ:A2K1D:a2k1d_baseName
-String tempCandidates = a2k1d_cleanup_output_temp_for_group(baseName, 1)
-candidates += tempCandidates
 
-    DoAlert 1, "Delete " + num2str(n) + " generated A2K1D waves under:\r" + base + "\r\rSource waves such as layer_show_<i>, Peak1K, Sigmap1K will be kept.\r\rTemporary plotting waves under root:ARPES_LJZ:OUTPUT:A2K1D: will also be cleared.\r\rProceed?"
+    String msg
+    msg = "Delete " + num2str(n) + " generated A2K1D waves?\r\r"
+    msg += "Base DF:\r" + base + "\r\r"
+    msg += "Source waves such as layer_show_<i>, Peak1K, Sigmap1K will be kept.\r"
+    if (SVAR_Exists(baseName) && strlen(baseName) > 0)
+        msg += "Only plotting waves with prefix '" + baseName + "_' under root:ARPES_LJZ:OUTPUT:A2K1D: will be removed.\r"
+    else
+        msg += "OUTPUT:A2K1D plotting waves will not be touched because BaseName is empty.\r"
+    endif
+    msg += "\rProceed?"
+
+    DoAlert 1, msg
     if (V_flag != 1)
         Print "A2K1D Cleanup cancelled."
         return 0
@@ -947,8 +947,9 @@ candidates += tempCandidates
         a2k1d_cleanup_generated_in_df(base, 0)
     endif
 
-SVAR baseName = root:ARPES_LJZ:A2K1D:a2k1d_baseName
-a2k1d_cleanup_output_temp_for_group(baseName, 0)
+    if (SVAR_Exists(baseName) && strlen(baseName) > 0)
+        a2k1d_cleanup_output_temp_for_group(baseName, 0)
+    endif
 
     a2k1d_rebuild_lb()
 
