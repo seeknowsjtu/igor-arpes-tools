@@ -124,6 +124,20 @@ Function LJZ_CTP2_EnsureCTLIB()
         LJZ_CTP2_FillCyanHotCT(cyanhot)
     endif
 
+    Wave/Z/W/U wWhiteBlue = root:ARPES_LJZ:CTLUZ:CTLIB:WhiteBlue
+    if (!WaveExists(wWhiteBlue))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:WhiteBlue
+        Wave/W/U whiteBlue = root:ARPES_LJZ:CTLUZ:CTLIB:WhiteBlue
+        LJZ_CTP2_FillWhiteBlueCT(whiteBlue)
+    endif
+
+    Wave/Z/W/U wWhiteGray = root:ARPES_LJZ:CTLUZ:CTLIB:WhiteGray
+    if (!WaveExists(wWhiteGray))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:WhiteGray
+        Wave/W/U whiteGray = root:ARPES_LJZ:CTLUZ:CTLIB:WhiteGray
+        LJZ_CTP2_FillWhiteGrayCT(whiteGray)
+    endif
+
     return 0
 End
 
@@ -1093,6 +1107,152 @@ Function LJZ_CTP2_ResetImageToGrays(gName, imgName)
     return 0
 End
 
+
+Function LJZ_CTP2_ComputeImageRobustRange(gName, imgName, lowPct, highPct, cminOut, cmaxOut)
+    String gName
+    String imgName
+    Variable lowPct
+    Variable highPct
+    Variable &cminOut
+    Variable &cmaxOut
+
+    if (strlen(gName) == 0 || strlen(imgName) == 0)
+        return -1
+    endif
+
+    Wave/Z img = ImageNameToWaveRef(gName, imgName)
+    if (!WaveExists(img))
+        return -2
+    endif
+
+    if (WaveDims(img) != 2)
+        return -3
+    endif
+
+    Variable nx
+    Variable ny
+    nx = DimSize(img, 0)
+    ny = DimSize(img, 1)
+
+    if (nx <= 0 || ny <= 0)
+        return -4
+    endif
+
+    lowPct = LJZ_CTP2_Clamp(lowPct, 0, 100)
+    highPct = LJZ_CTP2_Clamp(highPct, 0, 100)
+    if (highPct <= lowPct)
+        return -5
+    endif
+
+    Make/FREE/D/N=(nx * ny) validVals
+
+    Variable i
+    Variable j
+    Variable k
+    Variable v
+    k = 0
+
+    for (j = 0; j < ny; j += 1)
+        for (i = 0; i < nx; i += 1)
+            v = img[i][j]
+            if (numtype(v) == 0)
+                validVals[k] = v
+                k += 1
+            endif
+        endfor
+    endfor
+
+    if (k < 2)
+        return -6
+    endif
+
+    Redimension/N=(k) validVals
+    Sort validVals, validVals
+
+    Variable posLo
+    Variable posHi
+    Variable idxLo
+    Variable idxHi
+    Variable fracLo
+    Variable fracHi
+
+    posLo = (lowPct / 100) * (k - 1)
+    posHi = (highPct / 100) * (k - 1)
+
+    idxLo = floor(posLo)
+    idxHi = floor(posHi)
+    fracLo = posLo - idxLo
+    fracHi = posHi - idxHi
+
+    if (idxLo >= k - 1)
+        cminOut = validVals[k - 1]
+    else
+        cminOut = validVals[idxLo] + fracLo * (validVals[idxLo + 1] - validVals[idxLo])
+    endif
+
+    if (idxHi >= k - 1)
+        cmaxOut = validVals[k - 1]
+    else
+        cmaxOut = validVals[idxHi] + fracHi * (validVals[idxHi + 1] - validVals[idxHi])
+    endif
+
+    if (numtype(cminOut) != 0 || numtype(cmaxOut) != 0 || cmaxOut <= cminOut)
+        return -7
+    endif
+
+    return 0
+End
+
+
+Function LJZ_CTP2_ApplyWhiteFloorToSelected()
+    LJZ_CTP2_EnsureDF()
+
+    String gName
+    gName = LJZ_CTP2_GetGraphName(0)
+
+    SVAR ExistingImageName = $(LJZ_CTP2_BaseDF() + ":ExistingImageName")
+    SVAR LibraryCTName = $(LJZ_CTP2_BaseDF() + ":LibraryCTName")
+    NVAR UseManualRange = $(LJZ_CTP2_BaseDF() + ":UseManualRange")
+    NVAR CMin = $(LJZ_CTP2_BaseDF() + ":CMin")
+    NVAR CMax = $(LJZ_CTP2_BaseDF() + ":CMax")
+
+    if (strlen(gName) == 0 || strlen(ExistingImageName) == 0)
+        DoAlert 0, "No graph or image selected."
+        return -1
+    endif
+
+    LibraryCTName = "WhiteBlue"
+    UseManualRange = 1
+
+    if (numtype(CMin) != 0 || numtype(CMax) != 0 || CMax <= CMin)
+        Variable autoMin
+        Variable autoMax
+        Variable rc
+
+        rc = LJZ_CTP2_ComputeImageRobustRange(gName, ExistingImageName, 8, 99.5, autoMin, autoMax)
+        if (rc < 0)
+            DoAlert 0, "Could not estimate a robust white-floor color range from the selected image. Please set CMin/CMax manually, then click Apply White Floor again."
+            return rc
+        endif
+
+        CMin = autoMin
+        CMax = autoMax
+    endif
+
+    LJZ_CTP2_RefreshLibraryList()
+    LJZ_CTP2_ApplyLibraryToImage(gName, ExistingImageName)
+    DoWindow/F $gName
+
+    String pName
+    pName = LJZ_CTP2_PanelName()
+    if (WinType(pName) != 0)
+        ListBox/Z lbLibCT, win=$pName
+        ControlUpdate/A/W=$pName
+    endif
+
+    return 0
+End
+
 Function LJZ_CTP2_AddColorbarToSelected()
     LJZ_CTP2_EnsureDF()
 
@@ -1516,6 +1676,98 @@ Function LJZ_CTP2_FillCyanHotCT(ct)
 End
 
 
+Function LJZ_CTP2_FillWhiteBlueCT(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+    Variable u
+    Variable r
+    Variable g
+    Variable b
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        if (t < 0.08)
+            r = 1
+            g = 1
+            b = 1
+        else
+            u = (t - 0.08) / 0.92
+            u = LJZ_CTP2_Clamp(u, 0, 1)
+
+            // white -> deep blue
+            r = 1.00 - 0.96 * u
+            g = 1.00 - 0.78 * u
+            b = 1.00 - 0.32 * u
+        endif
+
+        ct[i][0] = round(LJZ_CTP2_Clamp(r, 0, 1) * 65535)
+        ct[i][1] = round(LJZ_CTP2_Clamp(g, 0, 1) * 65535)
+        ct[i][2] = round(LJZ_CTP2_Clamp(b, 0, 1) * 65535)
+    endfor
+
+    return 0
+End
+
+
+Function LJZ_CTP2_FillWhiteGrayCT(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+    Variable u
+    Variable r
+    Variable g
+    Variable b
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        if (t < 0.08)
+            r = 1
+            g = 1
+            b = 1
+        else
+            u = (t - 0.08) / 0.92
+            u = LJZ_CTP2_Clamp(u, 0, 1)
+
+            // white -> dark gray / black
+            r = 1.00 - 0.92 * u
+            g = 1.00 - 0.92 * u
+            b = 1.00 - 0.92 * u
+        endif
+
+        ct[i][0] = round(LJZ_CTP2_Clamp(r, 0, 1) * 65535)
+        ct[i][1] = round(LJZ_CTP2_Clamp(g, 0, 1) * 65535)
+        ct[i][2] = round(LJZ_CTP2_Clamp(b, 0, 1) * 65535)
+    endfor
+
+    return 0
+End
+
+
 // ============================================================================
 //  Section 7. Callbacks
 // ============================================================================
@@ -1571,6 +1823,10 @@ Function LJZ_CTP2_ButtonProc(ctrlName) : ButtonControl
 
         case "btApplyLib":
             LJZ_CTP2_ApplySelectedLibrary()
+            break
+
+        case "btApplyWhiteFloor":
+            LJZ_CTP2_ApplyWhiteFloorToSelected()
             break
 
         case "btApplyCustom":
@@ -1864,18 +2120,17 @@ GroupBox gbSave,font="Arial",fSize=10,fStyle=1
 
 Button btResetSelected,pos={24,462},size={108,24},title="Reset selected",proc=LJZ_CTP2_ButtonProc
 
-Button btAddColorbar,pos={142,462},size={104,24},title="Add colorbar",proc=LJZ_CTP2_ButtonProc
+Button btAddColorbar,pos={140,462},size={104,24},title="Add colorbar",proc=LJZ_CTP2_ButtonProc
 
-CheckBox ckConfirmAll,pos={258,466},size={88,18},title="Confirm all"
+Button btApplyWhiteFloor,pos={252,462},size={128,24},title="Apply White Floor",proc=LJZ_CTP2_ButtonProc
+
+CheckBox ckConfirmAll,pos={390,466},size={88,18},title="Confirm all"
 CheckBox ckConfirmAll,variable=$(LJZ_CTP2_BaseDF() + ":ApplyToAllConfirm")
 
-Button btApplyAllBuiltIn,pos={356,462},size={118,24},title="Apply all built-in",proc=LJZ_CTP2_ButtonProc
-Button btResetAll,pos={482,462},size={108,24},title="Reset all Grays",proc=LJZ_CTP2_ButtonProc
+Button btApplyAllBuiltIn,pos={488,462},size={118,24},title="Apply all built-in",proc=LJZ_CTP2_ButtonProc
+Button btResetAll,pos={614,462},size={96,24},title="Reset Grays",proc=LJZ_CTP2_ButtonProc
 
-TitleBox tbSaveNote,pos={604,466},size={68,16},title="No lookup.",frame=0
-TitleBox tbSaveNote,font="Arial",fSize=9
-
-Button btClose,pos={676,462},size={96,24},title="Close",proc=LJZ_CTP2_ButtonProc
+Button btClose,pos={718,462},size={54,24},title="Close",proc=LJZ_CTP2_ButtonProc
 
     LJZ_CTP2_RefreshLibraryList()
     LJZ_CTP2_CreatePreviewGraph()
@@ -2004,6 +2259,20 @@ Function ctluz_ensure_builtin_library()
         Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:CyanHot
         Wave/W/U tmpCyanHot = root:ARPES_LJZ:CTLUZ:CTLIB:CyanHot
         ctluz_fill_cyan_hot_ct(tmpCyanHot)
+    endif
+
+    Wave/Z/W/U wWhiteBlue = root:ARPES_LJZ:CTLUZ:CTLIB:WhiteBlue
+    if (!WaveExists(wWhiteBlue))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:WhiteBlue
+        Wave/W/U tmpWhiteBlue = root:ARPES_LJZ:CTLUZ:CTLIB:WhiteBlue
+        ctluz_fill_white_blue_ct(tmpWhiteBlue)
+    endif
+
+    Wave/Z/W/U wWhiteGray = root:ARPES_LJZ:CTLUZ:CTLIB:WhiteGray
+    if (!WaveExists(wWhiteGray))
+        Make/O/W/U/N=(256,3) root:ARPES_LJZ:CTLUZ:CTLIB:WhiteGray
+        Wave/W/U tmpWhiteGray = root:ARPES_LJZ:CTLUZ:CTLIB:WhiteGray
+        ctluz_fill_white_gray_ct(tmpWhiteGray)
     endif
 
     return 0
@@ -2277,6 +2546,98 @@ Function ctluz_fill_cyan_hot_ct(ct)
         r = min(1, max(0, 1.8 * t - 0.25))
         g = min(1, max(0, 2.0 * t))
         b = min(1, max(0, 1.3 - 1.2 * t))
+
+        ct[i][0] = ctluz_rgb_to_u16(r)
+        ct[i][1] = ctluz_rgb_to_u16(g)
+        ct[i][2] = ctluz_rgb_to_u16(b)
+    endfor
+
+    return 0
+End
+
+
+Function ctluz_fill_white_blue_ct(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+    Variable u
+    Variable r
+    Variable g
+    Variable b
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        if (t < 0.08)
+            r = 1
+            g = 1
+            b = 1
+        else
+            u = (t - 0.08) / 0.92
+            u = ctluz_clip01(u)
+
+            // white -> deep blue
+            r = 1.00 - 0.96 * u
+            g = 1.00 - 0.78 * u
+            b = 1.00 - 0.32 * u
+        endif
+
+        ct[i][0] = ctluz_rgb_to_u16(r)
+        ct[i][1] = ctluz_rgb_to_u16(g)
+        ct[i][2] = ctluz_rgb_to_u16(b)
+    endfor
+
+    return 0
+End
+
+
+Function ctluz_fill_white_gray_ct(ct)
+    Wave/W/U ct
+
+    Variable n
+    Variable i
+    Variable t
+    Variable u
+    Variable r
+    Variable g
+    Variable b
+
+    n = DimSize(ct, 0)
+    if (n <= 0)
+        return -1
+    endif
+
+    for (i = 0; i < n; i += 1)
+        if (n > 1)
+            t = i / (n - 1)
+        else
+            t = 0
+        endif
+
+        if (t < 0.08)
+            r = 1
+            g = 1
+            b = 1
+        else
+            u = (t - 0.08) / 0.92
+            u = ctluz_clip01(u)
+
+            // white -> dark gray / black
+            r = 1.00 - 0.92 * u
+            g = 1.00 - 0.92 * u
+            b = 1.00 - 0.92 * u
+        endif
 
         ct[i][0] = ctluz_rgb_to_u16(r)
         ct[i][1] = ctluz_rgb_to_u16(g)
