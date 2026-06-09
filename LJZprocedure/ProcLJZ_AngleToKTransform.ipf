@@ -309,6 +309,22 @@ Function a2k1d_init_defaults_if_needed()
         Variable/G a2k1d_kvary = 0.0
     endif
 
+    // Publication-style layer-stack plotting knobs (hidden; init only if missing)
+    NVAR/Z a2k1d_stackCTLo = root:ARPES_LJZ:A2K1D:a2k1d_stackCTLo
+    if (!NVAR_Exists(a2k1d_stackCTLo))
+        Variable/G a2k1d_stackCTLo = 0.18
+    endif
+
+    NVAR/Z a2k1d_stackCTHi = root:ARPES_LJZ:A2K1D:a2k1d_stackCTHi
+    if (!NVAR_Exists(a2k1d_stackCTHi))
+        Variable/G a2k1d_stackCTHi = 0.92
+    endif
+
+    NVAR/Z a2k1d_stackHideYNumbers = root:ARPES_LJZ:A2K1D:a2k1d_stackHideYNumbers
+    if (!NVAR_Exists(a2k1d_stackHideYNumbers))
+        Variable/G a2k1d_stackHideYNumbers = 1
+    endif
+
 
     // ---- CTLUZ params: ONLY init if missing (do NOT reset every time) ----
     SVAR/Z a2k1d_ctPickName = root:ARPES_LJZ:A2K1D:a2k1d_ctPickName
@@ -1986,8 +2002,8 @@ Function/S a2k1d_collect_layers(baseDF, recursive)
     else
         String df0 = GetDataFolder(1)
         SetDataFolder $base
-        // 修改通配符，只初步筛选以 layer_show_ 开头的波形
-        listAll = WaveList("layer_show_*", ";", "DIMS:1")
+        // Collect all 1D waves, then let the strict parser accept modern/legacy raw layer names.
+        listAll = WaveList("*", ";", "DIMS:1")
         SetDataFolder df0
 
         n = ItemsInList(listAll, ";")
@@ -2400,28 +2416,124 @@ Function a2k1d_btn_batch_peaks_valuetrans(ctrlName) : ButtonControl
 End
 
 
-Function a2k1d_is_layer_int_name(wn)
+Function a2k1d_same_wave_path(pathA, pathB)
+    String pathA, pathB
+    return cmpstr(LowerStr(pathA), LowerStr(pathB)) == 0
+End
+
+Function a2k1d_string_all_digits(s)
+    String s
+
+    if (strlen(s) <= 0)
+        return 0
+    endif
+    if (StringMatch(s, "*[!0-9]*"))
+        return 0
+    endif
+    return 1
+End
+
+Function/S a2k1d_strip_corr_suffix_for_layer_name(lw)
+    String lw
+
+    Variable n = strlen(lw)
+    if (n >= 5 && StringMatch(lw[n-5,n-1], "_corr"))
+        return lw[0,n-6]
+    endif
+    if (n >= 4 && StringMatch(lw[n-4,n-1], "corr"))
+        return lw[0,n-5]
+    endif
+    return lw
+End
+
+Function a2k1d_layer_name_has_corr_suffix(wn)
     String wn
-    
-    // 1. 必须以 "layer_show_" 开头
-    if (!StringMatch(wn, "layer_show_*"))
-        return 0
+    String lw = LowerStr(wn)
+    return StringMatch(lw, "*_corr") || StringMatch(lw, "*corr")
+End
+
+Function a2k1d_layer_name_has_k_output_suffix(wn)
+    String wn
+    String lw = LowerStr(wn)
+
+    if (StringMatch(lw, "*_k") || StringMatch(lw, "*_k_corr"))
+        return 1
     endif
-    
-    // 2. 获取 "layer_show_" 之后的部分
-    // "layer_show_" 长度为 11
-    if (strlen(wn) <= 11)
-        return 0
+    if (StringMatch(lw, "*_k_spec") || StringMatch(lw, "*_k_spec_corr"))
+        return 1
     endif
-    String sNum = wn[11, strlen(wn)-1]
-    
-    // 3. 严格检查：后缀中是否包含任何“非数字”字符？
-    // 如果包含下划线（如 _k_spec）或字母，则返回失败
-    if (StringMatch(sNum, "*[!0-9]*")) 
-        return 0 
+    return 0
+End
+
+Function a2k1d_get_layer_index_safe(wn)
+    String wn
+
+    String lw = LowerStr(wn)
+    if (a2k1d_layer_name_has_k_output_suffix(lw))
+        return -1
     endif
 
-    return 1
+    lw = a2k1d_strip_corr_suffix_for_layer_name(lw)
+
+    String rest = ""
+    if (StringMatch(lw, "layer_show_*"))
+        if (strlen(lw) <= 11)
+            return -1
+        endif
+        rest = lw[11, strlen(lw)-1]
+    elseif (StringMatch(lw, "layer_show*"))
+        if (strlen(lw) <= 10)
+            return -1
+        endif
+        rest = lw[10, strlen(lw)-1]
+    elseif (StringMatch(lw, "layershow*"))
+        if (strlen(lw) <= 9)
+            return -1
+        endif
+        rest = lw[9, strlen(lw)-1]
+    else
+        return -1
+    endif
+
+    if (!a2k1d_string_all_digits(rest))
+        return -1
+    endif
+
+    return str2num(rest)
+End
+
+Function a2k1d_is_layer_int_name(wn)
+    String wn
+
+    if (a2k1d_layer_name_has_k_output_suffix(wn))
+        return 0
+    endif
+    if (a2k1d_layer_name_has_corr_suffix(wn))
+        return 0
+    endif
+    return a2k1d_get_layer_index_safe(wn) >= 0
+End
+
+Function a2k1d_is_layer_corr_name(wn)
+    String wn
+
+    if (a2k1d_layer_name_has_k_output_suffix(wn))
+        return 0
+    endif
+    if (!a2k1d_layer_name_has_corr_suffix(wn))
+        return 0
+    endif
+    return a2k1d_get_layer_index_safe(wn) >= 0
+End
+
+Function a2k1d_test_layer_name_parser()
+    String names = "layer_show_0;layer_show_12;layer_show_0_corr;layer_show0corr;layershow0;layer_show_0_k_spec;layer_show_0_k_spec_corr;Peak1K_k;"
+    Variable i, n = ItemsInList(names, ";")
+    for (i=0; i<n; i+=1)
+        String wn = StringFromList(i, names, ";")
+        Printf "A2K1D parser test: %s -> idx=%d raw=%d corr=%d kOutput=%d\r", wn, a2k1d_get_layer_index_safe(wn), a2k1d_is_layer_int_name(wn), a2k1d_is_layer_corr_name(wn), a2k1d_layer_name_has_k_output_suffix(wn)
+    endfor
+    return 0
 End
 
 Function/S a2k1d_strip_suffix_once(s, suf)
@@ -2439,6 +2551,8 @@ Function/S a2k1d_clean_basename(wn)
     String out = wn
     // 你现在会生成两类输出：_k_spec（谱插值）和 _k（value trans）
     // 这里按顺序剥一次，避免无限叠加
+    out = a2k1d_strip_suffix_once(out, "_k_spec_corr")
+    out = a2k1d_strip_suffix_once(out, "_k_corr")
     out = a2k1d_strip_suffix_once(out, "_k_spec")
     out = a2k1d_strip_suffix_once(out, "_k")
     return out
@@ -2456,6 +2570,10 @@ Function a2k1d_btn_plot_layers_stack(ctrlName) : ButtonControl
     NVAR a2k1d_kvary     = root:ARPES_LJZ:A2K1D:a2k1d_kvary
     SVAR a2k1d_baseName  = root:ARPES_LJZ:A2K1D:a2k1d_baseName
     NVAR useCorr = root:ARPES_LJZ:A2K1D:a2k1d_useAngleCorr
+    NVAR a2k1d_hmUnitMode = root:ARPES_LJZ:A2K1D:a2k1d_hmUnitMode
+    NVAR a2k1d_stackCTLo = root:ARPES_LJZ:A2K1D:a2k1d_stackCTLo
+    NVAR a2k1d_stackCTHi = root:ARPES_LJZ:A2K1D:a2k1d_stackCTHi
+    NVAR a2k1d_stackHideYNumbers = root:ARPES_LJZ:A2K1D:a2k1d_stackHideYNumbers
     
     // Gradient Color Params
     NVAR a2k1d_useCT      = root:ARPES_LJZ:A2K1D:a2k1d_useCT
@@ -2525,7 +2643,7 @@ Display/N=$wname $wp0
 ModifyGraph/W=$wname mode=0
 ModifyGraph/W=$wname mirror=2
 ModifyGraph/W=$wname offset($NameOfWave($wp0))={0,0}
-Label/W=$wname left "Intensity (a.u.)"
+Label/W=$wname left "Intensity + offset (a.u.)"
 Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
 
     Variable j, r16, g16, b16
@@ -2544,7 +2662,15 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
         ModifyGraph/W=$wname offset($NameOfWave(wj)) = {0, currentOffset}
 
         if (a2k1d_useCT)
-            Variable tt = (m<=1) ? 0 : (j/(m-1.0))
+            Variable tt0 = (m<=1) ? 0 : (j/(m-1.0))
+            Variable stackLo = min(max(a2k1d_stackCTLo, 0), 1)
+            Variable stackHi = min(max(a2k1d_stackCTHi, 0), 1)
+            if (stackHi < stackLo)
+                Variable stackTmp = stackLo
+                stackLo = stackHi
+                stackHi = stackTmp
+            endif
+            Variable tt = stackLo + tt0*(stackHi-stackLo)
             a2k1d_ctluz_rgb16_at_t(a2k1d_ctPickName, tt, a2k1d_ctInvert, r16, g16, b16)
             ModifyGraph/W=$wname rgb($NameOfWave(wj)) = (r16, g16, b16)
         endif
@@ -2553,7 +2679,7 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
         lift = a2k1d_kvary*0.4
 
         // --- Calculate Markers ---
-        layerIdx = a2k1d_get_layer_index(NameOfWave(wj))
+        layerIdx = a2k1d_get_layer_index_safe(a2k1d_clean_basename(NameOfWave(wj)))
         
         if (layerIdx >= 0)
             // Peak 1
@@ -2594,17 +2720,17 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
     if (a2k1d_wave_has_any_finite(dwP1_X))
         AppendToGraph/W=$wname dwP1_Y vs dwP1_X
         String trName1 = NameOfWave(dwP1_Y)
-        ModifyGraph/W=$wname mode($trName1)=3, marker($trName1)=19, msize($trName1)=2, rgb($trName1)=(0,0,0)
+        ModifyGraph/W=$wname mode($trName1)=3, marker($trName1)=19, msize($trName1)=1.5, rgb($trName1)=(0,0,0)
     endif
     if (a2k1d_wave_has_any_finite(dwP2_X))
         AppendToGraph/W=$wname dwP2_Y vs dwP2_X
         String trName2 = NameOfWave(dwP2_Y)
-        ModifyGraph/W=$wname mode($trName2)=3, marker($trName2)=17, msize($trName2)=2, rgb($trName2)=(65535,0,0)
+        ModifyGraph/W=$wname mode($trName2)=3, marker($trName2)=17, msize($trName2)=1.5, rgb($trName2)=(65535,0,0)
     endif
     if (a2k1d_wave_has_any_finite(dwP3_X))
         AppendToGraph/W=$wname dwP3_Y vs dwP3_X
         String trName3 = NameOfWave(dwP3_Y)
-        ModifyGraph/W=$wname mode($trName3)=3, marker($trName3)=16, msize($trName3)=2, rgb($trName3)=(0,0,65535)
+        ModifyGraph/W=$wname mode($trName3)=3, marker($trName3)=16, msize($trName3)=1.5, rgb($trName3)=(0,0,65535)
     endif
     //============================================================
     // 8) Smart X-axis clamp around peak region (NEW)
@@ -2678,43 +2804,32 @@ Label/W=$wname bottom "k\\B//\\M (Å\\S-1\\M)"
     endif
 
     ModifyGraph/W=$wname tickUnit(bottom)=1, tickUnit(left)=1
+    ModifyGraph/W=$wname nticks(bottom)=4
+    if (a2k1d_stackHideYNumbers != 0)
+        ModifyGraph/W=$wname noLabel(left)=1
+    else
+        ModifyGraph/W=$wname noLabel(left)=0
+    endif
+
+    String dirLabel = a2k1d_stack_direction_label(a2k1d_hmUnitMode)
+    TextBox/W=$wname/C/N=A2K1D_StackDirection/F=0/A=RT/X=1/Y=4 dirLabel
+
+    String peakLegend = "● P1\r▲ P2"
+    if (a2k1d_wave_has_any_finite(dwP3_X))
+        peakLegend += "\r● P3"
+    endif
+    TextBox/W=$wname/C/N=A2K1D_PeakLegend/F=0/A=LB/X=2/Y=2 peakLegend
     
     return 0
 End
 
 //============================================================
-// Helper: Extract numeric index from layer name
-// Robust version: Splits by "_" and finds the first number.
-// Handles: "layer_14_k_spec", "layer_show_14_k_spec", etc.
+// Helper: Extract physical index from raw/corrected angle-domain layer names.
+// Final k-domain output names are intentionally rejected by the safe parser.
 //============================================================
 Function a2k1d_get_layer_index(wn)
     String wn
-    
-    // 必须包含 layer
-    if (StringMatch(wn, "*layer*") == 0)
-        return -1
-    endif
-    
-    // 按下划线拆分
-    Variable n = ItemsInList(wn, "_")
-    Variable i
-    
-    for (i=0; i<n; i+=1)
-        String item = StringFromList(i, wn, "_")
-        
-        // 尝试转为数字
-        Variable val = str2num(item)
-        
-        // 检查是否为有效数字 (NaN 表示转换失败)
-        // 且为了防止匹配到 "layer" (如果layer被误转), 确保它是纯数字
-        if (numtype(val) == 0)
-            // 排除掉一些可能的非索引数字干扰，通常索引是整数
-            // 这里直接返回找到的第一个有效数字
-            return val
-        endif
-    endfor
-    
-    return -1 // 没找到数字
+    return a2k1d_get_layer_index_safe(wn)
 End
 
 Function a2k1d_btn_plot_peaks_err(ctrlName) : ButtonControl
@@ -3063,6 +3178,13 @@ Function/S a2k1d_make_corr_peak_angle_wave(peakPath, runDF)
 
     String outName = a2k1d_make_corr_angle_name(NameOfWave(src))
     String outPath = outDF + outName
+    String srcPath = outDF + NameOfWave(src)
+
+    if (a2k1d_same_wave_path(srcPath, outPath))
+        Print "AngleCorr peak: source already appears corrected; keeping existing wave: " + srcPath
+        SetDataFolder df0
+        return srcPath
+    endif
 
     Duplicate/O src, $outPath
     Wave out = $outPath
@@ -3077,6 +3199,10 @@ Function/S a2k1d_make_corr_peak_angle_wave(peakPath, runDF)
     Variable i, row, rc, dTh, scEff, raw
     for (i=0; i<DimSize(src,0); i+=1)
         row = a2k1d_corr_row_for_layer(i, nTrack)
+        if (row < 0 || row >= nTrack)
+            out[i] = NaN
+            continue
+        endif
         rc = a2k1d_get_effective_corr(cdf, row, corrMode, skipFlagged, dTh, scEff)
 
         raw = src[i]
@@ -3132,6 +3258,12 @@ Function/S a2k1d_make_corr_sigma_angle_wave(sigmaPath, runDF)
 
     String outName = a2k1d_make_corr_angle_name(NameOfWave(src))
     String outPath = outDF + outName
+    String srcPath = outDF + NameOfWave(src)
+
+    if (a2k1d_same_wave_path(srcPath, outPath))
+        Print "AngleCorr sigma: source already appears corrected; keeping existing wave: " + srcPath
+        return srcPath
+    endif
 
     Duplicate/O src, $outPath
     Wave out = $outPath
@@ -3145,6 +3277,10 @@ Function/S a2k1d_make_corr_sigma_angle_wave(sigmaPath, runDF)
     Variable i, row, rc, dTh, scEff, raw
     for (i=0; i<DimSize(src,0); i+=1)
         row = a2k1d_corr_row_for_layer(i, nTrack)
+        if (row < 0 || row >= nTrack)
+            out[i] = NaN
+            continue
+        endif
         rc = a2k1d_get_effective_corr(cdf, row, corrMode, skipFlagged, dTh, scEff)
 
         raw = src[i]
@@ -3187,8 +3323,19 @@ Function/S a2k1d_make_corr_layer_angle_wave(layerPath, runDF)
     endif
 
     String wn = NameOfWave(src)
+    String srcDF = GetWavesDataFolder(src, 1)
+    if (strlen(srcDF) == 0)
+        srcDF = "root:"
+    endif
+    String srcPath = srcDF + wn
+
+    if (a2k1d_is_layer_corr_name(wn))
+        Print "AngleCorr layer: source already appears corrected; keeping existing wave: " + srcPath
+        return srcPath
+    endif
+
     if (!a2k1d_is_layer_int_name(wn))
-        Print "AngleCorr layer: source must be raw layer_show_<integer>: " + layerPath
+        Print "AngleCorr layer: source must be raw angle-domain layer name: " + layerPath
         return ""
     endif
 
@@ -3197,10 +3344,14 @@ Function/S a2k1d_make_corr_layer_angle_wave(layerPath, runDF)
         return ""
     endif
 
-    Variable layerIdx = a2k1d_get_layer_index(wn)
+    Variable layerIdx = a2k1d_get_layer_index_safe(wn)
     String cdf = a2k1d_df_with_colon(runDF)
     Variable nTrack = a2k1d_corr_nrows(cdf)
     Variable row = a2k1d_corr_row_for_layer(layerIdx, nTrack)
+    if (layerIdx < 0 || row < 0 || row >= nTrack)
+        Print "AngleCorr layer: invalid layer index or correction row: " + wn
+        return ""
+    endif
 
     NVAR corrMode = root:ARPES_LJZ:A2K1D:a2k1d_corrMode
     NVAR skipFlagged = root:ARPES_LJZ:A2K1D:a2k1d_corrSkipFlagged
@@ -3214,13 +3365,14 @@ Function/S a2k1d_make_corr_layer_angle_wave(layerPath, runDF)
 
     Variable thetaCenter = a2k1d_get_theta_center_from_corr_run(cdf)
 
-    String outDF = GetWavesDataFolder(src, 1)
-    if (strlen(outDF) == 0)
-        outDF = "root:"
-    endif
-
+    String outDF = srcDF
     String outName = a2k1d_make_corr_angle_name(wn)
     String outPath = outDF + outName
+
+    if (a2k1d_same_wave_path(srcPath, outPath))
+        Print "AngleCorr layer: source and output are identical; keeping existing wave: " + srcPath
+        return srcPath
+    endif
 
     Duplicate/O src, $outPath
     Wave out = $outPath
@@ -3747,6 +3899,7 @@ Function a2k1d_batch_corr_layers_to_k(baseDF, recursive, corrRunDF)
     Variable okK = 0
     Variable fail = 0
     Variable skipFlag = 0
+    Variable skipInvalid = 0
     Variable nTrack = a2k1d_corr_nrows(corrBase)
 
     for (i=0; i<n; i+=1)
@@ -3767,12 +3920,23 @@ Function a2k1d_batch_corr_layers_to_k(baseDF, recursive, corrRunDF)
             continue
         endif
 
-        Variable layerIdx = a2k1d_get_layer_index(rawName)
+        Variable layerIdx = a2k1d_get_layer_index_safe(rawName)
         Variable row = a2k1d_corr_row_for_layer(layerIdx, nTrack)
+        if (layerIdx < 0 || row < 0 || row >= nTrack)
+            Print "Skip " + rawName + ": invalid layer index or correction row."
+            skipInvalid += 1
+            continue
+        endif
+
         Variable dTh, scEff
         Variable corrRC = a2k1d_get_effective_corr(corrBase, row, corrMode, skipFlagged, dTh, scEff)
         if (corrRC == -3)
             skipFlag += 1
+            continue
+        endif
+        if (corrRC != 0)
+            Print "Skip " + rawName + ": invalid layer index or correction row."
+            skipInvalid += 1
             continue
         endif
 
@@ -3798,7 +3962,7 @@ Function a2k1d_batch_corr_layers_to_k(baseDF, recursive, corrRunDF)
 
     showGraph = oldShow
 
-    Printf "Corr Layers -> K summary: raw layers found=%d angle-corrected layers created=%d corrected k-space spectra created=%d failed=%d skipped flagged rows=%d\r", n, okCorr, okK, fail, skipFlag
+    Printf "Corr Layers -> K summary: raw layers found=%d angle-corrected layers created=%d corrected k-space spectra created=%d failed=%d skipped flagged rows=%d skipped invalid rows=%d\r", n, okCorr, okK, fail, skipFlag, skipInvalid
     return 0
 End
 
@@ -4473,6 +4637,21 @@ Function/S a2k1d_heat_unit_label(mode)
     endswitch
 End
 
+Function/S a2k1d_stack_direction_label(mode)
+    Variable mode
+
+    switch(mode)
+        case 0:
+            return "increasing delay"
+        case 1:
+            return "increasing temperature"
+        case 2:
+            return "increasing fluence"
+        default:
+            return "increasing frame index"
+    endswitch
+End
+
 Function/S a2k1d_collect_existing_kspec_list(baseDF, recursive)
     String baseDF
     Variable recursive
@@ -4604,7 +4783,7 @@ Function/S a2k1d_sort_kspec_list_by_layerindex(listIn)
     for (i=0; i<n; i+=1)
         String wp = StringFromList(i, listIn, ";")
         pathW[i] = wp
-        idxW[i] = a2k1d_get_layer_index(a2k1d_tail_wavename(wp))
+        idxW[i] = a2k1d_get_layer_index_safe(a2k1d_clean_basename(a2k1d_tail_wavename(wp)))
         if (numtype(idxW[i]) != 0)
             idxW[i] = 1e9
         endif
@@ -4825,7 +5004,7 @@ Function a2k1d_btn_plot_layers_heatmap(ctrlName) : ButtonControl
     for (j=0; j<m; j+=1)
         String wpj2 = StringFromList(j, listKS, ";")
         String wnj2 = a2k1d_tail_wavename(wpj2)
-        Variable layerIdx2 = a2k1d_get_layer_index(wnj2)
+        Variable layerIdx2 = a2k1d_get_layer_index_safe(a2k1d_clean_basename(wnj2))
         Variable yVal = a2k1d_axis_value_from_index(j)
 
         if (layerIdx2 < 0)
