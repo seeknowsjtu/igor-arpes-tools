@@ -15,10 +15,11 @@
 //       If the displayed image is an iam4_* copied wave created by this tool
 //       inside root:Packages:LJZ_ImageAppendMaskV4:Output:, it can also kill
 //       that copied wave to avoid accumulation.
-//    5) Process an existing graph image: mask / symmetry / append or replace.
+//    5) Process an existing graph image: crop / symmetry / append or replace.
 //    6) Append a 2D image wave by Igor wave path.
-//    7) Data-level mask: masked pixels are set to NaN in a copied wave.
-//    8) Symmetry output:
+//    7) Data-level crop: ROI output waves are physically smaller, not NaN padded.
+//    8) Legacy mask can still set pixels to NaN in a copied wave when explicitly used.
+//    9) Symmetry output:
 //         SymMode = 0: none
 //         SymMode = 1: mirror about x axis, y -> -y
 //         SymMode = 2: mirror about y axis, x -> -x
@@ -93,9 +94,34 @@ Function LJZ_IAM4_EnsureDF()
         Variable/G $(LJZ_IAM4_BaseDF() + ":SelImageRow") = -1
     endif
 
+    NVAR/Z CropEnable = $(LJZ_IAM4_BaseDF() + ":CropEnable")
+    if (!NVAR_Exists(CropEnable))
+        Variable/G $(LJZ_IAM4_BaseDF() + ":CropEnable") = 0
+    endif
+
+    NVAR/Z CropX1 = $(LJZ_IAM4_BaseDF() + ":CropX1")
+    if (!NVAR_Exists(CropX1))
+        Variable/G $(LJZ_IAM4_BaseDF() + ":CropX1") = 0
+    endif
+
+    NVAR/Z CropX2 = $(LJZ_IAM4_BaseDF() + ":CropX2")
+    if (!NVAR_Exists(CropX2))
+        Variable/G $(LJZ_IAM4_BaseDF() + ":CropX2") = 1
+    endif
+
+    NVAR/Z CropY1 = $(LJZ_IAM4_BaseDF() + ":CropY1")
+    if (!NVAR_Exists(CropY1))
+        Variable/G $(LJZ_IAM4_BaseDF() + ":CropY1") = 0
+    endif
+
+    NVAR/Z CropY2 = $(LJZ_IAM4_BaseDF() + ":CropY2")
+    if (!NVAR_Exists(CropY2))
+        Variable/G $(LJZ_IAM4_BaseDF() + ":CropY2") = 1
+    endif
+
     NVAR/Z MaskEnable = $(LJZ_IAM4_BaseDF() + ":MaskEnable")
     if (!NVAR_Exists(MaskEnable))
-        Variable/G $(LJZ_IAM4_BaseDF() + ":MaskEnable") = 1
+        Variable/G $(LJZ_IAM4_BaseDF() + ":MaskEnable") = 0
     endif
 
     NVAR/Z MaskMode = $(LJZ_IAM4_BaseDF() + ":MaskMode")
@@ -494,6 +520,106 @@ Function LJZ_IAM4_FillCopy(src, dest)
 End
 
 
+
+
+Function/WAVE LJZ_IAM4_CropWave(src)
+    Wave src
+
+    LJZ_IAM4_EnsureDF()
+
+    NVAR CropX1 = $(LJZ_IAM4_BaseDF() + ":CropX1")
+    NVAR CropX2 = $(LJZ_IAM4_BaseDF() + ":CropX2")
+    NVAR CropY1 = $(LJZ_IAM4_BaseDF() + ":CropY1")
+    NVAR CropY2 = $(LJZ_IAM4_BaseDF() + ":CropY2")
+
+    Variable nx
+    Variable ny
+    Variable dx
+    Variable dy
+    Variable x0
+    Variable y0
+    Variable xLo
+    Variable xHi
+    Variable yLo
+    Variable yHi
+    Variable pLo
+    Variable pHi
+    Variable qLo
+    Variable qHi
+    Variable epsX
+    Variable epsY
+
+    nx = DimSize(src, 0)
+    ny = DimSize(src, 1)
+    dx = DimDelta(src, 0)
+    dy = DimDelta(src, 1)
+    x0 = DimOffset(src, 0)
+    y0 = DimOffset(src, 1)
+
+    xLo = min(CropX1, CropX2)
+    xHi = max(CropX1, CropX2)
+    yLo = min(CropY1, CropY2)
+    yHi = max(CropY1, CropY2)
+
+    if (dx == 0 || dy == 0)
+        String badPath
+        badPath = LJZ_IAM4_MakeOutPath(src, "_badScale")
+        Make/O/D/N=(1,1) $badPath = NaN
+        Wave badOut = $badPath
+        LJZ_IAM4_CopyScale(src, badOut)
+        DoAlert 0, "Cannot crop a wave with zero x or y scale delta."
+        return badOut
+    endif
+
+    epsX = abs(dx) * 1e-9
+    epsY = abs(dy) * 1e-9
+
+    if (dx >= 0)
+        pLo = ceil((xLo - x0 - epsX) / dx)
+        pHi = floor((xHi - x0 + epsX) / dx)
+    else
+        pLo = ceil((xHi - x0 + epsX) / dx)
+        pHi = floor((xLo - x0 - epsX) / dx)
+    endif
+
+    if (dy >= 0)
+        qLo = ceil((yLo - y0 - epsY) / dy)
+        qHi = floor((yHi - y0 + epsY) / dy)
+    else
+        qLo = ceil((yHi - y0 + epsY) / dy)
+        qHi = floor((yLo - y0 - epsY) / dy)
+    endif
+
+    pLo = max(0, pLo)
+    qLo = max(0, qLo)
+    pHi = min(nx - 1, pHi)
+    qHi = min(ny - 1, qHi)
+
+    String outPath
+    outPath = LJZ_IAM4_MakeOutPath(src, "_crop")
+
+    if (pHi < pLo || qHi < qLo)
+        Make/O/D/N=(1,1) $outPath = NaN
+        Wave emptyOut = $outPath
+        SetScale/P x, xLo, dx, WaveUnits(src, 0), emptyOut
+        SetScale/P y, yLo, dy, WaveUnits(src, 1), emptyOut
+        DoAlert 0, "Crop ROI does not overlap the source wave. Created a 1x1 NaN output."
+        return emptyOut
+    endif
+
+    Make/O/D/N=(pHi - pLo + 1, qHi - qLo + 1) $outPath
+    Wave out = $outPath
+
+    SetScale/P x, x0 + pLo * dx, dx, WaveUnits(src, 0), out
+    SetScale/P y, y0 + qLo * dy, dy, WaveUnits(src, 1), out
+    out = src[p + pLo][q + qLo]
+
+    Print "LJZ_IAM4 cropped wave: " + outPath
+
+    return out
+End
+
+
 Function LJZ_IAM4_ApplyMaskInPlace(w)
     Wave w
 
@@ -574,9 +700,74 @@ Function LJZ_IAM4_ApplySymmetry(src, dest, symMode)
 End
 
 
-Function/WAVE LJZ_IAM4_ProcessSourceWave(src, useMask, useSym)
+Function/WAVE LJZ_IAM4_ProcessSourceWave(src, useCrop, useSym)
     Wave src
-    Variable useMask
+    Variable useCrop
+    Variable useSym
+
+    LJZ_IAM4_EnsureDF()
+
+    if (!LJZ_IAM4_Is2DNumeric(src))
+        Make/O/D/N=(2,2) $(LJZ_IAM4_OutputDF() + "InvalidOutput") = NaN
+        Wave invalid = $(LJZ_IAM4_OutputDF() + "InvalidOutput")
+        return invalid
+    endif
+
+    NVAR CropEnable = $(LJZ_IAM4_BaseDF() + ":CropEnable")
+    NVAR SymMode = $(LJZ_IAM4_BaseDF() + ":SymMode")
+
+    String tmpPath
+    String outPath
+    String tag
+
+    if (useCrop && CropEnable)
+        Wave cropped = LJZ_IAM4_CropWave(src)
+
+        if (!useSym || round(SymMode) == 0)
+            Print "LJZ_IAM4 output wave: " + GetWavesDataFolder(cropped, 2)
+            return cropped
+        endif
+
+        outPath = LJZ_IAM4_MakeOutPath(src, "_crop_sym")
+        Make/O/D/N=(DimSize(cropped, 0), DimSize(cropped, 1)) $outPath
+        Wave cropSymOut = $outPath
+        LJZ_IAM4_ApplySymmetry(cropped, cropSymOut, SymMode)
+
+        Print "LJZ_IAM4 output wave: " + outPath
+        return cropSymOut
+    endif
+
+    tmpPath = LJZ_IAM4_OutputDF() + "tmpIAM4CopyBase"
+    Make/O/D/N=(DimSize(src, 0), DimSize(src, 1)) $tmpPath
+    Wave tmp = $tmpPath
+    LJZ_IAM4_FillCopy(src, tmp)
+
+    if (useSym && round(SymMode) != 0)
+        tag = "_sym"
+    else
+        tag = "_copy"
+    endif
+
+    outPath = LJZ_IAM4_MakeOutPath(src, tag)
+    Make/O/D/N=(DimSize(tmp, 0), DimSize(tmp, 1)) $outPath
+    Wave out = $outPath
+
+    if (useSym && round(SymMode) != 0)
+        LJZ_IAM4_ApplySymmetry(tmp, out, SymMode)
+    else
+        LJZ_IAM4_FillCopy(tmp, out)
+    endif
+
+    KillWaves/Z $tmpPath
+
+    Print "LJZ_IAM4 output wave: " + outPath
+
+    return out
+End
+
+
+Function/WAVE LJZ_IAM4_ProcessSourceWaveLegacyMask(src, useSym)
+    Wave src
     Variable useSym
 
     LJZ_IAM4_EnsureDF()
@@ -590,30 +781,19 @@ Function/WAVE LJZ_IAM4_ProcessSourceWave(src, useMask, useSym)
     NVAR SymMode = $(LJZ_IAM4_BaseDF() + ":SymMode")
 
     String tmpPath
-    String outPath
-    String tag
-
-    tmpPath = LJZ_IAM4_OutputDF() + "tmpIAM4MaskBase"
+    tmpPath = LJZ_IAM4_OutputDF() + "tmpIAM4LegacyMaskBase"
     Make/O/D/N=(DimSize(src, 0), DimSize(src, 1)) $tmpPath
     Wave tmp = $tmpPath
 
     LJZ_IAM4_FillCopy(src, tmp)
+    LJZ_IAM4_ApplyMaskInPlace(tmp)
 
-    if (useMask)
-        LJZ_IAM4_ApplyMaskInPlace(tmp)
-    endif
-
-    if (useSym)
-        tag = "_sym"
-    else
-        tag = "_copy"
-    endif
-
-    outPath = LJZ_IAM4_MakeOutPath(src, tag)
+    String outPath
+    outPath = LJZ_IAM4_MakeOutPath(src, "_legacyMask")
     Make/O/D/N=(DimSize(tmp, 0), DimSize(tmp, 1)) $outPath
     Wave out = $outPath
 
-    if (useSym)
+    if (useSym && round(SymMode) != 0)
         LJZ_IAM4_ApplySymmetry(tmp, out, SymMode)
     else
         LJZ_IAM4_FillCopy(tmp, out)
@@ -621,7 +801,7 @@ Function/WAVE LJZ_IAM4_ProcessSourceWave(src, useMask, useSym)
 
     KillWaves/Z $tmpPath
 
-    Print "LJZ_IAM4 output wave: " + outPath
+    Print "LJZ_IAM4 legacy mask output wave: " + outPath
 
     return out
 End
@@ -874,7 +1054,48 @@ Function LJZ_IAM4_EditExistingImage()
 End
 
 
-Function LJZ_IAM4_SetMaskFromCursors()
+Function LJZ_IAM4_AppendExistingCropped()
+    Wave src = LJZ_IAM4_GetExistingImageWave()
+    if (!LJZ_IAM4_Is2DNumeric(src))
+        return -1
+    endif
+
+    Wave out = LJZ_IAM4_ProcessSourceWave(src, 1, 1)
+    return LJZ_IAM4_AppendWaveToGraph(out)
+End
+
+
+Function LJZ_IAM4_ReplaceExistingCropped()
+    return LJZ_IAM4_EditExistingImage()
+End
+
+
+Function LJZ_IAM4_AppendExistingLegacyMask()
+    Wave src = LJZ_IAM4_GetExistingImageWave()
+    if (!LJZ_IAM4_Is2DNumeric(src))
+        return -1
+    endif
+
+    NVAR CropX1 = $(LJZ_IAM4_BaseDF() + ":CropX1")
+    NVAR CropX2 = $(LJZ_IAM4_BaseDF() + ":CropX2")
+    NVAR CropY1 = $(LJZ_IAM4_BaseDF() + ":CropY1")
+    NVAR CropY2 = $(LJZ_IAM4_BaseDF() + ":CropY2")
+    NVAR MaskX1 = $(LJZ_IAM4_BaseDF() + ":MaskX1")
+    NVAR MaskX2 = $(LJZ_IAM4_BaseDF() + ":MaskX2")
+    NVAR MaskY1 = $(LJZ_IAM4_BaseDF() + ":MaskY1")
+    NVAR MaskY2 = $(LJZ_IAM4_BaseDF() + ":MaskY2")
+
+    MaskX1 = CropX1
+    MaskX2 = CropX2
+    MaskY1 = CropY1
+    MaskY2 = CropY2
+
+    Wave out = LJZ_IAM4_ProcessSourceWaveLegacyMask(src, 1)
+    return LJZ_IAM4_AppendWaveToGraph(out)
+End
+
+
+Function LJZ_IAM4_SetCropFromCursors()
     LJZ_IAM4_EnsureDF()
 
     String gName
@@ -885,6 +1106,11 @@ Function LJZ_IAM4_SetMaskFromCursors()
         return -1
     endif
 
+    NVAR CropEnable = $(LJZ_IAM4_BaseDF() + ":CropEnable")
+    NVAR CropX1 = $(LJZ_IAM4_BaseDF() + ":CropX1")
+    NVAR CropX2 = $(LJZ_IAM4_BaseDF() + ":CropX2")
+    NVAR CropY1 = $(LJZ_IAM4_BaseDF() + ":CropY1")
+    NVAR CropY2 = $(LJZ_IAM4_BaseDF() + ":CropY2")
     NVAR MaskX1 = $(LJZ_IAM4_BaseDF() + ":MaskX1")
     NVAR MaskX2 = $(LJZ_IAM4_BaseDF() + ":MaskX2")
     NVAR MaskY1 = $(LJZ_IAM4_BaseDF() + ":MaskY1")
@@ -905,6 +1131,11 @@ Function LJZ_IAM4_SetMaskFromCursors()
         return -1
     endif
 
+    CropEnable = 1
+    CropX1 = xa
+    CropX2 = xb
+    CropY1 = ya
+    CropY2 = yb
     MaskX1 = xa
     MaskX2 = xb
     MaskY1 = ya
@@ -968,8 +1199,17 @@ Function LJZ_IAM4_ButtonProc(ctrlName) : ButtonControl
         case "btEditExisting":
             LJZ_IAM4_EditExistingImage()
             break
+        case "btAppendCropped":
+            LJZ_IAM4_AppendExistingCropped()
+            break
+        case "btReplaceCropped":
+            LJZ_IAM4_ReplaceExistingCropped()
+            break
+        case "btAppendLegacyMask":
+            LJZ_IAM4_AppendExistingLegacyMask()
+            break
         case "btCursor":
-            LJZ_IAM4_SetMaskFromCursors()
+            LJZ_IAM4_SetCropFromCursors()
             break
         case "btClose":
             DoWindow/K $(LJZ_IAM4_PanelName())
@@ -996,7 +1236,7 @@ Function LJZ_IAM4_OpenPanel()
         return 0
     endif
 
-    NewPanel/N=$p /W=(130,70,930,710) as "LJZ Image Append + Mask v4"
+    NewPanel/N=$p /W=(130,70,930,750) as "LJZ Image Append + Mask v4"
     ModifyPanel frameStyle=1
     ModifyPanel cbRGB=(60000,60000,60000)
 
@@ -1025,27 +1265,31 @@ Function LJZ_IAM4_OpenPanel()
     GroupBox gbImages,pos={12,214},size={260,230},title="Images in graph"
     ListBox lbImages,pos={28,240},size={228,188},listWave=$(LJZ_IAM4_BaseDF() + ":ImgList"),selWave=$(LJZ_IAM4_BaseDF() + ":ImgSel"),mode=1,proc=LJZ_IAM4_ListBoxProc
 
-    GroupBox gbMask,pos={292,214},size={230,230},title="Mask"
-    CheckBox ckMask,pos={308,242},size={90,18},title="Enable"
+    GroupBox gbMask,pos={292,214},size={230,230},title="Crop / ROI"
+    CheckBox ckCrop,pos={308,242},size={105,18},title="Crop enable"
+    CheckBox ckCrop,variable=$(LJZ_IAM4_BaseDF() + ":CropEnable")
+
+    SetVariable svCX1,pos={308,270},size={95,20},title="x1"
+    SetVariable svCX1,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":CropX1")
+
+    SetVariable svCX2,pos={410,270},size={95,20},title="x2"
+    SetVariable svCX2,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":CropX2")
+
+    SetVariable svCY1,pos={308,298},size={95,20},title="y1"
+    SetVariable svCY1,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":CropY1")
+
+    SetVariable svCY2,pos={410,298},size={95,20},title="y2"
+    SetVariable svCY2,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":CropY2")
+
+    Button btCursor,pos={308,332},size={140,24},title="Crop from cursors",proc=LJZ_IAM4_ButtonProc
+    TitleBox tbMask,pos={308,370},size={190,44},title="Processed path crops to ROI first.\rThen applies optional symmetry.",frame=0
+
+    GroupBox gbLegacy,pos={292,584},size={230,82},title="Advanced / Legacy mask"
+    CheckBox ckMask,pos={308,612},size={90,18},title="Enable mask"
     CheckBox ckMask,variable=$(LJZ_IAM4_BaseDF() + ":MaskEnable")
-
-    SetVariable svMaskMode,pos={410,240},size={95,20},title="Mode"
+    SetVariable svMaskMode,pos={410,610},size={95,20},title="Mode"
     SetVariable svMaskMode,limits={1,2,1},value=$(LJZ_IAM4_BaseDF() + ":MaskMode")
-
-    SetVariable svMX1,pos={308,270},size={95,20},title="x1"
-    SetVariable svMX1,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":MaskX1")
-
-    SetVariable svMX2,pos={410,270},size={95,20},title="x2"
-    SetVariable svMX2,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":MaskX2")
-
-    SetVariable svMY1,pos={308,298},size={95,20},title="y1"
-    SetVariable svMY1,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":MaskY1")
-
-    SetVariable svMY2,pos={410,298},size={95,20},title="y2"
-    SetVariable svMY2,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":MaskY2")
-
-    Button btCursor,pos={308,332},size={140,24},title="Mask from cursors",proc=LJZ_IAM4_ButtonProc
-    TitleBox tbMask,pos={308,370},size={190,44},title="Mode 1 masks inside rectangle.\rMode 2 keeps only inside rectangle.",frame=0
+    TitleBox tbLegacy,pos={308,638},size={190,20},title="Uses current Crop / ROI coords.",frame=0
 
     GroupBox gbSym,pos={542,214},size={205,108},title="Symmetry"
     SetVariable svSym,pos={558,242},size={130,20},title="SymMode"
@@ -1087,15 +1331,16 @@ Function LJZ_IAM4_OpenPanel()
     SetVariable svNY2,pos={410,542},size={95,20},title="new y2"
     SetVariable svNY2,limits={-inf,inf,0.01},value=$(LJZ_IAM4_BaseDF() + ":NewY2")
 
-    GroupBox gbRun,pos={12,466},size={260,104},title="Run"
+    GroupBox gbRun,pos={12,466},size={260,134},title="Run"
     Button btAppendRaw,pos={28,494},size={110,26},title="Append path raw",proc=LJZ_IAM4_ButtonProc
     Button btAppendProc,pos={148,494},size={110,26},title="Append path proc",proc=LJZ_IAM4_ButtonProc
-    Button btAppendExisting,pos={28,532},size={110,26},title="Append selected",proc=LJZ_IAM4_ButtonProc
-    Button btEditExisting,pos={148,532},size={110,26},title="Replace selected",proc=LJZ_IAM4_ButtonProc
+    Button btAppendCropped,pos={28,532},size={110,26},title="Append cropped",proc=LJZ_IAM4_ButtonProc
+    Button btReplaceCropped,pos={148,532},size={110,26},title="Replace cropped",proc=LJZ_IAM4_ButtonProc
+    Button btAppendLegacyMask,pos={28,570},size={150,24},title="Legacy append mask",proc=LJZ_IAM4_ButtonProc
 
     Button btClose,pos={646,584},size={90,28},title="Close",proc=LJZ_IAM4_ButtonProc
 
-    TitleBox tbUse,pos={28,590},size={680,56},title="Recommended: Refresh images -> select one image -> Append selected to test. Use Replace selected only after confirming the result.\rDelete selected removes the image. If Kill iam4 wave too is checked, copied iam4_* waves are also killed.",frame=0
+    TitleBox tbUse,pos={28,684},size={680,36},title="Recommended: set Crop / ROI -> enable Crop -> Append cropped to test. Use Replace cropped only after confirming the result.\rLegacy append mask keeps old NaN masking and is not used by the default processed path.",frame=0
 
     LJZ_IAM4_RefreshImageList()
 
