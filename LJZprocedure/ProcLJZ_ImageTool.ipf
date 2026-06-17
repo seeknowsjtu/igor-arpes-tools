@@ -395,10 +395,10 @@ Function InitImageTool(df)
 		setformula $(df+"profileH") , "image("+df+"profileH_x)("+df+"Y0)"
 		setformula $(df+"profileV"), "image("+df+"X0)("+df+"profileV_y)"
 		setformula $(df+"D0") ,  df+"image)("+df+"X0)("+df+"Y0)"
-		//profileH:=image(profileH_x)(root:ImageTool:Y0)
-		//profileV:=image(root:ImageTool:X0)(profileV_y)
-		//profileZ:=$datnam(root:ImageTool:X0)(root:ImageTool:Y0)(x)
-		//root:ImageTool:D0:=root:ImageTool:image(root:ImageTool:X0)(root:ImageTool:Y0)
+		//profileH:=image(profileH_x)(<tool-df>Y0)
+		//profileV:=image(<tool-df>X0)(profileV_y)
+		//profileZ:=$datnam(<tool-df>X0)(<tool-df>Y0)(x)
+		//<tool-df>D0:=<tool-df>image(<tool-df>X0)(<tool-df>Y0)
 
 		// Nice pretty initial image	
 			SetScale/I x -25,25,"" image, image0;  
@@ -573,7 +573,7 @@ Function Image_Tool(df) : Graph
 	Button LoadImg,help={"Select 2D image array in memory to copy to the ImageTool Panel"}
 	SetVariable setX0,pos={67,26},size={70,14},proc=SetHairXY,title="X"
 	SetVariable setX0,help={"Cross hair X-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
-	SetVariable setX0,limits={213,491,1},value=$(df+"X0")	//root:ImageTool:X0
+	SetVariable setX0,limits={213,491,1},value=$(df+"X0")	//<tool-df>X0
 	SetVariable setY0,pos={141,26},size={70,14},proc=SetHairXY,title="Y"
 	SetVariable setY0,help={"Cross hair Y-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
 	SetVariable setY0,limits={-6.00024,12,0.031972},value= $(df+"Y0")
@@ -592,7 +592,7 @@ Function Image_Tool(df) : Graph
 		execute "ValDisplay npty,value="+df+"ny"
 	ValDisplay nptz,pos={377,26},size={45,14},title="Nz"
 	ValDisplay nptz,help={"Number of slices in 3D data set."}
-	ValDisplay nptz,limits={0,0,0},barmisc={0,1000}			//,value= root:ImageTool:nz
+	ValDisplay nptz,limits={0,0,0},barmisc={0,1000}			//,value= <tool-df>nz
 		execute "ValDisplay nptz,value="+df+"nz"
 	PopupMenu ImageUndo,pos={489,24},size={57,20},disable=1,proc=ImageUndo
 	PopupMenu ImageUndo,help={"Undo last image modification or restore to original"}
@@ -644,7 +644,7 @@ Function Image_Tool(df) : Graph
 	Button SlicePlus,help={"Increment image slice index."}
 	PopupMenu popAnim,pos={465,23},size={74,20},disable=1,proc=AnimateAction,title="Animate"
 	PopupMenu popAnim,help={"Step thru slices of 3D data set"}
-	PopupMenu popAnim,mode=0	//,value= "\""+$(df+"anim_menu")+"\""	//root:ImageTool:anim_menu	//#anim_menu
+	PopupMenu popAnim,mode=0	//,value= "\""+$(df+"anim_menu")+"\""	//<tool-df>anim_menu	//#anim_menu
 		execute "PopupMenu popAnim,value="+df+"anim_menu"
 	PopupMenu popSlice,pos={65,21},size={42,20},disable=1,proc=SelectSliceDir
 	PopupMenu popSlice,mode=1,popvalue="XY/Z",value= #"\"XY/Z;XZ/Y;YZ/X\""
@@ -721,6 +721,10 @@ Function NewImg(ctrlName) : ButtonControl
 
 // Popup Dialog image array selection
 	string df=getdf()
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	SVAR imgfldr=$(df+"imgfldr"), imgnam=$(df+"imgnam"), datnam=$(df+"datnam")
 	//if (stringmatch(ctrlName, "LoadImg"))
 	strswitch ( ctrlName)
@@ -764,6 +768,10 @@ Function SetupImg()		//**ER moved this out of newimg
 //============
 	silent 1; pauseupdate
 	string df=getdf(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	string dfn=StringFromList(1,df,":")
 	SetDataFolder $df
 		SVAR dwn=$(df+"datnam")
@@ -855,7 +863,7 @@ Function SetupImg()		//**ER moved this out of newimg
 		//islice=0
 		//make/n=(nx,ny)
 		//duplicate/o $datnam Image,  Image0,  Image_undo
-		//ExtractSlice( islice, $datnam, "root:ImageTool:Image", idir)
+		//ExtractSlice( islice, $datnam, "<tool-df>Image", idir)
 		//Duplicate/O Image, Image0, Image_Undo
 	ELSE		//		2D only
 		// Remove 3D only items (slices & Z-profile)
@@ -901,7 +909,7 @@ Function SetupImg()		//**ER moved this out of newimg
 	dmin=dmin0;  dmax=dmax0
 	ModifyImage  Image cindex= Image_CT
 	//ModifyImage  Image cindex= RedTemp_CT
-	//SetScale/I x dmin0, dmax0,"" root:ImageTool:RedTemp_CT
+	//SetScale/I x dmin0, dmax0,"" <tool-df>RedTemp_CT
 	//print dmin, dmax, dmin0, dmax0
 	AdjustCT()
 	//print dmin, dmax, dmin0, dmax0
@@ -972,8 +980,12 @@ end
 function UpdateImgSlices(option)
 //================
 	variable option	//0=both, 1=H only, 2=V only
-	//nvar y0=root:imagetool:y0,x0=root:imagetool:x0
+	//nvar y0=<tool-df>:y0,x0=<tool-df>:x0
 	string df=getdf(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	string dfn=StringFromList(1,df,":")
 	SetDataFolder $df
 		//NVAR ndim=$(df+"ndim"), islicedir=$(df+"islicedir")
@@ -995,8 +1007,17 @@ function UpdateImgSlices(option)
 	variable doH=(option==0)+(option==1)
 	variable doV=(option==0)+(option==2)
 	IF (ndim==3)		// could be checked before calling function
-		variable py=(y0-dimoffset(image,1))/dimdelta(image,1)
-		variable px=(x0-dimoffset(image,0))/dimdelta(image,0)
+		Variable dx = DimDelta(image,0)
+		Variable dy = DimDelta(image,1)
+		if (numtype(dx) != 0 || abs(dx) < 1e-15 || numtype(dy) != 0 || abs(dy) < 1e-15)
+			Print "ImageTool warning: invalid image scaling in UpdateImgSlices."
+			SetDataFolder $curr
+			return -1
+		endif
+		variable px = (x0-DimOffset(image,0))/dx
+		variable py = (y0-DimOffset(image,1))/dy
+		px = max(0, min(DimSize(image,0)-1, px))
+		py = max(0, min(DimSize(image,1)-1, py))
 		//print x0,y0,px,py
 		switch( islicedir )
 		case 1:		//XY
@@ -1038,6 +1059,10 @@ Function SelectSliceDir(ctrlName,popNum,popStr) : PopupMenuControl
 
 	PauseUpdate; Silent 1
 	string df=getdf(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	string dfn=StringFromList(1,df,":")
 	SetDataFolder $df
 		//string/G datnam=imgfldr+imgnam  // already defined?
@@ -1138,7 +1163,7 @@ Function SelectSliceDir(ctrlName,popNum,popStr) : PopupMenuControl
 	if (lockColors==0)
 		AdjustCT()
 	endif
-	//SetScale/I x dmin0, dmax0,"" root:ImageTool:RedTemp_CT
+	//SetScale/I x dmin0, dmax0,"" <tool-df>RedTemp_CT
 	SetProfiles()
 	MakeImgSlices(df)
 	UpdateImgSlices(0)
@@ -1155,23 +1180,36 @@ Function SelectSlice(ctrlName,varNum,varStr,varName) : SetVariableControl
 	
 	PauseUpdate; Silent 1
 	string df=getdf(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	string dfn=StringFromList(1,df,":")
 	SetDataFolder $df
 		NVAR Z0=Z0, zmin=zmin, zinc=zinc
 		NVAR islice=islice, islicedir=islicedir, nsliceavg=nsliceavg
+		NVAR nz=nz
 		NVAR lockColors=lockColors
 		WAVE HairZ0=HairZ0
 		SVAR datnam=datnam
 		WAVE dw=$datnam			//$("root:"+datnam)  v4.023 fix
 	SetDataFolder $curr 
 	
-	if (stringmatch(ctrlName, "SetZ0"))
-		Z0=varNum
-		islice=round( (Z0-zmin)/zinc )
-	else
-		islice=varNum
-		Z0=zmin + islice*zinc
+	if (numtype(zinc) != 0 || abs(zinc) < 1e-15 || nz <= 0)
+		DoAlert 0, "ImageTool: invalid Z scaling."
+		SetDataFolder $curr
+		return -1
 	endif
+
+	if (stringmatch(ctrlName, "SetZ0"))
+		Z0 = varNum
+		islice = round((Z0-zmin)/zinc)
+	else
+		islice = round(varNum)
+	endif
+
+	islice = max(0, min(nz-1, islice))
+	Z0 = zmin + islice*zinc
 	//Cursor/P A, profileZ, islice
 	variable str=strsearch(tracenamelist(dfn,";",1),"HairZ0",0)
 	if(str>=0)
@@ -1199,9 +1237,16 @@ Function StepSlice(ctrlName) : ButtonControl
 	String ctrlName
 	
 	string df=getdf()
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	NVAR zstep=$(df+"zstep"), islice=$(df+"islice")
+	NVAR nz=$(df+"nz")
 	variable dir=SelectNumber( stringmatch(ctrlName, "SlicePlus"), -1, 1)
-	SelectSlice("", islice+dir*zstep, "", "" )
+	Variable nextSlice = round(islice + dir*zstep)
+	nextSlice = max(0, min(nz-1, nextSlice))
+	SelectSlice("", nextSlice, "", "" )
 End
 
 
@@ -1212,6 +1257,10 @@ Function AnimateAction(ctrlName,popNum,popStr) : PopupMenuControl
 	String popStr
 	
 	string df=getdf()
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	SVAR newmenu=$(df+"anim_menu")
 	NVAR anim_dir=$(df+"anim_dir"), anim_loop=$(df+"anim_loop"), anim_range=$(df+"anim_range")
 	NVAR nz=$(df+"nz"), zstep=$(df+"zstep")
@@ -1359,6 +1408,10 @@ Function SetProfiles()				//XY profiles
 //==============
 	PauseUpdate; Silent 1
 	string df=getdf()
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	string curr=GetDataFolder(1)
 	SetDataFolder $df
 		WAVE profileH=profileH, profileH_x=profileH_x
@@ -1367,13 +1420,19 @@ Function SetProfiles()				//XY profiles
 		NVAR ny=ny, ymin=ymin, ymax=ymax, yinc=yinc
 	SetDataFolder $curr
 	
+	if (numtype(xinc) != 0 || abs(xinc) < 1e-15 || numtype(yinc) != 0 || abs(yinc) < 1e-15)
+		Print "ImageTool warning: invalid x/y increment in SetProfiles."
+		SetDataFolder $curr
+		return -1
+	endif
+
 	Redimension/N=(nx) profileH, profileH_x
 	profileH_x=xmin+p*xinc
-//		profileH:=image(profileH_x)(root:ImageTool:Y0)
+//		profileH:=image(profileH_x)(<tool-df>Y0)
 	
 	Redimension/N=(ny) profileV, profileV_y
 	profileV_y=ymin+p*yinc
-//		profileV:=image(root:ImageTool:X0)(profileV_y)
+//		profileV:=image(<tool-df>X0)(profileV_y)
 	
 	//ImageTool Window must be on top
 	string dfn=StringFromList(1,df,":")
@@ -1393,6 +1452,10 @@ Function SetHairXY(ctrlName,varNum,varStr,varName) : SetVariableControl
 	String varName
 
 	String df=getdf()
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	variable/C coffset=GetWaveOffset($(df+"HairY0"))
 	variable xcur=REAL(coffset), ycur=(IMAG(coffset)), pcur
 	NVAR xmin=$(df+"xmin"), xmax=$(df+"xmax")
@@ -1525,6 +1588,10 @@ Function ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 	
 	PauseUpdate; Silent 1
 	string df=getdf(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	
 	SetDataFolder $df
 	WAVE Image=Image, Image_undo=Image_Undo
@@ -2032,6 +2099,10 @@ Function VolModify(ctrlName, popNum,popStr) : PopupMenuControl
 	
 	PauseUpdate; Silent 1
 	string df=getdf1(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	NVAR ndim=$(df+"ndim")
 	if (ndim<3)
 		abort "Not 3-dimensional"
@@ -3153,7 +3224,10 @@ function imgHookfcn ( s )
 	string s
 	variable mousex,mousey,ax,ay, zx,zy,modif, returnval=0
 //	string df=getdf()  window is not always on top when we get the kill event
-	string df="root:"+stringbykey("WINDOW",s)+":"
+	string df=it_safe_df_from_window(stringbykey("WINDOW",s))
+	if (!DataFolderExists(df))
+		return returnval
+	endif
 	SVAR dn=$(df+"datnam")
 	string dfn=StringFromList(1,df,":")
 	NVAR ndim=$(df+"ndim"), showImgSlices=$(df+"showImgSlices")
@@ -3224,7 +3298,8 @@ function imgHookfcn ( s )
 				else
 					variable dx, dy, xrng, yrng, pcur
 					//string dir
-					NVAR x0=root:imageTool:x0, y0=root:imageTool:y0
+					NVAR x0=$(df+"X0")
+					NVAR y0=$(df+"Y0")
 					GetAxis/Q bottom	//; axmin=min(V_max, V_min); axmax=max(V_min, V_max)
 					dx= (ax - x0)/ abs(V_max-V_min)
 					GetAxis/Q left		//; aymax=V_max
@@ -3269,6 +3344,19 @@ function imgHookfcn ( s )
 	endif
 	
 	if (cmpstr(stringbykey("event",s),"kill")==0)
+			if (!DataFolderExists(df))
+				return returnval
+			endif
+			// only delete root-level ImageTool data folders owned by this window
+			String dfnKill = StringFromList(1, df, ":")
+			if (!(StringMatch(dfnKill, "*imagetool*") || StringMatch(dfnKill, "*ImageTool*")))
+				Print "ImageTool warning: refusing to delete non-tool folder: " + df
+				return returnval
+			endif
+			if (cmpstr(df, "root:" + stringbykey("WINDOW",s) + ":") != 0)
+				Print "ImageTool warning: refusing to delete folder that does not match the window: " + df
+				return returnval
+			endif
 			//window killed, so kill data
 			DoWindow/f $dfn
 			removeallfromgraph(dfn)
@@ -3325,6 +3413,10 @@ end
 Function AdjustCT() 	//: GraphMarquee
 //==============
 	string df=getdf(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	SetDataFolder $df
 		WAVE image=image, Image_CT=image_CT
 		NVAR ndim=ndim, dmin=dmin, dmax=dmax, CTinvert=CTinvert
@@ -3415,6 +3507,10 @@ Function SelectCT(ctrlName,popNum,popStr) : PopupMenuControl
 	String popStr
 	
 	string df=getdf(), curr=getdataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	print df, curr
 	string CTstr
 	PauseUpdate
@@ -3589,6 +3685,10 @@ Function ExportProfileFct( ctrlName ) : ButtonControl
 	String ctrlName
 	
 	String df=getdf()
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	string nam=StrVarOrDefault( df+"exportp_nam", "profil")
 	variable opt=NumVarOrDefault( df+"exportp_opt", 1)
 	variable plotopt=NumVarOrDefault( df+"exportp_plot", 1)
@@ -3646,6 +3746,10 @@ Function ExportImageFct(ctrlName) : ButtonControl
 	String ctrlName
 	
 	String df=getdf()
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	NVAR ndim=$(df+"ndim")
 	String nam=StrVarOrDefault( df+"exporti_nam", "im")
 	variable opt=NumVarOrDefault( df+"exporti_opt", 1)
@@ -3790,6 +3894,10 @@ Function ExportVolumeFct(ctrlName) : ButtonControl
 	String ctrlName
 	
 	String df=getdf()
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	NVAR ndim= $(df+"ndim")
 	if (ndim<3)
 		abort "Not 3-dimensional"
@@ -3900,6 +4008,10 @@ Function StackUpdate(ctrlName) : ButtonControl
 	String ctrlName
 	
 	string df=getdf(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	string dfn=StringFromList(1,df,":")			//not used
 	string swn=getswn(df)
 //	SetDataFolder root:IMG
@@ -4136,14 +4248,55 @@ function/s getdf1()		//use non-static call from macros
 	return getdf()
 end
 
+Function/S it_safe_df_from_window(winName)
+//==========
+// Safely resolve an ImageTool data folder from a graph/stack window name.
+	String winName
+	if (strlen(winName) == 0)
+		return ""
+	endif
+
+	String df = "root:" + winName + ":"
+	if (DataFolderExists(df))
+		return df
+	endif
+
+	// stack window fallback: xxx_stack -> root:xxx:
+	if (StringMatch(winName, "*_stack"))
+		String base = ReplaceString("_stack", winName, "")
+		df = "root:" + base + ":"
+		if (DataFolderExists(df))
+			return df
+		endif
+	endif
+
+	return ""
+End
+
 static function/s getdf()				//static  can only be called by FUNCTONS (not macros) in this procedure
 //override function/s getdf()
 //==========
 //get data folder from topmost window name
-	//return ":"+winlist("*","","win:")+":"
-	return "root:"+WinName(0,1)+":"
-	//return "root:ImageTool:"
-	//return "root:img:"
+	String win = WinName(0,1)
+	String df = it_safe_df_from_window(win)
+	if (strlen(df) > 0)
+		return df
+	endif
+
+	// fallback: search for the first likely image-tool folder
+	String list = DataFolderDir(1)
+	Variable i, n = ItemsInList(list, ";")
+	for (i=0; i<n; i+=1)
+		String nm = StringFromList(i, list, ";")
+		if (StringMatch(nm, "*imagetool*") || StringMatch(nm, "*ImageTool*"))
+			df = "root:" + nm + ":"
+			if (DataFolderExists(df))
+				return df
+			endif
+		endif
+	endfor
+
+	return "root:"
 end
 
 static function /S stack_getdf()
@@ -4152,13 +4305,10 @@ static function /S stack_getdf()
 // supports the legacy STACK_->ImageTool
 	string df = getdf()
 	string dfn=StringFromList(1,df,":")
-	if(cmpstr(dfn,"STACK_")==0)
-		return "root:ImageTool:"
-	else
-		variable snum
-		sscanf dfn ,"STACK %i", snum
-		return  "root:ImageTool"+num2istr(snum)+":"
+	if (DataFolderExists(df))
+		return df
 	endif
+	return "root:"
 end
 
 static function /S getswn(df)
