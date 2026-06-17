@@ -283,6 +283,7 @@ Function InitImageTool(df)
 	NewDataFolder/O/S $df
 		df="root:"+df+":"
 		string/G imgnam, imgfldr, imgproc, imgproc_undo, exportn,datnam=""
+		String/G statusMsg = "Ready"
 		variable/G X0=0, Y0=0, D0
 		variable/G nx=111, ny=101,center, width		
 		variable/G xmin=0, xinc=1, xmax, ymin=0, yinc=1, ymax
@@ -361,10 +362,12 @@ Function InitImageTool(df)
 		string/G zunit=""
 		string/G anim_menu= "Go;-;Ã Forward;  Backward;  Loop;-;Ã Single Pass;  Continuous;-;Ã Full Range;  Cursors;-;Save Movie"
 		variable/G anim_dir=0, anim_loop=0, anim_range=0
+		Variable/G stopAnimate = 0
 		make/o/n=(2,2) h_img, v_img 	//**ER
 		h_img=NaN							//**ER
 		v_img=NaN							//**ER
 		variable/g showImgSlices=1, vol_dmin, vol_dmax
+		Variable/G exportCleanNonFinite = 0
 		
 		// Dependencies
 		//pmap:=255*(p/255)^gamma\
@@ -571,6 +574,8 @@ Function Image_Tool(df) : Graph
 	ControlBar 50
 	Button LoadImg,pos={4,3},size={40,22},proc=NewImg,title="Load"
 	Button LoadImg,help={"Select 2D image array in memory to copy to the ImageTool Panel"}
+	Button LoadCurrent,pos={47,3},size={55,22},proc=it_btn_load_current,title="Current"
+	Button LoadCurrent,help={"Load first image wave from the top graph, or selected/current 2D/3D wave if available."}
 	SetVariable setX0,pos={67,26},size={70,14},proc=SetHairXY,title="X"
 	SetVariable setX0,help={"Cross hair X-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
 	SetVariable setX0,limits={213,491,1},value=$(df+"X0")	//<tool-df>X0
@@ -622,9 +627,9 @@ Function Image_Tool(df) : Graph
 	//PopupMenu SelectCT,mode=0,value= #"\"Grayscale;Red Temp;Invert;Rescale\""
 	//Popupmenu selectCT,mode=0,value="Invert;Rescale;"+colornameslist()     //ER
 	Popupmenu selectCT,mode=0,value="Invert;Rescale;"+CTnamelist(2)         //JD
-	Button ShowHelp,pos={44,3},size={18,22},proc=ShowWin,title="?"
+	Button ShowHelp,pos={604,3},size={18,22},proc=ShowWin,title="?"
 	Button ShowHelp,help={"Show shortcut & version history notebook"}
-	TabControl imgtab,pos={63,0},size={575,48},proc=imgTabProc,tabLabel(0)="info"
+	TabControl imgtab,pos={105,0},size={495,48},proc=imgTabProc,tabLabel(0)="info"
 	TabControl imgtab,tabLabel(1)="process",tabLabel(2)="colors"
 	TabControl imgtab,tabLabel(3)="volume",tabLabel(4)="export",value= 0
 	///////
@@ -644,6 +649,7 @@ Function Image_Tool(df) : Graph
 	Button SlicePlus,help={"Increment image slice index."}
 	PopupMenu popAnim,pos={465,23},size={74,20},disable=1,proc=AnimateAction,title="Animate"
 	PopupMenu popAnim,help={"Step thru slices of 3D data set"}
+	Button StopAnim,pos={542,23},size={40,18},disable=1,proc=it_btn_stop_animate,title="Stop"
 	PopupMenu popAnim,mode=0	//,value= "\""+$(df+"anim_menu")+"\""	//<tool-df>anim_menu	//#anim_menu
 		execute "PopupMenu popAnim,value="+df+"anim_menu"
 	PopupMenu popSlice,pos={65,21},size={42,20},disable=1,proc=SelectSliceDir
@@ -666,6 +672,10 @@ Function Image_Tool(df) : Graph
 	Button exportimage,help={"Export current image or H or V slice to a separate window (name prompted for)."}
 	Button exportvolume,pos={197,22},size={55,20},disable=1,title="Volume", proc=ExportVolumeFct
 	Button exportvolume,help={"Export current (modified) volume to root (name prompted for)."}
+	CheckBox cleanExport,pos={265,26},size={70,14},disable=1,title="Clean NaN"
+	CheckBox cleanExport,variable=$(df+"exportCleanNonFinite")
+	CheckBox cleanExport,help={"Replace NaN/Inf with 0 in exported image only. Original ImageTool data are unchanged."}
+	TitleBox it_status,pos={425,3},size={170,14},fSize=9,frame=0,title="Ready"
 	TitleBox version,pos={10,28},size={35,14},fsize=9, title="v4.053",frame=0, fstyle=2
 	
 	SetWindow kwTopWin,hook=imgHookFcn,hookevents=3
@@ -757,12 +767,109 @@ Function NewImg(ctrlName) : ButtonControl
 		imgfldr=GetWavesDataFolder($imgnam, 1)
 	endswitch
 //		print datnam,imgnam,imgfldr
+	Wave/Z testW = $datnam
+	if (!WaveExists(testW))
+		DoAlert 0, "ImageTool: selected wave does not exist."
+		it_set_status("Error")
+		return -1
+	endif
+	Variable nd = WaveDims(testW)
+	if (!(nd == 2 || nd == 3))
+		DoAlert 0, "ImageTool: selected wave must be 2D or 3D."
+		it_set_status("Error")
+		return -1
+	endif
+	if (DimSize(testW,0) <= 0 || DimSize(testW,1) <= 0)
+		DoAlert 0, "ImageTool: selected wave has invalid size."
+		it_set_status("Error")
+		return -1
+	endif
+	if (nd == 3 && DimSize(testW,2) <= 0)
+		DoAlert 0, "ImageTool: selected 3D wave has invalid Z size."
+		it_set_status("Error")
+		return -1
+	endif
 	SVAR exporti_nam=	$(df+"exporti_nam")
 	exporti_nam=imgnam+"_"				// prepare export name
 	PauseUpdate; Silent 1
 	execute "SetupImg()"		  //**ER
+	it_set_status("Loaded")
 	NVAR ndim=$(df+"ndim")
 end
+
+
+Function it_btn_load_current(ctrlName) : ButtonControl
+	String ctrlName
+
+	String srcPath = it_find_current_image_wave()
+	if (strlen(srcPath) == 0)
+		DoAlert 0, "ImageTool: no current 2D/3D wave found."
+		it_set_status("Error")
+		return -1
+	endif
+
+	NewImg(srcPath)
+	return 0
+End
+
+Function/S it_find_current_image_wave()
+	String topWin = WinName(0,1)
+
+	if (strlen(topWin) > 0)
+		String imgs = ImageNameList(topWin, ";")
+		if (ItemsInList(imgs, ";") > 0)
+			String imName = StringFromList(0, imgs, ";")
+			Wave/Z imw = ImageNameToWaveRef(topWin, imName)
+			if (WaveExists(imw))
+				if (WaveDims(imw) == 2 || WaveDims(imw) == 3)
+					return GetWavesDataFolder(imw, 2)
+				endif
+			endif
+		endif
+	endif
+
+	String df0 = GetDataFolder(1)
+	String list2 = WaveList("*", ";", "DIMS:2")
+	if (ItemsInList(list2, ";") > 0)
+		return df0 + PossiblyQuoteName(StringFromList(0, list2, ";"))
+	endif
+
+	String list3 = WaveList("*", ";", "DIMS:3")
+	if (ItemsInList(list3, ";") > 0)
+		return df0 + PossiblyQuoteName(StringFromList(0, list3, ";"))
+	endif
+
+	return ""
+End
+
+Function it_btn_stop_animate(ctrlName) : ButtonControl
+	String ctrlName
+	NVAR stopAnimate=$(getdf()+"stopAnimate")
+	stopAnimate = 1
+	it_set_status("Stopping")
+	return 0
+End
+
+Function it_set_status(msg)
+	String msg
+
+	String df = getdf()
+	if (DataFolderExists(df))
+		SVAR/Z statusMsg=$(df+"statusMsg")
+		if (SVAR_Exists(statusMsg))
+			statusMsg = msg
+		endif
+	endif
+
+	String win = WinName(0,1)
+	DoWindow $win
+	if (V_flag)
+		TitleBox it_status,win=$win,title=msg
+	endif
+
+	Print "ImageTool: " + msg
+	return 0
+End
 
 Function SetupImg()		//**ER moved this out of newimg
 //============
@@ -929,6 +1036,7 @@ Function SetupImg()		//**ER moved this out of newimg
 	Label bottom xlbl
 	Label left ylbl
 	UpdateImgSlices(0)		//**ER
+	it_set_status("Ready")
 	//SetDataFolder $curr
 End
 
@@ -1322,9 +1430,12 @@ Function AnimateAction(ctrlName,popNum,popStr) : PopupMenuControl
 		
 		if (popNum==1)
 			if (anim_loop==1)		// continuous
-				DO
+				NVAR stopAnimate=$(df+"stopAnimate")
+				stopAnimate = 0
+				do
 					Animate(istart, iend, istep, idir, imovie)
-				WHILE(1)
+					DoUpdate
+				while (!stopAnimate)
 			else								//single pass
 				Animate(istart, iend, istep, idir, imovie)
 			endif
@@ -2166,6 +2277,7 @@ Function ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		Print "ImageTool warning: Image contains " + num2str(nBad) + " NaN/Inf values after " + popStr
 	endif
 	SetProfiles()
+	it_set_status(popStr + " done")
 	SetDataFolder $curr
 End
 
@@ -3281,11 +3393,13 @@ Function ImgTabProc(name,tab)
 	setvariable setZavg,disable=(tab!=3)		//**JD
 	popupmenu volModify,disable=(tab!=3)
 	popupmenu popAnim,disable=(tab!=3)
+	button StopAnim,disable=(tab!=3)
 	checkbox ShowImgSlices, disable=(tab!=3)
 	
 	button exportprofile, disable=(tab!=4)		//Export
 	button exportimage,disable=(tab!=4)
 	button exportvolume,disable=(tab!=4)
+	checkbox cleanExport,disable=(tab!=4)
 
 	if (exists("AddEDCpathTab2ITpanel"))
 		button addpoint, disable=(tab!=5) 		//EDCs over path (Add from David Fournier)
@@ -3804,6 +3918,12 @@ Function ExportProfileFct( ctrlName ) : ButtonControl
 	if (V_flag==1)
 		abort		// Cancel selected
 	endif
+	if (WaveExists($nam))
+		DoAlert 1, "Wave exists. Overwrite?"
+		if (V_flag != 1)
+			return -1
+		endif
+	endif
 	string/G  $(df+"exportp_nam")=nam
 	variable/G  $(df+"exportp_opt")=opt,  $(df+"exportp_plot")=plotopt
 
@@ -3844,6 +3964,7 @@ Function ExportProfileFct( ctrlName ) : ButtonControl
 			AppendToGraph profil
 			break
 	endswitch
+	it_set_status("Exported")
 End
 
 Function ExportImageFct(ctrlName) : ButtonControl
@@ -3869,6 +3990,12 @@ Function ExportImageFct(ctrlName) : ButtonControl
 	DoPrompt "ExportImage" nam, opt, plotopt
 	if (V_flag==1)
 		abort		// Cancel selected
+	endif
+	if (WaveExists($nam))
+		DoAlert 1, "Wave exists. Overwrite?"
+		if (V_flag != 1)
+			return -1
+		endif
 	endif
 	string/G $(df+"exporti_nam")=nam
 	variable/G  $(df+"exporti_opt")=opt,  $(df+"exporti_plot")=plotopt
@@ -4000,6 +4127,7 @@ Function ExportImageFct(ctrlName) : ButtonControl
 			KillWaves/Z tmp
 			break
 	endswitch
+	it_set_status("Exported")
 End
 
 Function ExportVolumeFct(ctrlName) : ButtonControl
@@ -4025,6 +4153,12 @@ Function ExportVolumeFct(ctrlName) : ButtonControl
 	DoPrompt "ExportImage" nam, opt, plotopt
 	if (V_flag==1)
 		abort		// Cancel selected
+	endif
+	if (WaveExists($nam))
+		DoAlert 1, "Wave exists. Overwrite?"
+		if (V_flag != 1)
+			return -1
+		endif
 	endif
 	string/G  $(df+"exportv_nam")=nam
 	variable/G  $(df+"exportv_opt")=opt,  $(df+"exportv_plot")=plotopt
@@ -4059,6 +4193,7 @@ Function ExportVolumeFct(ctrlName) : ButtonControl
 			abort "Not implmented yet"
 			break
 	endswitch
+	it_set_status("Exported")
 End
 
 
