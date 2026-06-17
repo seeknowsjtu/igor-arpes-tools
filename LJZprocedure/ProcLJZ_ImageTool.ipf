@@ -1,4 +1,4 @@
-#pragma TextEncoding = "Windows-1252"
+#pragma TextEncoding = "UTF-8"
 // ProcLJZ_ImageTool.ipf
 // Original Image_Tool4 source by Jonathan Denlinger (JD), Advanced Light Source,
 // with contributions from Eli Rotenberg (ER) and Aaron Bostwick (AB).
@@ -8,7 +8,7 @@
 // fix compile/stability issues in formulas, data-folder restoration, slice labels, animation,
 // stack binding, volume direction handling, and export cleaning of duplicated waves only.
 
-#pragma rtGlobals=1		// Use modern global access method.
+#pragma rtGlobals=3		// Use modern global access method.
 #include <Cross Hair Cursors>
 #include "List_util"
 #include "Image_util"
@@ -460,16 +460,26 @@ Function IT_Image_Tool(df) : Graph
 		//SVAR anim_menu=anim_menu
 		WAVE HairY0=HairY0, HairX0=HairX0, HairY1=HairY1, HairX1=HairX1
 		WAVE profileH=profileH, profileH_x=profileH_x, profileV=profileV, profileV_y
-		WAVE image=Image, Image_CT=Image_CT
+		WAVE image=Image
+		Wave/Z imageCT = $(df + "Image_CT")
 	SetDataFolder $fldrSav
+	if (!WaveExists(imageCT))
+		IT_set_status("Missing Image_CT")
+		return -1
+	endif
+	if (DimSize(imageCT, 1) < 3)
+		IT_set_status("Invalid Image_CT: cindex needs at least 3 columns")
+		return -1
+	endif
 	string dfn=StringFromList(1,df,":")
 	Display /W=(341,146,993,639) HairY0 vs HairX0 as dfn
+	DoWindow/C $dfn
 	AppendToGraph/L=lineX profileH vs profileH_x
 	AppendToGraph/B=lineY profileV_y vs profileV
 	AppendToGraph/L=lineX HairX1 vs HairY1
 	AppendToGraph/B=lineY HairY1 vs HairX1
 	AppendImage Image
-	ModifyImage Image cindex= Image_CT
+	ModifyImage/W=$dfn Image cindex=imageCT
 	SetDataFolder $fldrSav
 	ModifyGraph cbRGB=(65535,65532,16385)
 	ModifyGraph rgb(HairY0)=(0,65535,65535),rgb(HairX1)=(0,65535,65535),rgb(HairY1)=(0,65535,65535)
@@ -806,7 +816,8 @@ Function IT_SetupImg()		//**ER moved this out of newimg
 		//WAVE dw =  $(df+"datnam")		// This doesn't work
 		NVAR ndim=$(df+"ndim")
 		WAVE h_img=h_img, v_img=v_img
-		WAVE himg_ct=himg_ct, vimg_ct=vimg_ct
+		Wave/Z himgCT = $(df + "himg_CT")
+		Wave/Z vimgCT = $(df + "vimg_CT")
 		WAVE profileZ=profileZ, HairZ0=HairZ0, HairZ0_x=HairZ0_x
 		NVAR nz=nz, zmin=zmin, zmax=zmax, zinc=zinc
 		WAVE Image=Image, Image0=Image0, Image_Undo=Image_Undo
@@ -817,6 +828,31 @@ Function IT_SetupImg()		//**ER moved this out of newimg
 		NVAR showimgslices=showimgslices, Z0=Z0
 		WAVE axisLabels=axisLabels
 	setdatafolder $curr
+	if (!WaveExists(himgCT))
+		IT_set_status("Missing himg_CT")
+		return -1
+	endif
+	if (!WaveExists(vimgCT))
+		IT_set_status("Missing vimg_CT")
+		return -1
+	endif
+	if (DimSize(himgCT, 1) < 3)
+		IT_set_status("Invalid himg_CT: cindex needs at least 3 columns")
+		return -1
+	endif
+	if (DimSize(vimgCT, 1) < 3)
+		IT_set_status("Invalid vimg_CT: cindex needs at least 3 columns")
+		return -1
+	endif
+	Wave/Z imageCT = $(df + "Image_CT")
+	if (!WaveExists(imageCT))
+		IT_set_status("Missing Image_CT")
+		return -1
+	endif
+	if (DimSize(imageCT, 1) < 3)
+		IT_set_status("Invalid Image_CT: cindex needs at least 3 columns")
+		return -1
+	endif
 
 	DoWindow/T $dfn ,dfn+":"+dwn
 
@@ -855,13 +891,13 @@ Function IT_SetupImg()		//**ER moved this out of newimg
 				 appendimage/W=$dfn/L=imgh h_img
 			endif
 			 ModifyGraph axisEnab(imgh)={0.50,0.72},freePos(imgh)=0,axisenab(left)={0.0, 0.45}
-			 ModifyImage h_img,cindex=himg_ct
+			 ModifyImage/W=$dfn h_img,cindex=himgCT
 			if  (FindListItem("v_img",WaveNamList,";",0)<0)
 				//v_img not already on window
 				 appendimage/W=$dfn/B=imgv v_img
 			endif
 			 ModifyGraph axisEnab(imgv)={0.5,0.72},freePos(imgv)=0,axisenab(bottom)={0.0, 0.45}
-			 ModifyImage v_img,cindex=vimg_ct
+			 ModifyImage/W=$dfn v_img,cindex=vimgCT
 			 modifygraph axisEnab(zy)={0.5,1},axisEnab(zx)={0.5,1}
 		else
 			// Remove slices if present & not wanted
@@ -932,7 +968,7 @@ Function IT_SetupImg()		//**ER moved this out of newimg
 
 	//print dmin0, dmax0
 	dmin=dmin0;  dmax=dmax0
-	ModifyImage  Image cindex= Image_CT
+	ModifyImage/W=$dfn Image cindex=imageCT
 	//ModifyImage  Image cindex= RedTemp_CT
 	//SetScale/I x dmin0, dmax0,"" <tool-df>RedTemp_CT
 	//print dmin, dmax, dmin0, dmax0
@@ -3551,7 +3587,8 @@ Function IT_AdjustCT() 	//: GraphMarquee
 		return -1
 	endif
 	SetDataFolder $df
-		WAVE image=image, Image_CT=image_CT
+		WAVE image=image
+		Wave/Z imageCT = $(df + "Image_CT")
 		NVAR ndim=ndim, dmin=dmin, dmax=dmax, CTinvert=CTinvert
 	//SetDataFolder $curr
 	//Variable/G root:V_min, root:V_max
@@ -3585,12 +3622,13 @@ Function IT_AdjustCT() 	//: GraphMarquee
 			NVAR coloroptions=coloroptions, showimgslices=showimgslices
 			NVAR vol_dmin=vol_dmin, vol_dmax=vol_dmax
 			WAVE h_img=h_img, v_img=v_img
-			WAVE himg_ct=himg_ct, vimg_ct=vimg_ct
+			Wave/Z himgCT = $(df + "himg_CT")
+			Wave/Z vimgCT = $(df + "vimg_CT")
 			//!!ER next if-else-endif
 			if(coloroptions==1)	// independently for xy, h, v images
 				if( showImgSlices)
-					Wavestats/Q h_img; dosetscale(himg_ct, v_min, v_max, ctinvert)
-					wavestats/Q v_img; dosetscale(vimg_ct, v_min, v_max, ctinvert)
+					Wavestats/Q h_img; dosetscale(himgCT, v_min, v_max, ctinvert)
+					wavestats/Q v_img; dosetscale(vimgCT, v_min, v_max, ctinvert)
 				endif
 				Wavestats/Q Image
 			else
@@ -3598,8 +3636,8 @@ Function IT_AdjustCT() 	//: GraphMarquee
 					//variable/G V_min, V_max
 					V_min=vol_dmin; V_max=vol_dmax
 					if (showImgSlices)
-						dosetscale( himg_ct, V_min, V_max, ctinvert)
-						dosetscale( vimg_ct, V_min, V_max, ctinvert)
+						dosetscale( himgCT, V_min, V_max, ctinvert)
+						dosetscale( vimgCT, V_min, V_max, ctinvert)
 					endif
 				else		//previous marquee value
 					Duplicate/O/R=(V_left,V_right)(V_bottom,V_top) Image, $(df+"imgtmp")
@@ -3625,8 +3663,17 @@ Function IT_AdjustCT() 	//: GraphMarquee
 		V_max += 1e-12
 	endif
 
+	if (!WaveExists(imageCT))
+		IT_set_status("Missing Image_CT")
+		return -1
+	endif
+	if (DimSize(imageCT, 1) < 3)
+		IT_set_status("Invalid Image_CT: cindex needs at least 3 columns")
+		return -1
+	endif
+
 	dmin=V_min;  dmax=V_max
-	dosetscale( Image_CT, V_min, V_max, CTinvert)
+	dosetscale( imageCT, V_min, V_max, CTinvert)
 
 	SetDataFolder $curr
 End
@@ -3690,24 +3737,50 @@ Function IT_SelectCT(ctrlName,popNum,popStr) : PopupMenuControl
 			NVAR CTinvert=CTinvert, gamma=gamma
 			NVAR ndim=ndim, showImgSlices=showImgSlices
 			NVAR dmin=dmin, dmax=dmax
-			WAVE Image_CT=Image_CT, himg_CT=himg_CT, vimg_CT=vimg_CT
+			Wave/Z imageCT = $(df + "Image_CT")
+			Wave/Z himgCT = $(df + "himg_CT")
+			Wave/Z vimgCT = $(df + "vimg_CT")
 			WAVE h_img = h_img, v_img=v_img
 		setdatafolder $curr
+		if (!WaveExists(imageCT))
+			IT_set_status("Missing Image_CT")
+			return -1
+		endif
+		if (!WaveExists(himgCT))
+			IT_set_status("Missing himg_CT")
+			return -1
+		endif
+		if (!WaveExists(vimgCT))
+			IT_set_status("Missing vimg_CT")
+			return -1
+		endif
+		if (DimSize(imageCT, 1) < 3)
+			IT_set_status("Invalid Image_CT: cindex needs at least 3 columns")
+			return -1
+		endif
+		if (DimSize(himgCT, 1) < 3)
+			IT_set_status("Invalid himg_CT: cindex needs at least 3 columns")
+			return -1
+		endif
+		if (DimSize(vimgCT, 1) < 3)
+			IT_set_status("Invalid vimg_CT: cindex needs at least 3 columns")
+			return -1
+		endif
 //		CTinvert*=-1
 		CTinvert=1-CTinvert		// 0=no, 1=invert  (12/1/08)
 //		gamma=1/gamma
 		if (CTinvert==1)
 			PopupMenu SelectCT value="Ã Invert;Rescale;"+CTnameList(2) //colornameslist()
 //			SetVariable setgamma limits={0.1,Inf,0.1}
-			SetScale/I x dmax, dmin,"" Image_CT
+			SetScale/I x dmax, dmin,"" imageCT
 		else
 			PopupMenu SelectCT value="Invert;Rescale;"+CTnameList(2) //colornameslist()
 			SetVariable setgamma limits={0.1,Inf,0.1}
-			SetScale/I x dmin, dmax,"" Image_CT
+			SetScale/I x dmin, dmax,"" imageCT
 		endif
 		if (showImgSlices*(ndim==3))
-			Wavestats/Q h_img;    dosetscale( himg_ct, V_min, V_max, CTinvert)
-			Wavestats/Q v_img;    dosetscale( vimg_ct, V_min, V_max, CTinvert)
+			Wavestats/Q h_img;    dosetscale( himgCT, V_min, V_max, CTinvert)
+			Wavestats/Q v_img;    dosetscale( vimgCT, V_min, V_max, CTinvert)
 		endif
 		//CTwriteNote( Image_CT, CTnam, gamma, CTinvert)  //or do at export only
 		break
@@ -3940,9 +4013,24 @@ Function IT_ExportImageFct(ctrlName) : ButtonControl
 	setdataFolder $df
 		SVAR CTnam=CTnam
 		NVAR CTinvert=CTinvert, gamma=gamma
-		CTwriteNote( image_CT, CTnam, gamma, CTinvert) // should be done at init & CT changes
-		CTwriteNote( himg_CT, CTnam, gamma, CTinvert) // should be done at init & CT changes
-		CTwriteNote( vimg_CT, CTnam, gamma, CTinvert)	// should be done at init & CT changes
+		Wave/Z imageCT = $(df + "Image_CT")
+		Wave/Z himgCT = $(df + "himg_CT")
+		Wave/Z vimgCT = $(df + "vimg_CT")
+		if (!WaveExists(imageCT))
+			IT_set_status("Missing Image_CT")
+			return -1
+		endif
+		if (!WaveExists(himgCT))
+			IT_set_status("Missing himg_CT")
+			return -1
+		endif
+		if (!WaveExists(vimgCT))
+			IT_set_status("Missing vimg_CT")
+			return -1
+		endif
+		CTwriteNote( imageCT, CTnam, gamma, CTinvert) // should be done at init & CT changes
+		CTwriteNote( himgCT, CTnam, gamma, CTinvert) // should be done at init & CT changes
+		CTwriteNote( vimgCT, CTnam, gamma, CTinvert)	// should be done at init & CT changes
 	//setdatafolder $curr
 
 	SetDataFolder root:
@@ -4557,6 +4645,3 @@ end
 		setdatafolder(savefolder)
 	endif
 end
-
-
-
