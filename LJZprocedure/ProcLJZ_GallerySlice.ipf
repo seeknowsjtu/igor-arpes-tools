@@ -352,7 +352,7 @@ Function sg_init_defaults_if_needed()
 
     NVAR/Z colorMode = root:ARPES_LJZ:SliceGallery:colorMode
     if (!NVAR_Exists(colorMode))
-        Variable/G colorMode = 1      // 0 per-panel, 1 shared, 2 manual
+        Variable/G colorMode = 3      // 0 per-panel, 1 shared, 2 manual, 3 robust shared
     endif
 
     NVAR/Z cMin = root:ARPES_LJZ:SliceGallery:cMin
@@ -363,6 +363,37 @@ Function sg_init_defaults_if_needed()
     NVAR/Z cMax = root:ARPES_LJZ:SliceGallery:cMax
     if (!NVAR_Exists(cMax))
         Variable/G cMax = NaN
+    endif
+
+
+    NVAR/Z robustLowPct = root:ARPES_LJZ:SliceGallery:robustLowPct
+    if (!NVAR_Exists(robustLowPct))
+        Variable/G robustLowPct = 1
+    endif
+
+    NVAR/Z robustHighPct = root:ARPES_LJZ:SliceGallery:robustHighPct
+    if (!NVAR_Exists(robustHighPct))
+        Variable/G robustHighPct = 99.5
+    endif
+
+    NVAR/Z groupSize = root:ARPES_LJZ:SliceGallery:groupSize
+    if (!NVAR_Exists(groupSize))
+        Variable/G groupSize = 3
+    endif
+
+    NVAR/Z refPanelIndex = root:ARPES_LJZ:SliceGallery:refPanelIndex
+    if (!NVAR_Exists(refPanelIndex))
+        Variable/G refPanelIndex = 0
+    endif
+
+    NVAR/Z zeroSymPct = root:ARPES_LJZ:SliceGallery:zeroSymPct
+    if (!NVAR_Exists(zeroSymPct))
+        Variable/G zeroSymPct = 98
+    endif
+
+    NVAR/Z autoApplyDerivStyle = root:ARPES_LJZ:SliceGallery:autoApplyDerivStyle
+    if (!NVAR_Exists(autoApplyDerivStyle))
+        Variable/G autoApplyDerivStyle = 1
     endif
 
     NVAR/Z labelMode = root:ARPES_LJZ:SliceGallery:labelMode
@@ -1484,7 +1515,7 @@ Function sg_sync_popup_states()
     PopupMenu sg_pm_disp,win=SLICEGALLERY_LJZ_P,mode=max(1, min(4, displayMode + 1))
     PopupMenu sg_pm_disp,win=SLICEGALLERY_LJZ_P,popvalue=sg_display_mode_to_string(displayMode)
 
-    PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,mode=max(1, min(3, colorMode + 1))
+    PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,mode=max(1, min(9, colorMode + 1))
     PopupMenu sg_pm_color,win=SLICEGALLERY_LJZ_P,popvalue=sg_color_mode_to_string(colorMode)
 
     PopupMenu sg_pm_label,win=SLICEGALLERY_LJZ_P,mode=max(1, min(4, labelMode + 1))
@@ -1577,8 +1608,20 @@ Function/S sg_color_mode_to_string(modeNum)
             return "SharedAuto"
         case 2:
             return "Manual"
+        case 3:
+            return "RobustShared"
+        case 4:
+            return "GroupedRobust"
+        case 5:
+            return "LockFromRef"
+        case 6:
+            return "SymZero"
+        case 7:
+            return "NegToZero"
+        case 8:
+            return "PosFromZero"
     endswitch
-    return "SharedAuto"
+    return "RobustShared"
 End
 
 
@@ -1688,8 +1731,20 @@ Function sg_pm_color_proc(ctrlName, popNumber, popText) : PopupMenuControl
         colorMode = 1
     elseif (StringMatch(popText, "Manual"))
         colorMode = 2
+    elseif (StringMatch(popText, "RobustShared"))
+        colorMode = 3
+    elseif (StringMatch(popText, "GroupedRobust"))
+        colorMode = 4
+    elseif (StringMatch(popText, "LockFromRef"))
+        colorMode = 5
+    elseif (StringMatch(popText, "SymZero"))
+        colorMode = 6
+    elseif (StringMatch(popText, "NegToZero"))
+        colorMode = 7
+    elseif (StringMatch(popText, "PosFromZero"))
+        colorMode = 8
     else
-        colorMode = 1
+        colorMode = 3
     endif
 
     return 0
@@ -1985,11 +2040,19 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	CheckBox sg_ck_invert_ct,pos={762.60,269.62},size={35.42,14.76},title="Invert",fSize=9
 	CheckBox sg_ck_invert_ct,variable= root:ARPES_LJZ:SliceGallery:invertColors,fSize=9
 	PopupMenu sg_pm_color,pos={698.64,294.22},size={45.26,16.73},proc=sg_pm_color_proc,fSize=9
-	PopupMenu sg_pm_color,mode=3,popvalue="Manual",value= #"\"PerPanelAuto;SharedAuto;Manual\"",fSize=9
+	PopupMenu sg_pm_color,mode=4,popvalue="RobustShared",value= #"\"PerPanelAuto;SharedAuto;Manual;RobustShared;GroupedRobust;LockFromRef;SymZero;NegToZero;PosFromZero\"",fSize=9
 	SetVariable sg_sv_c0,pos={698.64,318.82},size={63.96,16.24},title="cMin",fSize=9
 	SetVariable sg_sv_c0,value= root:ARPES_LJZ:SliceGallery:cMin,fSize=9
 	SetVariable sg_sv_c1,pos={698.64,340.96},size={63.96,16.24},title="cMax",fSize=9
 	SetVariable sg_sv_c1,value= root:ARPES_LJZ:SliceGallery:cMax,fSize=9
+	SetVariable sg_sv_rlow,pos={770.00,318.82},size={70,16.24},title="Low%",fSize=9
+	SetVariable sg_sv_rlow,limits={0,100,0.1},value= root:ARPES_LJZ:SliceGallery:robustLowPct,fSize=9
+	SetVariable sg_sv_rhigh,pos={770.00,340.96},size={70,16.24},title="High%",fSize=9
+	SetVariable sg_sv_rhigh,limits={0,100,0.1},value= root:ARPES_LJZ:SliceGallery:robustHighPct,fSize=9
+	SetVariable sg_sv_gsize,pos={698.64,372.00},size={63.96,16.24},title="GSize",fSize=9
+	SetVariable sg_sv_gsize,limits={1,999,1},value= root:ARPES_LJZ:SliceGallery:groupSize,fSize=9
+	SetVariable sg_sv_ref,pos={770.00,372.00},size={70,16.24},title="Ref#",fSize=9
+	SetVariable sg_sv_ref,limits={0,999,1},value= root:ARPES_LJZ:SliceGallery:refPanelIndex,fSize=9
 	TitleBox sg_tb_range_hint,pos={698.64,362.11},size={82.16,10.33},title=""
 	TitleBox sg_tb_range_hint,fSize=9,frame=0
 	GroupBox sg_gb_label,pos={688.80,403.44},size={151.54,146.12},title="Label",fSize=10
@@ -2434,6 +2497,240 @@ Function sg_validate_manual_color_range()
     return 0
 End
 
+
+Function sg_valid_range_or_fallback(c0, c1, context)
+    Variable &c0, &c1
+    String context
+    if (numtype(c0) != 0 || numtype(c1) != 0 || c0 >= c1)
+        Print "SliceGallery warning: invalid color range in " + context + "; fallback to 0..1"
+        c0 = 0
+        c1 = 1
+        return -1
+    endif
+    return 0
+End
+
+Function sg_compute_image_percentile_range(imgWave, lowPct, highPct, c0, c1)
+    Wave imgWave
+    Variable lowPct, highPct
+    Variable &c0, &c1
+
+    Variable nx = DimSize(imgWave, 0), ny = DimSize(imgWave, 1)
+    Make/FREE/N=(max(1, nx*ny)) sgVals
+    Variable i, j, n = 0, v
+    for (j = 0; j < ny; j += 1)
+        for (i = 0; i < nx; i += 1)
+            v = imgWave[i][j]
+            if (numtype(v) == 0)
+                sgVals[n] = v
+                n += 1
+            endif
+        endfor
+    endfor
+    if (n < 2)
+        c0 = 0; c1 = 1
+        Print "SliceGallery warning: percentile range has fewer than 2 valid points; fallback to 0..1"
+        return -1
+    endif
+    Redimension/N=(n) sgVals
+    Sort sgVals, sgVals
+    lowPct = max(0, min(100, lowPct))
+    highPct = max(0, min(100, highPct))
+    Variable loIdx = round((n - 1) * lowPct / 100)
+    Variable hiIdx = round((n - 1) * highPct / 100)
+    c0 = sgVals[loIdx]
+    c1 = sgVals[hiIdx]
+    return sg_valid_range_or_fallback(c0, c1, "percentile")
+End
+
+Function sg_compute_selected_robust_range(lowPct, highPct, c0, c1)
+    Variable lowPct, highPct
+    Variable &c0, &c1
+    Wave selLayers = root:ARPES_LJZ:SliceGallery:selLayers
+    Variable nSel = DimSize(selLayers, 0), i, nx, ny, p, q, n = 0, v
+    Variable total = 1
+    for (i = 0; i < nSel; i += 1)
+        Wave/Z w = $(sg_preview_tmp_df() + sg_img_name_from_index(i))
+        if (WaveExists(w))
+            total += DimSize(w,0) * DimSize(w,1)
+        endif
+    endfor
+    Make/FREE/N=(total) sgVals
+    for (i = 0; i < nSel; i += 1)
+        Wave/Z w2 = $(sg_preview_tmp_df() + sg_img_name_from_index(i))
+        if (!WaveExists(w2))
+            continue
+        endif
+        nx = DimSize(w2,0); ny = DimSize(w2,1)
+        for (q = 0; q < ny; q += 1)
+            for (p = 0; p < nx; p += 1)
+                v = w2[p][q]
+                if (numtype(v) == 0)
+                    sgVals[n] = v; n += 1
+                endif
+            endfor
+        endfor
+    endfor
+    if (n < 2)
+        c0 = 0; c1 = 1
+        Print "SliceGallery warning: selected robust range has fewer than 2 valid points; fallback to 0..1"
+        return -1
+    endif
+    Redimension/N=(n) sgVals
+    Sort sgVals, sgVals
+    lowPct = max(0, min(100, lowPct)); highPct = max(0, min(100, highPct))
+    c0 = sgVals[round((n-1)*lowPct/100)]
+    c1 = sgVals[round((n-1)*highPct/100)]
+    return sg_valid_range_or_fallback(c0, c1, "selected robust")
+End
+
+Function sg_compute_grouped_robust_ranges(groupSize)
+    Variable groupSize
+    Wave selLayers = root:ARPES_LJZ:SliceGallery:selLayers
+    NVAR robustLowPct = root:ARPES_LJZ:SliceGallery:robustLowPct
+    NVAR robustHighPct = root:ARPES_LJZ:SliceGallery:robustHighPct
+    Variable nSel = DimSize(selLayers,0), gs = max(1, round(groupSize))
+    Variable nGroups = max(1, ceil(nSel / gs)), g, i0, i1, i, c0, c1
+    Variable p, q, nx, ny, n, total, v
+    Make/O/N=(nGroups) root:ARPES_LJZ:SliceGallery:TMP:groupCMin, root:ARPES_LJZ:SliceGallery:TMP:groupCMax
+    Wave groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
+    Wave groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
+    for (g = 0; g < nGroups; g += 1)
+        i0 = g * gs; i1 = min(nSel - 1, i0 + gs - 1)
+        total = 1
+        for (i = i0; i <= i1; i += 1)
+            Wave/Z w = $(sg_preview_tmp_df() + sg_img_name_from_index(i))
+            if (WaveExists(w))
+                total += DimSize(w,0) * DimSize(w,1)
+            endif
+        endfor
+        Make/FREE/N=(total) sgVals
+        n = 0
+        for (i = i0; i <= i1; i += 1)
+            Wave/Z w2 = $(sg_preview_tmp_df() + sg_img_name_from_index(i))
+            if (!WaveExists(w2))
+                continue
+            endif
+            nx = DimSize(w2,0); ny = DimSize(w2,1)
+            for (q = 0; q < ny; q += 1)
+                for (p = 0; p < nx; p += 1)
+                    v = w2[p][q]
+                    if (numtype(v) == 0)
+                        sgVals[n] = v; n += 1
+                    endif
+                endfor
+            endfor
+        endfor
+        if (n >= 2)
+            Redimension/N=(n) sgVals
+            Sort sgVals, sgVals
+            c0 = sgVals[round((n-1)*robustLowPct/100)]
+            c1 = sgVals[round((n-1)*robustHighPct/100)]
+        else
+            c0 = 0; c1 = 1
+            Print "SliceGallery warning: grouped robust range has fewer than 2 valid points; fallback to 0..1"
+        endif
+        sg_valid_range_or_fallback(c0, c1, "grouped robust")
+        groupCMin[g] = c0; groupCMax[g] = c1
+    endfor
+    return 0
+End
+
+Function sg_compute_symmetric_zero_range(pct, c0, c1)
+    Variable pct, &c0, &c1
+    Variable a0, a1
+    sg_compute_selected_robust_range(100-pct, pct, a0, a1)
+    Variable a = max(abs(a0), abs(a1))
+    c0 = -a; c1 = a
+    return sg_valid_range_or_fallback(c0, c1, "symmetric zero")
+End
+
+Function sg_compute_negative_to_zero_range(lowPct, c0, c1)
+    Variable lowPct, &c0, &c1
+    Variable dummy
+    sg_compute_selected_robust_range(lowPct, 50, c0, dummy)
+    c1 = 0
+    return sg_valid_range_or_fallback(c0, c1, "negative to zero")
+End
+
+Function sg_compute_positive_from_zero_range(highPct, c0, c1)
+    Variable highPct, &c0, &c1
+    Variable dummy
+    sg_compute_selected_robust_range(50, highPct, dummy, c1)
+    c0 = 0
+    return sg_valid_range_or_fallback(c0, c1, "positive from zero")
+End
+
+Function sg_prepare_color_range_for_render()
+    NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
+    NVAR cMin = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMax = root:ARPES_LJZ:SliceGallery:cMax
+    NVAR robustLowPct = root:ARPES_LJZ:SliceGallery:robustLowPct
+    NVAR robustHighPct = root:ARPES_LJZ:SliceGallery:robustHighPct
+    NVAR groupSize = root:ARPES_LJZ:SliceGallery:groupSize
+    NVAR refPanelIndex = root:ARPES_LJZ:SliceGallery:refPanelIndex
+    NVAR zeroSymPct = root:ARPES_LJZ:SliceGallery:zeroSymPct
+    Variable cm = round(colorMode), c0, c1
+    if (sg_second_derivative_view_enabled() || cm == 1)
+        sg_compute_shared_color_range(); return 1
+    elseif (cm == 2)
+        if (sg_validate_manual_color_range() != 0)
+            cMin = 0; cMax = 1
+        endif
+        return 1
+    elseif (cm == 3)
+        sg_compute_selected_robust_range(robustLowPct, robustHighPct, cMin, cMax); return 1
+    elseif (cm == 4)
+        sg_compute_grouped_robust_ranges(groupSize); return 2
+    elseif (cm == 5)
+        Wave/Z w = $(sg_preview_tmp_df() + sg_img_name_from_index(max(0, round(refPanelIndex))))
+        if (WaveExists(w))
+            sg_compute_image_percentile_range(w, robustLowPct, robustHighPct, cMin, cMax)
+        else
+            cMin = 0; cMax = 1; Print "SliceGallery warning: LockFromRef missing ref panel; fallback to 0..1"
+        endif
+        return 1
+    elseif (cm == 6)
+        sg_compute_symmetric_zero_range(zeroSymPct, cMin, cMax); return 1
+    elseif (cm == 7)
+        sg_compute_negative_to_zero_range(robustLowPct, cMin, cMax); return 1
+    elseif (cm == 8)
+        sg_compute_positive_from_zero_range(robustHighPct, cMin, cMax); return 1
+    endif
+    return 0
+End
+
+Function sg_print_color_history(context)
+    String context
+    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
+    NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
+    NVAR cMin = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMax = root:ARPES_LJZ:SliceGallery:cMax
+    NVAR robustLowPct = root:ARPES_LJZ:SliceGallery:robustLowPct
+    NVAR robustHighPct = root:ARPES_LJZ:SliceGallery:robustHighPct
+    NVAR useLUT = root:ARPES_LJZ:SliceGallery:useLUT
+    NVAR invertColors = root:ARPES_LJZ:SliceGallery:invertColors
+    SVAR ctPick = root:ARPES_LJZ:SliceGallery:ctPick
+    Print "SliceGallery Color: " + context
+    Print "  displayMode=" + sg_display_mode_to_string(displayMode)
+    Print "  colorMode=" + sg_color_mode_to_string(colorMode)
+    Print "  ctPick=" + ctPick
+    if (round(colorMode) == 4)
+        Wave/Z groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
+        Wave/Z groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
+        if (WaveExists(groupCMin) && WaveExists(groupCMax))
+            Variable gi
+            for (gi = 0; gi < DimSize(groupCMin, 0); gi += 1)
+                Print "  group[" + num2str(gi) + "]=" + num2str(groupCMin[gi]) + "/" + num2str(groupCMax[gi])
+            endfor
+        endif
+    else
+        Print "  cMin/cMax=" + num2str(cMin) + "/" + num2str(cMax)
+    endif
+    Print "  robustLow/High=" + num2str(robustLowPct) + "/" + num2str(robustHighPct)
+    Print "  useLUT/invert=" + num2str(useLUT) + "/" + num2str(invertColors)
+End
+
 //============================================================
 // CT snapshot helpers
 // 每张图 / 每个 image 使用自己的 palette 快照
@@ -2713,42 +3010,12 @@ Function sg_render_preview_legacytight()
     NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode  = root:ARPES_LJZ:SliceGallery:colorMode
 
-    Variable useFixedRange = 0
-    Variable fixedC0 = NaN
-    Variable fixedC1 = NaN
-
-    if (sg_second_derivative_view_enabled())
-        if (sg_compute_shared_color_range() != 0)
-            DoAlert 0, "SliceGallery: failed to compute second-derivative color range."
-            return -1
-        endif
-        NVAR cMinDeriv = root:ARPES_LJZ:SliceGallery:cMin
-        NVAR cMaxDeriv = root:ARPES_LJZ:SliceGallery:cMax
-        useFixedRange = 1
-        fixedC0 = cMinDeriv
-        fixedC1 = cMaxDeriv
-    elseif (colorMode == 1)
-        if (sg_compute_shared_color_range() != 0)
-            DoAlert 0, "SliceGallery: failed to compute shared color range."
-            return -1
-        endif
-        NVAR cMinShared = root:ARPES_LJZ:SliceGallery:cMin
-        NVAR cMaxShared = root:ARPES_LJZ:SliceGallery:cMax
-        useFixedRange = 1
-        fixedC0 = cMinShared
-        fixedC1 = cMaxShared
-    elseif (colorMode == 2)
-        if (sg_validate_manual_color_range() != 0)
-            return -1
-        endif
-        NVAR cMinManual = root:ARPES_LJZ:SliceGallery:cMin
-        NVAR cMaxManual = root:ARPES_LJZ:SliceGallery:cMax
-        useFixedRange = 1
-        fixedC0 = cMinManual
-        fixedC1 = cMaxManual
-    else
-        useFixedRange = 0
-    endif
+    Variable rangeMode = sg_prepare_color_range_for_render()
+    Variable useFixedRange = (rangeMode == 1)
+    NVAR cMinNow = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMaxNow = root:ARPES_LJZ:SliceGallery:cMax
+    Variable fixedC0 = cMinNow
+    Variable fixedC1 = cMaxNow
 
     Variable layoutCode = sg_get_layout_code(nSel, layoutMode)
     Variable nRows = sg_layout_rows_from_code(layoutCode)
@@ -2811,7 +3078,19 @@ Function sg_render_preview_legacytight()
         Display/W=(0,0,graphW,graphH)/N=$graphName
         AppendImage/W=$graphName imgWave
 
-        sg_apply_image_style_basic(graphName, imgName, useFixedRange, fixedC0, fixedC1)
+        Variable thisUseFixedRange = useFixedRange
+        Variable thisC0 = fixedC0
+        Variable thisC1 = fixedC1
+        if (rangeMode == 2)
+            Wave groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
+            Wave groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
+            NVAR groupSize = root:ARPES_LJZ:SliceGallery:groupSize
+            Variable gIdx = floor(i / max(1, round(groupSize)))
+            thisUseFixedRange = 1
+            thisC0 = groupCMin[gIdx]
+            thisC1 = groupCMax[gIdx]
+        endif
+        sg_apply_image_style_basic(graphName, imgName, thisUseFixedRange, thisC0, thisC1)
         sg_apply_panel_textbox(graphName, layerIdx)
 
         rowIdx = floor(i / nCols)
@@ -2848,6 +3127,7 @@ Function sg_render_preview_legacytight()
     endfor
 
     DoWindow/F $previewWinName
+    sg_print_color_history("Preview")
     return 0
 End
 
@@ -2922,42 +3202,12 @@ Function sg_render_preview_equalplot()
     NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode  = root:ARPES_LJZ:SliceGallery:colorMode
 
-    Variable useFixedRange = 0
-    Variable fixedC0 = NaN
-    Variable fixedC1 = NaN
-
-    if (sg_second_derivative_view_enabled())
-        if (sg_compute_shared_color_range() != 0)
-            DoAlert 0, "SliceGallery: failed to compute second-derivative color range."
-            return -1
-        endif
-        NVAR cMinDeriv = root:ARPES_LJZ:SliceGallery:cMin
-        NVAR cMaxDeriv = root:ARPES_LJZ:SliceGallery:cMax
-        useFixedRange = 1
-        fixedC0 = cMinDeriv
-        fixedC1 = cMaxDeriv
-    elseif (colorMode == 1)
-        if (sg_compute_shared_color_range() != 0)
-            DoAlert 0, "SliceGallery: failed to compute shared color range."
-            return -1
-        endif
-        NVAR cMinShared = root:ARPES_LJZ:SliceGallery:cMin
-        NVAR cMaxShared = root:ARPES_LJZ:SliceGallery:cMax
-        useFixedRange = 1
-        fixedC0 = cMinShared
-        fixedC1 = cMaxShared
-    elseif (colorMode == 2)
-        if (sg_validate_manual_color_range() != 0)
-            return -1
-        endif
-        NVAR cMinManual = root:ARPES_LJZ:SliceGallery:cMin
-        NVAR cMaxManual = root:ARPES_LJZ:SliceGallery:cMax
-        useFixedRange = 1
-        fixedC0 = cMinManual
-        fixedC1 = cMaxManual
-    else
-        useFixedRange = 0
-    endif
+    Variable rangeMode = sg_prepare_color_range_for_render()
+    Variable useFixedRange = (rangeMode == 1)
+    NVAR cMinNow = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMaxNow = root:ARPES_LJZ:SliceGallery:cMax
+    Variable fixedC0 = cMinNow
+    Variable fixedC1 = cMaxNow
 
     Variable layoutCode = sg_get_layout_code(nSel, layoutMode)
     Variable nRows = sg_layout_rows_from_code(layoutCode)
@@ -3027,7 +3277,19 @@ Function sg_render_preview_equalplot()
         Display/W=(0,0,thisGraphW,thisGraphH)/N=$graphName
         AppendImage/W=$graphName imgWave
 
-        sg_apply_image_style_basic(graphName, imgName, useFixedRange, fixedC0, fixedC1)
+        Variable thisUseFixedRange = useFixedRange
+        Variable thisC0 = fixedC0
+        Variable thisC1 = fixedC1
+        if (rangeMode == 2)
+            Wave groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
+            Wave groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
+            NVAR groupSize = root:ARPES_LJZ:SliceGallery:groupSize
+            Variable gIdx = floor(i / max(1, round(groupSize)))
+            thisUseFixedRange = 1
+            thisC0 = groupCMin[gIdx]
+            thisC1 = groupCMax[gIdx]
+        endif
+        sg_apply_image_style_basic(graphName, imgName, thisUseFixedRange, thisC0, thisC1)
         sg_apply_panel_textbox(graphName, layerIdx)
 
         // -------- graph internal style --------
@@ -3061,6 +3323,7 @@ Function sg_render_preview_equalplot()
     endfor
 
     DoWindow/F $previewWinName
+    sg_print_color_history("Preview")
     return 0
 End
 
@@ -3206,56 +3469,12 @@ Function sg_export_current_preview()
     NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
 
-    Variable useFixedRange = 0
-    Variable fixedC0 = NaN
-    Variable fixedC1 = NaN
-
-    if (sg_second_derivative_view_enabled() || colorMode == 1)
-        // 用导出后的永久 wave 算 shared range
-        Variable globalMin = NaN, globalMax = NaN
-        for (i = 0; i < nSel; i += 1)
-            Wave/Z wt = $(outDF + sg_img_name_from_index(i))
-            if (!WaveExists(wt))
-                continue
-            endif
-            WaveStats/Q wt
-            if (numtype(globalMin) != 0)
-                globalMin = V_min
-                globalMax = V_max
-            else
-                globalMin = min(globalMin, V_min)
-                globalMax = max(globalMax, V_max)
-            endif
-        endfor
-        if (numtype(globalMin) == 0 && numtype(globalMax) == 0)
-            if (sg_second_derivative_view_enabled())
-                if (sg_set_second_deriv_color_range(globalMin, globalMax) == 0)
-                    NVAR cMinDeriv = root:ARPES_LJZ:SliceGallery:cMin
-                    NVAR cMaxDeriv = root:ARPES_LJZ:SliceGallery:cMax
-                    useFixedRange = 1
-                    fixedC0 = cMinDeriv
-                    fixedC1 = cMaxDeriv
-                endif
-            else
-                if (globalMin == globalMax)
-                    globalMin -= 1e-12
-                    globalMax += 1e-12
-                endif
-                useFixedRange = 1
-                fixedC0 = globalMin
-                fixedC1 = globalMax
-            endif
-        endif
-    elseif (colorMode == 2)
-        if (sg_validate_manual_color_range() != 0)
-            return -1
-        endif
-        NVAR cMinManual = root:ARPES_LJZ:SliceGallery:cMin
-        NVAR cMaxManual = root:ARPES_LJZ:SliceGallery:cMax
-        useFixedRange = 1
-        fixedC0 = cMinManual
-        fixedC1 = cMaxManual
-    endif
+    Variable rangeMode = sg_prepare_color_range_for_render()
+    Variable useFixedRange = (rangeMode == 1)
+    NVAR cMinNow = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMaxNow = root:ARPES_LJZ:SliceGallery:cMax
+    Variable fixedC0 = cMinNow
+    Variable fixedC1 = cMaxNow
 
     layoutCode = sg_get_layout_code(nSel, layoutMode)
     nCols = sg_layout_cols_from_code(layoutCode)
@@ -3301,7 +3520,19 @@ Function sg_export_current_preview()
             Display/W=(0,0,thisGraphW,plotH)/N=$gname
             AppendImage/W=$gname imgWave
 
-            sg_apply_image_style_basic(gname, NameOfWave(imgWave), useFixedRange, fixedC0, fixedC1)
+            Variable thisUseFixedRange = useFixedRange
+            Variable thisC0 = fixedC0
+            Variable thisC1 = fixedC1
+            if (rangeMode == 2)
+                Wave groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
+                Wave groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
+                NVAR groupSize = root:ARPES_LJZ:SliceGallery:groupSize
+                Variable gIdx = floor(i / max(1, round(groupSize)))
+                thisUseFixedRange = 1
+                thisC0 = groupCMin[gIdx]
+                thisC1 = groupCMax[gIdx]
+            endif
+            sg_apply_image_style_basic(gname, NameOfWave(imgWave), thisUseFixedRange, thisC0, thisC1)
             sg_apply_panel_textbox(gname, layerIdx)
 
             Label/W=$gname bottom "k\\B// \\M(Å\\S-1\\M)"
@@ -3358,7 +3589,19 @@ Function sg_export_current_preview()
             Display/W=(0,0,graphW,graphH)/N=$gname2
             AppendImage/W=$gname2 imgWave2
 
-            sg_apply_image_style_basic(gname2, NameOfWave(imgWave2), useFixedRange, fixedC0, fixedC1)
+            Variable thisUseFixedRange2 = useFixedRange
+            Variable thisC02 = fixedC0
+            Variable thisC12 = fixedC1
+            if (rangeMode == 2)
+                Wave groupCMin2 = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
+                Wave groupCMax2 = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
+                NVAR groupSize2 = root:ARPES_LJZ:SliceGallery:groupSize
+                Variable gIdx2 = floor(i / max(1, round(groupSize2)))
+                thisUseFixedRange2 = 1
+                thisC02 = groupCMin2[gIdx2]
+                thisC12 = groupCMax2[gIdx2]
+            endif
+            sg_apply_image_style_basic(gname2, NameOfWave(imgWave2), thisUseFixedRange2, thisC02, thisC12)
             sg_apply_panel_textbox(gname2, layerIdx)
 
             rowIdx = floor(i / nCols)
@@ -3397,6 +3640,7 @@ Function sg_export_current_preview()
 
     Print "SliceGallery export layout = " + layoutName
     Print "SliceGallery export waves  = " + outDF
+    sg_print_color_history("Export")
 
     return 0
 End
