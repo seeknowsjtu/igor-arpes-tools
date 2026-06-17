@@ -2011,27 +2011,31 @@ Function IT_ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		nrmrng+=SelectString(strlen(xrng)==0, "("+xrng+")", ""  )
 		nrmrng+=SelectString(strlen(yrng)==0, "("+yrng+")" , "" )
 
-	// Execute local image command within IT_Image_Tool
-	//	opt=croprng+"/D=Image"
-		cmd="CurveFit/Q poly2D "+num2str(nrmfitopt)+", Image"+nrmrng 		//+"/D=fit_Image"
+	// Execute local image command within IT_Image_Tool and write the fitted background
+	// explicitly to a destination wave.  Do not rely on W_coef or Image resolving in
+	// the current data folder after CurveFit.
+		string bkgNam = imgnam + "_poly2D_bkg"
+		Duplicate/O Image, $bkgNam
+		Wave/Z bkgW = $bkgNam
+		if (!WaveExists(bkgW))
+			IT_set_status("poly2D fit failed: missing Image_poly2D_bkg")
+			SetDataFolder $curr
+			return -1
+		endif
+		cmd="CurveFit/Q poly2D "+num2str(nrmfitopt)+", "+imgnam+nrmrng+" /D="+bkgNam
 		execute cmd
-	//	print cmd
+
 	// return image command for use outside of IT_Image_Tool
-		opt="/D=+c"+croprng
-		cmd="CurveFit/Q poly2D "+num2str(nrmfitopt)+", "+imgnam+nrmrng
-		cmd+="; "+imgnam+"-=poly2D(W_coef, x, y)"
-
-
-
-//		NVAR fit_Image=$(df+"fit_Image")		// already in appropriate subfolder?
-//		NVAR W_coef=W_coef
+		cmd="Duplicate/O "+imgnam+", "+bkgNam
+		cmd+="; CurveFit/Q poly2D "+num2str(nrmfitopt)+", "+imgnam+nrmrng+" /D="+bkgNam
 		if (nrmopt==1)		//Subtract
-			Image-=poly2d(W_coef, x, y)
+			cmd+="; "+imgnam+"-="+bkgNam
+			Image -= bkgW
 		else					//Divide
-			Duplicate/FREE Image, fit2D
-			fit2D = poly2D(W_coef, x, y)
-			fit2D = (numtype(fit2D)==0 && abs(fit2D)>1e-15) ? fit2D : 1
-			Image /= fit2D
+			cmd+="; "+bkgNam+"=(numtype("+bkgNam+")==0 && abs("+bkgNam+")>1e-15) ? "+bkgNam+" : 1"
+			cmd+="; "+imgnam+"/="+bkgNam
+			bkgW = (numtype(bkgW)==0 && abs(bkgW)>1e-15) ? bkgW : 1
+			Image /= bkgW
 		endif
 
 		//Alternate Image_util method:
