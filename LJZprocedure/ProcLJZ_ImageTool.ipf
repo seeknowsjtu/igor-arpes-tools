@@ -1383,6 +1383,41 @@ Function Animate(istart, iend, istep, idir, imovie)
 End
 
 
+
+Function it_isfinite(v)
+	Variable v
+	return numtype(v) == 0
+End
+
+Function it_safe_delta(d)
+	Variable d
+	return (numtype(d) == 0 && abs(d) > 1e-15)
+End
+
+Function it_count_nonfinite(w)
+	Wave w
+
+	if (!WaveExists(w))
+		return NaN
+	endif
+
+	Duplicate/FREE w, tmpNF
+	tmpNF = (numtype(tmpNF) == 0) ? 0 : 1
+	WaveStats/Q tmpNF
+	return V_sum
+End
+
+Function it_replace_nonfinite_with_zero(w)
+	Wave w
+
+	if (!WaveExists(w))
+		return -1
+	endif
+
+	w = (numtype(w) == 0) ? w : 0
+	return 0
+End
+
 Function/T ImgInfo( image )
 //================
 // creates variables in current folder
@@ -1605,9 +1640,14 @@ Function ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 	
 	variable/C coffset=GetWaveOffset($(df+"HairY0")), rngopt
 	string opt
-	string/G cmd=""
+	String cmd = ""
 	variable ii
 	string xrng, yrng
+	SVAR/Z lastCmd=$(df+"lastCmd")
+	if (!SVAR_Exists(lastCmd))
+		String/G $(df+"lastCmd") = ""
+		SVAR lastCmd=$(df+"lastCmd")
+	endif
 	
 	strswitch( popStr )
 	case "Crop" :
@@ -1813,6 +1853,17 @@ Function ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		SetScale/P x xmin, xinc, "" xtmp
 		// different methods of normalizing? NormImg in image_util??
 		xtmp = AREA2D( Image, 1, y1, y2, x )
+		Variable badNorm = 0
+		Duplicate/FREE xtmp, tmpDen
+		tmpDen = (numtype(tmpDen)==0 && abs(tmpDen)>1e-15) ? tmpDen : NaN
+		WaveStats/Q tmpDen
+		if (V_npnts < numpnts(xtmp))
+			badNorm = 1
+		endif
+		xtmp = (numtype(xtmp)==0 && abs(xtmp)>1e-15) ? xtmp : 1
+		if (badNorm)
+			Print "ImageTool warning: zero/invalid Norm X divisor protected."
+		endif
 		Image /= xtmp[p]
 		cmd="Image /= xtmp[p]"
 		if (lockColors==0)
@@ -1845,6 +1896,17 @@ Function ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		make/o/n=(ny) ytmp
 		SetScale/P x ymin, yinc,  ytmp
 		ytmp = AREA2D( Image, 0, x1, x2, x )
+		Variable badNormY = 0
+		Duplicate/FREE ytmp, tmpDenY
+		tmpDenY = (numtype(tmpDenY)==0 && abs(tmpDenY)>1e-15) ? tmpDenY : NaN
+		WaveStats/Q tmpDenY
+		if (V_npnts < numpnts(ytmp))
+			badNormY = 1
+		endif
+		ytmp = (numtype(ytmp)==0 && abs(ytmp)>1e-15) ? ytmp : 1
+		if (badNormY)
+			Print "ImageTool warning: zero/invalid Norm Y divisor protected."
+		endif
 		Image /= ytmp[q]
 		cmd="Image /= ytmp[q]"
 		if(lockcolors==0)
@@ -1894,7 +1956,10 @@ Function ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		if (nrmopt==1)		//Subtract
 			Image-=poly2d(W_coef, x, y)
 		else					//Divide
-			Image/=poly2d(W_coef, x, y)
+			Duplicate/FREE Image, fit2D
+			fit2D = poly2D(W_coef, x, y)
+			fit2D = (numtype(fit2D)==0 && abs(fit2D)>1e-15) ? fit2D : 1
+			Image /= fit2D
 		endif
 		
 		//Alternate Image_util method:
@@ -1979,6 +2044,11 @@ Function ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		else
 			//WaveStats/Q Image
 			normval=Image(X0)(Y0)
+		endif
+		if (numtype(normval) != 0 || abs(normval) < 1e-15)
+			DoAlert 0, "ImageTool: normalization value is zero or invalid."
+			SetDataFolder $curr
+			return -1
 		endif
 		cmd="Image/="+num2str(normval)
 		Image=Image_Undo / normval
@@ -2088,6 +2158,14 @@ Function ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 	//print "Image Modify: ", cmd
 	print  cmd
 	
+	if (strlen(cmd) > 0)
+		lastCmd = cmd
+	endif
+	Variable nBad = it_count_nonfinite(Image)
+	if (numtype(nBad) == 0 && nBad > 0)
+		Print "ImageTool warning: Image contains " + num2str(nBad) + " NaN/Inf values after " + popStr
+	endif
+	SetProfiles()
 	SetDataFolder $curr
 End
 
@@ -2832,8 +2910,10 @@ Function ImgAnalyze(ctrlName, popNum,popStr) : PopupMenuControl
 	endif
 	if (cmpstr(popStr,"Fit Peak")==0)				// add FIT to Lorentzian 6/9/12
 		pkmode=2
-		make/o/n=5 W_coef
-		WAVE W_coef=W_Coef
+		String peakDf = getdf()
+		NewDataFolder/O $(peakDf+"TMP")
+		Make/O/N=5 $(peakDf+"TMP:W_coef_peak")
+		WAVE W_coef=$(peakDf+"TMP:W_coef_peak")
 			W_coef[0,1]={0.1,0.1}		// linear bkg
 			W_Coef[2]=1			//amplitude
 			W_coef[3]=1				// width
@@ -2856,7 +2936,10 @@ Function ImgAnalyze(ctrlName, popNum,popStr) : PopupMenuControl
 		WAVE/C pkw=$peakn
 		WAVE ctr=$ctrn, wdth=$wdthn
 		SetScale/P x ymin, yinc, pkw,  ctr, wdth
-		pkw = PEAK2D( $(df+"Image"),  x1,  x2,  x, pkmode )		// implied loop over x1 < x < x2
+		NewDataFolder/O $(df+"TMP")
+		Make/O/N=5 $(df+"TMP:W_coef_peak")
+		WAVE W_coef_peak=$(df+"TMP:W_coef_peak")
+		pkw = PEAK2D( $(df+"Image"),  x1,  x2,  x, pkmode, W_coef_peak )		// implied loop over x1 < x < x2
 		ctr=REAL( pkw )
 		wdth=IMAG( pkw )
 		
@@ -2912,7 +2995,6 @@ Function ImgAnalyze(ctrlName, popNum,popStr) : PopupMenuControl
 			endif
 		endif
 	endif
-
 	SetDataFolder $curr
 End
 
@@ -2940,7 +3022,7 @@ Function/C  EDGE2D_( img, x1, x2, y0, wfrac )
 	variable x1, x2, y0, wfrac
 	
 	variable nx=DimSize( img, 0)
-	make/O/n=(nx) tmp
+	make/FREE/n=(nx) tmp
 	CopyScales img, tmp
 	tmp=img(x)( y0)
 	EdgeStats/Q/F=(wfrac)/R=(x1, x2) tmp
@@ -2952,27 +3034,29 @@ Function/C  EDGE2D( img, x1, x2, y0, wfrac )
 //return complex value {edge postion, edgewidth}
 	wave img
 	variable x1, x2, y0, wfrac
-	
-	// extract 1D wave
-	variable nx=DimSize( img, 0)
-	make/O/n=(nx) root:tmp
-	WAVE tmp=root:tmp
+
+	Variable nx = DimSize(img, 0)
+	Make/FREE/N=(nx) tmp
 	CopyScales img, tmp
-	tmp=img(x)( y0)
-	
-	// coef wave
+	tmp = img(x)(y0)
+
 	EdgeStats/Q/F=(abs(wfrac))/R=(x1, x2) tmp
-	variable slope=(V_edgeLvl1-V_edgeLvl0)/(V_edgeLoc1-x1)
-	make/O root:FEcoef={ V_edgeLoc2, V_edgeDloc3_1, -V_edgeAmp4_0, V_edgeLvl4, slope}
-	WAVE FEcoef=root:FEcoef
-	
-	if (wfrac<0)		// do fit
-		FEcoef[1]=FEcoef[1]/4.
-		//FuncFit/Q/N Fermi_Fct FEcoef tmp(x1, x2) /D
-		FuncFit/Q/N G_step root:FEcoef root:tmp(x1, x2) /D		// /N supresses updates
-		return CMPLX( FEcoef[0],  FEcoef[1] )
+
+	Variable slope = (V_edgeLvl1-V_edgeLvl0)/(V_edgeLoc1-x1)
+	Make/FREE/N=5 FEcoef
+	FEcoef = 0
+	FEcoef[0] = V_edgeLoc2
+	FEcoef[1] = V_edgeDloc3_1
+	FEcoef[2] = -V_edgeAmp4_0
+	FEcoef[3] = V_edgeLvl4
+	FEcoef[4] = slope
+
+	if (wfrac < 0)
+		FEcoef[1] = FEcoef[1]/4
+		FuncFit/Q/N G_step FEcoef tmp(x1, x2) /D
+		return CMPLX(FEcoef[0], FEcoef[1])
 	else
-		return CMPLX( V_edgeLoc2,  V_edgeDloc3_1 )
+		return CMPLX(V_edgeLoc2, V_edgeDloc3_1)
 	endif
 End
 
@@ -2993,18 +3077,18 @@ Function  Fermi_Fct( w, xx )
 	return (w[3]+w[4]*dx*(dx<0)+ w[2]/(exp(dx/w[1])+1) )
 End
 
-Function/C  PEAK2D( img, x1, x2, y0, pkmode )
+Function/C  PEAK2D( img, x1, x2, y0, pkmode, W_coef )
 //====================
 //return complex value {peak CENTROID postion, edgewidth}
 // pkmode = 0  = mid-point between FindLevel  left and right half-points
 //              = 1 = V_maxloc from FindLevel
 // 		    =2 Lorentiztian fit with offset. (not sloped) 6/9/12 
-	wave img
+	wave img, W_coef
 	variable x1, x2, y0, pkmode
 	
 // extract line profile
 	variable nx=DimSize( img, 0)
-	make/O/n=(nx) tmp
+	make/FREE/n=(nx) tmp
 	CopyScales img, tmp
 	tmp=img(x)( y0)
 	WaveStats/Q/R=(x1, x2) tmp
@@ -3020,7 +3104,6 @@ Function/C  PEAK2D( img, x1, x2, y0, pkmode )
 // lack of linear sloping background is a problem
 //		CurveFit/N/M=2/W=0/Q lor, tmp(x1,x2)/D				//W=2 (Igor v6.2) suppress fit results bar
 		FuncFit/NTHR=0/Q/W=0 Lor_LinBkg W_coef   tmp(x1,x2) /D 
-		WAVE W_coef=W_coef
 //		pkpos=W_coef[2]
 //		pkwidth=2*sqrt(W_coef[3])
 		pkpos=W_coef[4]
@@ -3480,6 +3563,18 @@ Function AdjustCT() 	//: GraphMarquee
 		endif			//**ER
 	endif
 	
+	if (numtype(V_min) != 0 || numtype(V_max) != 0)
+		Print "ImageTool warning: color range contains NaN/Inf. Using 0..1."
+		V_min = 0
+		V_max = 1
+	endif
+
+	if (V_min == V_max)
+		Print "ImageTool warning: zero color range. Expanding slightly."
+		V_min -= 1e-12
+		V_max += 1e-12
+	endif
+
 	dmin=V_min;  dmax=V_max
 	dosetscale( Image_CT, V_min, V_max, CTinvert)
 	
@@ -3487,18 +3582,28 @@ Function AdjustCT() 	//: GraphMarquee
 End
 
 //**ER added this
-Function dosetScale(wv, mn,mx,inv)	
+Function dosetScale(wv, mn, mx, inv)
 //==============
 // changed invert option to be 0=no, 1=yes
-	WAVE wv
-	variable inv,mn,mx
-	if(inv>0)
-		SetScale/I x mx, mn,"" wv
-	else
-		SetScale/I x mn,mx,"" wv
-	endif
-end
+	Wave wv
+	Variable inv, mn, mx
 
+	if (numtype(mn) != 0 || numtype(mx) != 0)
+		mn = 0
+		mx = 1
+	endif
+
+	if (mn == mx)
+		mn -= 1e-12
+		mx += 1e-12
+	endif
+
+	if (inv > 0)
+		SetScale/I x mx, mn, "" wv
+	else
+		SetScale/I x mn, mx, "" wv
+	endif
+End
 
 Function SelectCT(ctrlName,popNum,popStr) : PopupMenuControl
 //============
@@ -3829,6 +3934,14 @@ Function ExportImageFct(ctrlName) : ButtonControl
 			plotopt=5			//no new plot
 			break
 	endswitch
+	NVAR/Z exportCleanNonFinite=$(df+"exportCleanNonFinite")
+	if (!NVAR_Exists(exportCleanNonFinite))
+		Variable/G $(df+"exportCleanNonFinite") = 0
+		NVAR exportCleanNonFinite=$(df+"exportCleanNonFinite")
+	endif
+	if (exportCleanNonFinite == 1 && opt != 5)
+		it_replace_nonfinite_with_zero($nam)
+	endif
 	// Color Table
 	if (plotopt<=3)
 		Duplicate/O $(df+CTwnam) $(nam+"_CT")	
