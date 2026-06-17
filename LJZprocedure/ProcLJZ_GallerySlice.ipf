@@ -184,6 +184,26 @@ Function sg_init_defaults_if_needed()
         Make/O/U/B/N=0 LB_Sel
     endif
 
+    Wave/T/Z SG_Info = root:ARPES_LJZ:SliceGallery:SG_Info
+    if (!WaveExists(SG_Info))
+        Make/O/T/N=2 SG_Info
+    endif
+
+    Wave/U/B/Z SG_Info_Sel = root:ARPES_LJZ:SliceGallery:SG_Info_Sel
+    if (!WaveExists(SG_Info_Sel))
+        Make/O/U/B/N=2 SG_Info_Sel = 0
+    endif
+
+    Wave/T/Z SG_Summary = root:ARPES_LJZ:SliceGallery:SG_Summary
+    if (!WaveExists(SG_Summary))
+        Make/O/T/N=2 SG_Summary
+    endif
+
+    Wave/U/B/Z SG_Summary_Sel = root:ARPES_LJZ:SliceGallery:SG_Summary_Sel
+    if (!WaveExists(SG_Summary_Sel))
+        Make/O/U/B/N=2 SG_Summary_Sel = 0
+    endif
+
     // ---------- layer selection result ----------
     Wave/Z selLayers = root:ARPES_LJZ:SliceGallery:selLayers
     if (!WaveExists(selLayers))
@@ -373,6 +393,11 @@ Function sg_init_defaults_if_needed()
     NVAR/Z tbY = root:ARPES_LJZ:SliceGallery:tbY
     if (!NVAR_Exists(tbY))
         Variable/G tbY = 25
+    endif
+
+    NVAR/Z layoutScale = root:ARPES_LJZ:SliceGallery:layoutScale
+    if (!NVAR_Exists(layoutScale))
+        Variable/G layoutScale = 0.80
     endif
 
     NVAR/Z sortLayers = root:ARPES_LJZ:SliceGallery:sortLayers
@@ -1273,6 +1298,49 @@ End
 
 
 //============================================================
+// Panel info and layout-size helpers
+//============================================================
+
+Function sg_update_info_waves()
+    sg_init_defaults_if_needed()
+
+    SVAR targetWavePath = root:ARPES_LJZ:SliceGallery:targetWavePath
+    Wave/T SG_Info = root:ARPES_LJZ:SliceGallery:SG_Info
+    Wave/U/B SG_Info_Sel = root:ARPES_LJZ:SliceGallery:SG_Info_Sel
+    Wave/T SG_Summary = root:ARPES_LJZ:SliceGallery:SG_Summary
+    Wave/U/B SG_Summary_Sel = root:ARPES_LJZ:SliceGallery:SG_Summary_Sel
+
+    Redimension/N=2 SG_Info, SG_Info_Sel
+    SG_Info_Sel = 0
+
+    if (strlen(targetWavePath) == 0)
+        SG_Info[0] = "Sel: none"
+        SG_Info[1] = "Path: none"
+    else
+        SG_Info[0] = "Sel: " + sg_make_display_name_from_path(targetWavePath)
+        SG_Info[1] = "Path: " + targetWavePath
+    endif
+
+    Redimension/N=2 SG_Summary, SG_Summary_Sel
+    SG_Summary_Sel = 0
+    SG_Summary[0] = "L: " + sg_layers_to_string()
+    SG_Summary[1] = "D2: " + sg_values_to_string()
+
+    return 0
+End
+
+Function sg_get_layout_scale()
+    sg_init_defaults_if_needed()
+    NVAR layoutScale = root:ARPES_LJZ:SliceGallery:layoutScale
+
+    if (numtype(layoutScale) != 0)
+        layoutScale = 0.80
+    endif
+    layoutScale = max(0.30, min(1.50, layoutScale))
+    return layoutScale
+End
+
+//============================================================
 // Panel sync (REPLACE old version in Module 1)
 //============================================================
 
@@ -1282,9 +1350,9 @@ Function sg_sync_panel_from_state()
         return 0
     endif
 
-    SVAR targetWavePath = root:ARPES_LJZ:SliceGallery:targetWavePath
-
-    TitleBox sg_status,win=SLICEGALLERY_LJZ_P,title=sg_short_status_from_path(targetWavePath)
+    sg_update_info_waves()
+    ControlUpdate/W=SLICEGALLERY_LJZ_P sg_lb_info
+    ControlUpdate/W=SLICEGALLERY_LJZ_P sg_lb_summary
 
     // base / scan
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_df
@@ -1332,11 +1400,10 @@ Function sg_sync_panel_from_state()
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tbf
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tbx
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_tby
+    ControlUpdate/W=SLICEGALLERY_LJZ_P sg_sv_layscale
     ControlUpdate/W=SLICEGALLERY_LJZ_P sg_pm_rstyle
 
     // summaries
-    TitleBox sg_layers_txt,win=SLICEGALLERY_LJZ_P,title=sg_trunc_panel_string("L: " + sg_layers_to_string(), 15)
-    TitleBox sg_vals_txt,win=SLICEGALLERY_LJZ_P,title=sg_trunc_panel_string("D2: " + sg_values_to_string(), 15)
     TitleBox sg_tb_ct_current,win=SLICEGALLERY_LJZ_P,title=sg_ct_display_string()
     TitleBox sg_tb_mode_hint,win=SLICEGALLERY_LJZ_P,title=sg_color_mode_hint_string()
     TitleBox sg_tb_range_hint,win=SLICEGALLERY_LJZ_P,title=sg_color_range_hint_string()
@@ -1829,125 +1896,125 @@ Window SLICEGALLERY_LJZ_P() : Panel
 	ModifyPanel frameStyle=1
 	ShowTools/A
 	TitleBox sg_title,pos={9.84,4.92},size={239.11,14.76},title="SliceGallery"
-	TitleBox sg_title,frame=0
-	TitleBox sg_status,pos={9.84,24.60},size={342.92,14.76},title=""
-	TitleBox sg_status,frame=0
-	GroupBox sg_gb_data,pos={4.92,46.74},size={408.36,71.34},title="Data"
+	TitleBox sg_title,fSize=10,frame=0
+	ListBox sg_lb_info,pos={9.84,23.62},size={398.52,34.44},listWave=root:ARPES_LJZ:SliceGallery:SG_Info,fSize=9
+	ListBox sg_lb_info,selWave=root:ARPES_LJZ:SliceGallery:SG_Info_Sel,mode=0,fSize=9
+	GroupBox sg_gb_data,pos={4.92,46.74},size={408.36,71.34},title="Data",fSize=10
 	TitleBox sg_t_scan,pos={14.76,63.96},size={49.69,14.76},title="Scan"
 	TitleBox sg_t_scan,frame=0
-	TitleBox sg_t_df,pos={14.76,83.64},size={38.87,14.76},title="Base DF:",frame=0
-	SetVariable sg_sv_df,pos={66.42,81.18},size={196.80,16.24}
-	SetVariable sg_sv_df,value= root:ARPES_LJZ:SliceGallery:baseDF
-	CheckBox sg_ck_rec,pos={270.60,100.86},size={52.15,14.76},title="Recursive"
-	CheckBox sg_ck_rec,variable= root:ARPES_LJZ:SliceGallery:recursive
-	Button sg_btn_current,pos={270.60,81.18},size={51.66,16.40},proc=sg_btn_current_panel,title="Current"
-	Button sg_btn_scan,pos={327.18,81.18},size={44.28,16.40},proc=sg_btn_scan_panel,title="Scan"
-	GroupBox sg_gb_list,pos={4.92,127.92},size={408.36,334.56},title="Waves"
-	ListBox sg_lb,pos={14.76,145.14},size={393.60,309.96},proc=sg_lb_proc
-	ListBox sg_lb,listWave=root:ARPES_LJZ:SliceGallery:LB_Disp
-	ListBox sg_lb,selWave=root:ARPES_LJZ:SliceGallery:LB_Sel,mode= 1,selRow= 0
-	GroupBox sg_gb_info,pos={425.58,46.74},size={246.00,95.94},title="Wave Info"
-	SetVariable sg_sv_d0n,pos={435.42,66.42},size={63.96,16.24},title="Dim0 N"
-	SetVariable sg_sv_d0n,value= root:ARPES_LJZ:SliceGallery:dim0_n,noedit= 1
-	SetVariable sg_sv_d1n,pos={506.76,66.42},size={63.96,16.24},title="Dim1 N"
-	SetVariable sg_sv_d1n,value= root:ARPES_LJZ:SliceGallery:dim1_n,noedit= 1
-	SetVariable sg_sv_d2n,pos={580.56,66.42},size={63.96,16.24},title="Dim2 N"
-	SetVariable sg_sv_d2n,value= root:ARPES_LJZ:SliceGallery:dim2_n,noedit= 1
-	SetVariable sg_sv_d0off,pos={435.42,88.56},size={63.96,16.24},title="D0 Off"
-	SetVariable sg_sv_d0off,value= root:ARPES_LJZ:SliceGallery:dim0_off,noedit= 1
-	SetVariable sg_sv_d1off,pos={506.76,88.56},size={63.96,16.24},title="D1 Off"
-	SetVariable sg_sv_d1off,value= root:ARPES_LJZ:SliceGallery:dim1_off,noedit= 1
-	SetVariable sg_sv_d2off,pos={580.56,88.56},size={63.96,16.24},title="D2 Off"
-	SetVariable sg_sv_d2off,value= root:ARPES_LJZ:SliceGallery:dim2_off,noedit= 1
-	SetVariable sg_sv_d0del,pos={435.42,108.24},size={63.96,16.24},title="D0 Del"
-	SetVariable sg_sv_d0del,value= root:ARPES_LJZ:SliceGallery:dim0_del,noedit= 1
-	SetVariable sg_sv_d1del,pos={506.76,108.24},size={63.96,16.24},title="D1 Del"
-	SetVariable sg_sv_d1del,value= root:ARPES_LJZ:SliceGallery:dim1_del,noedit= 1
-	SetVariable sg_sv_d2del,pos={580.56,108.24},size={63.96,16.24},title="D2 Del"
-	SetVariable sg_sv_d2del,value= root:ARPES_LJZ:SliceGallery:dim2_del,noedit= 1
-	GroupBox sg_gb_sel,pos={425.58,150.06},size={246.00,209.10},title="Select"
-	PopupMenu sg_pm_sel,pos={435.42,172.20},size={45.26,16.73},proc=sg_pm_selection_proc
-	PopupMenu sg_pm_sel,mode=1,popvalue="Manual",value= #"\"Manual;EvenSpacing;Dim2Values\""
-	SetVariable sg_sv_manual,pos={435.42,196.80},size={209.10,16.24},title="Manual"
-	SetVariable sg_sv_manual,value= root:ARPES_LJZ:SliceGallery:manualInputStr
-	SetVariable sg_sv_dim2in,pos={435.42,221.40},size={209.10,16.24},title="Dim2"
-	SetVariable sg_sv_dim2in,value= root:ARPES_LJZ:SliceGallery:dim2InputStr
-	SetVariable sg_sv_np,pos={435.42,246.00},size={95.94,16.24},title="N Panels"
-	SetVariable sg_sv_np,limits={1,999,1},value= root:ARPES_LJZ:SliceGallery:panelCount
-	SetVariable sg_sv_s0,pos={541.20,246.00},size={103.32,16.24},title="Start"
-	SetVariable sg_sv_s0,value= root:ARPES_LJZ:SliceGallery:startLayer
-	SetVariable sg_sv_s1,pos={435.42,270.60},size={103.32,16.24},title="End"
-	SetVariable sg_sv_s1,value= root:ARPES_LJZ:SliceGallery:endLayer
-	CheckBox sg_ck_sort,pos={551.04,270.60},size={27.55,14.76},title="Sort"
-	CheckBox sg_ck_sort,variable= root:ARPES_LJZ:SliceGallery:sortLayers
-	CheckBox sg_ck_dedup,pos={435.42,295.20},size={39.85,14.76},title="Dedup"
-	CheckBox sg_ck_dedup,variable= root:ARPES_LJZ:SliceGallery:dedupLayers
-	CheckBox sg_ck_rev,pos={501.84,295.20},size={44.28,14.76},title="Reverse"
-	CheckBox sg_ck_rev,variable= root:ARPES_LJZ:SliceGallery:reverseOrder
-	Button sg_btn_build,pos={435.42,319.80},size={95.94,19.68},proc=sg_btn_apply_selection,title="Build Layers"
-	Button sg_btn_clear,pos={548.58,319.80},size={95.94,19.68},proc=sg_btn_clear_layers_panel,title="Clear Layers"
-	GroupBox sg_gb_render,pos={688.80,46.74},size={153.01,167.77},title="Render"
-	PopupMenu sg_pm_layout,pos={698.64,68.88},size={29.03,16.73},proc=sg_pm_layout_proc
-	PopupMenu sg_pm_layout,mode=2,popvalue="1xN",value= #"\"Auto;1xN;2x3;2x4;3x3\""
-	PopupMenu sg_pm_rstyle,pos={552.02,23.62},size={65.44,16.73},proc=sg_pm_rstyle_proc
-	PopupMenu sg_pm_rstyle,mode=1,popvalue="LegacyTight",value= #"\"LegacyTight;EqualPlot\""
-	PopupMenu sg_pm_disp,pos={698.64,89.05},size={63.96,16.73},proc=sg_pm_display_proc
-	PopupMenu sg_pm_disp,mode=1,popvalue="Raw",value= #"\"Raw;SecondDerivXX;SecondDerivYY;SecondDerivXY\""
-	CheckBox sg_ck_xuse,pos={742.92,68.88},size={34.93,14.76},title="Use X"
-	CheckBox sg_ck_xuse,variable= root:ARPES_LJZ:SliceGallery:xUse
-	SetVariable sg_sv_x0,pos={698.64,113.65},size={132.84,16.24},title="xMin"
-	SetVariable sg_sv_x0,value= root:ARPES_LJZ:SliceGallery:xMin
-	SetVariable sg_sv_x1,pos={698.64,135.79},size={132.84,16.24},title="xMax"
-	SetVariable sg_sv_x1,value= root:ARPES_LJZ:SliceGallery:xMax
-	CheckBox sg_ck_yuse,pos={792.94,68.88},size={34.93,14.76},title="Use Y"
-	CheckBox sg_ck_yuse,variable= root:ARPES_LJZ:SliceGallery:yUse
-	SetVariable sg_sv_y0,pos={698.64,160.39},size={132.84,16.24},title="yMin"
-	SetVariable sg_sv_y0,value= root:ARPES_LJZ:SliceGallery:yMin
-	SetVariable sg_sv_y1,pos={698.64,183.52},size={132.84,16.24},title="yMax"
-	SetVariable sg_sv_y1,value= root:ARPES_LJZ:SliceGallery:yMax
-	GroupBox sg_gb_color,pos={688.80,221.89},size={152.52,172.69},title="Color"
+	TitleBox sg_t_df,pos={14.76,83.64},size={38.87,14.76},title="DF",fSize=9,frame=0
+	SetVariable sg_sv_df,pos={66.42,81.18},size={196.80,16.24},fSize=9
+	SetVariable sg_sv_df,value= root:ARPES_LJZ:SliceGallery:baseDF,fSize=9
+	CheckBox sg_ck_rec,pos={270.60,100.86},size={52.15,14.76},title="Recursive",fSize=9
+	CheckBox sg_ck_rec,variable= root:ARPES_LJZ:SliceGallery:recursive,fSize=9
+	Button sg_btn_current,pos={270.60,81.18},size={51.66,16.40},proc=sg_btn_current_panel,title="Current",fSize=9
+	Button sg_btn_scan,pos={327.18,81.18},size={44.28,16.40},proc=sg_btn_scan_panel,title="Scan",fSize=9
+	GroupBox sg_gb_list,pos={4.92,127.92},size={408.36,334.56},title="Waves",fSize=10
+	ListBox sg_lb,pos={14.76,145.14},size={393.60,309.96},proc=sg_lb_proc,fSize=9
+	ListBox sg_lb,listWave=root:ARPES_LJZ:SliceGallery:LB_Disp,fSize=9
+	ListBox sg_lb,selWave=root:ARPES_LJZ:SliceGallery:LB_Sel,mode= 1,selRow= 0,fSize=9
+	GroupBox sg_gb_info,pos={425.58,46.74},size={246.00,95.94},title="Wave Info",fSize=10
+	SetVariable sg_sv_d0n,pos={435.42,66.42},size={63.96,16.24},title="Dim0 N",fSize=9
+	SetVariable sg_sv_d0n,value= root:ARPES_LJZ:SliceGallery:dim0_n,noedit= 1,fSize=9
+	SetVariable sg_sv_d1n,pos={506.76,66.42},size={63.96,16.24},title="Dim1 N",fSize=9
+	SetVariable sg_sv_d1n,value= root:ARPES_LJZ:SliceGallery:dim1_n,noedit= 1,fSize=9
+	SetVariable sg_sv_d2n,pos={580.56,66.42},size={63.96,16.24},title="Dim2 N",fSize=9
+	SetVariable sg_sv_d2n,value= root:ARPES_LJZ:SliceGallery:dim2_n,noedit= 1,fSize=9
+	SetVariable sg_sv_d0off,pos={435.42,88.56},size={63.96,16.24},title="D0 Off",fSize=9
+	SetVariable sg_sv_d0off,value= root:ARPES_LJZ:SliceGallery:dim0_off,noedit= 1,fSize=9
+	SetVariable sg_sv_d1off,pos={506.76,88.56},size={63.96,16.24},title="D1 Off",fSize=9
+	SetVariable sg_sv_d1off,value= root:ARPES_LJZ:SliceGallery:dim1_off,noedit= 1,fSize=9
+	SetVariable sg_sv_d2off,pos={580.56,88.56},size={63.96,16.24},title="D2 Off",fSize=9
+	SetVariable sg_sv_d2off,value= root:ARPES_LJZ:SliceGallery:dim2_off,noedit= 1,fSize=9
+	SetVariable sg_sv_d0del,pos={435.42,108.24},size={63.96,16.24},title="D0 Del",fSize=9
+	SetVariable sg_sv_d0del,value= root:ARPES_LJZ:SliceGallery:dim0_del,noedit= 1,fSize=9
+	SetVariable sg_sv_d1del,pos={506.76,108.24},size={63.96,16.24},title="D1 Del",fSize=9
+	SetVariable sg_sv_d1del,value= root:ARPES_LJZ:SliceGallery:dim1_del,noedit= 1,fSize=9
+	SetVariable sg_sv_d2del,pos={580.56,108.24},size={63.96,16.24},title="D2 Del",fSize=9
+	SetVariable sg_sv_d2del,value= root:ARPES_LJZ:SliceGallery:dim2_del,noedit= 1,fSize=9
+	GroupBox sg_gb_sel,pos={425.58,150.06},size={246.00,209.10},title="Select",fSize=10
+	PopupMenu sg_pm_sel,pos={435.42,172.20},size={45.26,16.73},proc=sg_pm_selection_proc,fSize=9
+	PopupMenu sg_pm_sel,mode=1,popvalue="Manual",value= #"\"Manual;EvenSpacing;Dim2Values\"",fSize=9
+	SetVariable sg_sv_manual,pos={435.42,196.80},size={209.10,16.24},title="Idx",fSize=9
+	SetVariable sg_sv_manual,value= root:ARPES_LJZ:SliceGallery:manualInputStr,fSize=9
+	SetVariable sg_sv_dim2in,pos={435.42,221.40},size={209.10,16.24},title="D2",fSize=9
+	SetVariable sg_sv_dim2in,value= root:ARPES_LJZ:SliceGallery:dim2InputStr,fSize=9
+	SetVariable sg_sv_np,pos={435.42,246.00},size={95.94,16.24},title="N",fSize=9
+	SetVariable sg_sv_np,limits={1,999,1},value= root:ARPES_LJZ:SliceGallery:panelCount,fSize=9
+	SetVariable sg_sv_s0,pos={541.20,246.00},size={103.32,16.24},title="Start",fSize=9
+	SetVariable sg_sv_s0,value= root:ARPES_LJZ:SliceGallery:startLayer,fSize=9
+	SetVariable sg_sv_s1,pos={435.42,270.60},size={103.32,16.24},title="End",fSize=9
+	SetVariable sg_sv_s1,value= root:ARPES_LJZ:SliceGallery:endLayer,fSize=9
+	CheckBox sg_ck_sort,pos={551.04,270.60},size={27.55,14.76},title="Sort",fSize=9
+	CheckBox sg_ck_sort,variable= root:ARPES_LJZ:SliceGallery:sortLayers,fSize=9
+	CheckBox sg_ck_dedup,pos={435.42,295.20},size={39.85,14.76},title="Dedup",fSize=9
+	CheckBox sg_ck_dedup,variable= root:ARPES_LJZ:SliceGallery:dedupLayers,fSize=9
+	CheckBox sg_ck_rev,pos={501.84,295.20},size={44.28,14.76},title="Reverse",fSize=9
+	CheckBox sg_ck_rev,variable= root:ARPES_LJZ:SliceGallery:reverseOrder,fSize=9
+	Button sg_btn_build,pos={435.42,319.80},size={95.94,19.68},proc=sg_btn_apply_selection,title="Build",fSize=9
+	Button sg_btn_clear,pos={548.58,319.80},size={95.94,19.68},proc=sg_btn_clear_layers_panel,title="Clear",fSize=9
+	GroupBox sg_gb_render,pos={688.80,46.74},size={153.01,167.77},title="Render",fSize=10
+	PopupMenu sg_pm_layout,pos={698.64,68.88},size={29.03,16.73},proc=sg_pm_layout_proc,fSize=9
+	PopupMenu sg_pm_layout,mode=2,popvalue="1xN",value= #"\"Auto;1xN;2x3;2x4;3x3\"",fSize=9
+	PopupMenu sg_pm_rstyle,pos={552.02,23.62},size={65.44,16.73},proc=sg_pm_rstyle_proc,fSize=9
+	PopupMenu sg_pm_rstyle,mode=1,popvalue="LegacyTight",value= #"\"LegacyTight;EqualPlot\"",fSize=9
+	PopupMenu sg_pm_disp,pos={698.64,89.05},size={63.96,16.73},proc=sg_pm_display_proc,fSize=9
+	PopupMenu sg_pm_disp,mode=1,popvalue="Raw",value= #"\"Raw;SecondDerivXX;SecondDerivYY;SecondDerivXY\"",fSize=9
+	CheckBox sg_ck_xuse,pos={742.92,68.88},size={34.93,14.76},title="Use X",fSize=9
+	CheckBox sg_ck_xuse,variable= root:ARPES_LJZ:SliceGallery:xUse,fSize=9
+	SetVariable sg_sv_x0,pos={698.64,113.65},size={132.84,16.24},title="xMin",fSize=9
+	SetVariable sg_sv_x0,value= root:ARPES_LJZ:SliceGallery:xMin,fSize=9
+	SetVariable sg_sv_x1,pos={698.64,135.79},size={132.84,16.24},title="xMax",fSize=9
+	SetVariable sg_sv_x1,value= root:ARPES_LJZ:SliceGallery:xMax,fSize=9
+	CheckBox sg_ck_yuse,pos={792.94,68.88},size={34.93,14.76},title="Use Y",fSize=9
+	CheckBox sg_ck_yuse,variable= root:ARPES_LJZ:SliceGallery:yUse,fSize=9
+	SetVariable sg_sv_y0,pos={698.64,160.39},size={132.84,16.24},title="yMin",fSize=9
+	SetVariable sg_sv_y0,value= root:ARPES_LJZ:SliceGallery:yMin,fSize=9
+	SetVariable sg_sv_y1,pos={698.64,183.52},size={132.84,16.24},title="yMax",fSize=9
+	SetVariable sg_sv_y1,value= root:ARPES_LJZ:SliceGallery:yMax,fSize=9
+	SetVariable sg_sv_layscale,pos={698.64,201.56},size={132.84,16.24},title="LayScale",fSize=9
+	SetVariable sg_sv_layscale,limits={0.30,1.50,0.05},value= root:ARPES_LJZ:SliceGallery:layoutScale,fSize=9
+	GroupBox sg_gb_color,pos={688.80,221.89},size={152.52,172.69},title="Color",fSize=10
 	TitleBox sg_tb_ct_current,pos={699.13,245.51},size={54.12,14.76},title=""
 	TitleBox sg_tb_ct_current,frame=0
-	Button sg_btn_browse_ct,pos={789.17,246.49},size={24.60,14.76},proc=sg_btn_open_ct_browser,title="..."
+	Button sg_btn_browse_ct,pos={789.17,246.49},size={24.60,14.76},proc=sg_btn_open_ct_browser,title="...",fSize=9
 	TitleBox sg_tb_mode_hint,pos={626.81,29.03},size={218.94,10.33},title=""
 	TitleBox sg_tb_mode_hint,fSize=9,frame=0
-	CheckBox sg_ck_lut,pos={698.64,269.62},size={46.25,14.76},title="Use LUT"
-	CheckBox sg_ck_lut,variable= root:ARPES_LJZ:SliceGallery:useLUT
-	CheckBox sg_ck_invert_ct,pos={762.60,269.62},size={35.42,14.76},title="Invert"
-	CheckBox sg_ck_invert_ct,variable= root:ARPES_LJZ:SliceGallery:invertColors
-	PopupMenu sg_pm_color,pos={698.64,294.22},size={45.26,16.73},proc=sg_pm_color_proc
-	PopupMenu sg_pm_color,mode=3,popvalue="Manual",value= #"\"PerPanelAuto;SharedAuto;Manual\""
-	SetVariable sg_sv_c0,pos={698.64,318.82},size={63.96,16.24},title="cMin"
-	SetVariable sg_sv_c0,value= root:ARPES_LJZ:SliceGallery:cMin
-	SetVariable sg_sv_c1,pos={698.64,340.96},size={63.96,16.24},title="cMax"
-	SetVariable sg_sv_c1,value= root:ARPES_LJZ:SliceGallery:cMax
+	CheckBox sg_ck_lut,pos={698.64,269.62},size={46.25,14.76},title="Use LUT",fSize=9
+	CheckBox sg_ck_lut,variable= root:ARPES_LJZ:SliceGallery:useLUT,fSize=9
+	CheckBox sg_ck_invert_ct,pos={762.60,269.62},size={35.42,14.76},title="Invert",fSize=9
+	CheckBox sg_ck_invert_ct,variable= root:ARPES_LJZ:SliceGallery:invertColors,fSize=9
+	PopupMenu sg_pm_color,pos={698.64,294.22},size={45.26,16.73},proc=sg_pm_color_proc,fSize=9
+	PopupMenu sg_pm_color,mode=3,popvalue="Manual",value= #"\"PerPanelAuto;SharedAuto;Manual\"",fSize=9
+	SetVariable sg_sv_c0,pos={698.64,318.82},size={63.96,16.24},title="cMin",fSize=9
+	SetVariable sg_sv_c0,value= root:ARPES_LJZ:SliceGallery:cMin,fSize=9
+	SetVariable sg_sv_c1,pos={698.64,340.96},size={63.96,16.24},title="cMax",fSize=9
+	SetVariable sg_sv_c1,value= root:ARPES_LJZ:SliceGallery:cMax,fSize=9
 	TitleBox sg_tb_range_hint,pos={698.64,362.11},size={82.16,10.33},title=""
 	TitleBox sg_tb_range_hint,fSize=9,frame=0
-	GroupBox sg_gb_label,pos={688.80,403.44},size={151.54,146.12},title="Label"
-	PopupMenu sg_pm_label,pos={698.64,425.58},size={59.53,16.73},proc=sg_pm_label_proc
-	PopupMenu sg_pm_label,mode=3,popvalue="Dim2Value",value= #"\"None;Index;Dim2Value;Index+Value\""
-	PopupMenu sg_pm_labtype,pos={710.94,455.10},size={36.41,16.73},proc=sg_pm_labeltype_proc
-	PopupMenu sg_pm_labtype,mode=3,popvalue="Delay",value= #"\"None;Fluence;Delay;Temp\""
-	SetVariable sg_sv_flucoef,pos={698.64,473.96},size={120.05,16.24},title="k mW→uJ"
-	SetVariable sg_sv_flucoef,value= root:ARPES_LJZ:SliceGallery:fluenceCoeff
-	SetVariable sg_sv_tbf,pos={698.64,492.00},size={63.96,16.24},title="Font"
-	SetVariable sg_sv_tbf,limits={6,72,1},value= root:ARPES_LJZ:SliceGallery:tbFont
-	SetVariable sg_sv_tbx,pos={698.64,510.04},size={63.96,16.24},title="X%"
-	SetVariable sg_sv_tbx,value= root:ARPES_LJZ:SliceGallery:tbX
-	SetVariable sg_sv_tby,pos={698.64,528.08},size={63.96,16.24},title="Y%"
-	SetVariable sg_sv_tby,value= root:ARPES_LJZ:SliceGallery:tbY
-	GroupBox sg_gb_summary,pos={4.92,472.32},size={664.20,68.88},title="Summary"
-	TitleBox sg_layers_txt,pos={14.76,492.00},size={104.30,14.76},title=""
-	TitleBox sg_layers_txt,frame=0
-	TitleBox sg_vals_txt,pos={14.76,511.68},size={86.59,10.33},title=""
-	TitleBox sg_vals_txt,fSize=9,frame=0
-	GroupBox sg_gb_buttons,pos={425.58,361.62},size={243.54,98.40},title="Actions"
-	SetVariable sg_sv_exportname,pos={440.34,499.87},size={204.18,16.24},title="Name"
-	SetVariable sg_sv_exportname,value= root:ARPES_LJZ:SliceGallery:exportBaseName
-	Button sg_btn_sync,pos={457.56,388.68},size={81.18,27.06},proc=sg_btn_sync,title="Sync"
-	Button sg_btn_preview,pos={556.45,388.68},size={81.18,27.06},proc=sg_btn_preview,title="Preview"
-	Button sg_btn_export,pos={457.56,420.66},size={81.18,24.60},proc=sg_btn_export,title="Export"
-	Button sg_btn_close,pos={556.45,420.66},size={81.18,24.60},proc=sg_btn_close_panel,title="Close"
+	GroupBox sg_gb_label,pos={688.80,403.44},size={151.54,146.12},title="Label",fSize=10
+	PopupMenu sg_pm_label,pos={698.64,425.58},size={59.53,16.73},proc=sg_pm_label_proc,fSize=9
+	PopupMenu sg_pm_label,mode=3,popvalue="Dim2Value",value= #"\"None;Index;Dim2Value;Index+Value\"",fSize=9
+	PopupMenu sg_pm_labtype,pos={710.94,455.10},size={36.41,16.73},proc=sg_pm_labeltype_proc,fSize=9
+	PopupMenu sg_pm_labtype,mode=3,popvalue="Delay",value= #"\"None;Fluence;Delay;Temp\"",fSize=9
+	SetVariable sg_sv_flucoef,pos={698.64,473.96},size={120.05,16.24},title="k mW→uJ",fSize=9
+	SetVariable sg_sv_flucoef,value= root:ARPES_LJZ:SliceGallery:fluenceCoeff,fSize=9
+	SetVariable sg_sv_tbf,pos={698.64,492.00},size={63.96,16.24},title="Font",fSize=9
+	SetVariable sg_sv_tbf,limits={6,72,1},value= root:ARPES_LJZ:SliceGallery:tbFont,fSize=9
+	SetVariable sg_sv_tbx,pos={698.64,510.04},size={63.96,16.24},title="X%",fSize=9
+	SetVariable sg_sv_tbx,value= root:ARPES_LJZ:SliceGallery:tbX,fSize=9
+	SetVariable sg_sv_tby,pos={698.64,528.08},size={63.96,16.24},title="Y%",fSize=9
+	SetVariable sg_sv_tby,value= root:ARPES_LJZ:SliceGallery:tbY,fSize=9
+	GroupBox sg_gb_summary,pos={4.92,472.32},size={664.20,68.88},title="Summary",fSize=10
+	ListBox sg_lb_summary,pos={14.76,490.03},size={400.98,41.82},listWave=root:ARPES_LJZ:SliceGallery:SG_Summary,fSize=9
+	ListBox sg_lb_summary,selWave=root:ARPES_LJZ:SliceGallery:SG_Summary_Sel,mode=0,fSize=9
+	GroupBox sg_gb_buttons,pos={425.58,361.62},size={243.54,98.40},title="Actions",fSize=10
+	SetVariable sg_sv_exportname,pos={440.34,499.87},size={204.18,16.24},title="Name",fSize=9
+	SetVariable sg_sv_exportname,value= root:ARPES_LJZ:SliceGallery:exportBaseName,fSize=9
+	Button sg_btn_sync,pos={457.56,388.68},size={81.18,27.06},proc=sg_btn_sync,title="Sync",fSize=9
+	Button sg_btn_preview,pos={556.45,388.68},size={81.18,27.06},proc=sg_btn_preview,title="Preview",fSize=9
+	Button sg_btn_export,pos={457.56,420.66},size={81.18,24.60},proc=sg_btn_export,title="Export",fSize=9
+	Button sg_btn_close,pos={556.45,420.66},size={81.18,24.60},proc=sg_btn_close_panel,title="Close",fSize=9
 EndMacro
 
 //============================================================
@@ -2693,27 +2760,31 @@ Function sg_render_preview_legacytight()
     // --------------------------------------------------------
     Variable graphW, graphH
     if (nCols >= 6)
-        graphW = 95
-        graphH = 180
+        graphW = 85
+        graphH = 165
     elseif (nCols >= 4)
-        graphW = 110
-        graphH = 190
+        graphW = 105
+        graphH = 180
     else
         graphW = 125
         graphH = 200
     endif
+
+    Variable sc = sg_get_layout_scale()
+    graphW *= sc
+    graphH *= sc
 
     // first column gets extra layout width to compensate y-axis
     Variable firstColScale = 1.55
     Variable firstColLeftPad = 0.18 * graphW
 
     // spacing between layout rectangles
-    Variable gapX = 0
-    Variable gapY = 6
+    Variable gapX = 0 * sc
+    Variable gapY = 6 * sc
 
     // global layout offset
-    Variable left0 = 12
-    Variable top0  = 12
+    Variable left0 = 12 * sc
+    Variable top0  = 12 * sc
 
     NewLayout/N=$previewWinName/K=1
 
@@ -2899,21 +2970,25 @@ Function sg_render_preview_equalplot()
     // --------------------------------------------------------
     Variable plotW, plotH
     if (nCols >= 6)
-        plotW = 95
-        plotH = 180
+        plotW = 85
+        plotH = 165
     elseif (nCols >= 4)
-        plotW = 110
-        plotH = 190
+        plotW = 105
+        plotH = 180
     else
         plotW = 125
         plotH = 200
     endif
 
-    Variable firstColExtraW = 36      // 这就是“补给第一列的轴区宽度”
-    Variable gapX = 0
-    Variable gapY = 6
-    Variable left0 = 12
-    Variable top0  = 12
+    Variable sc = sg_get_layout_scale()
+    plotW *= sc
+    plotH *= sc
+
+    Variable firstColExtraW = 36 * sc      // 这就是“补给第一列的轴区宽度”
+    Variable gapX = 0 * sc
+    Variable gapY = 6 * sc
+    Variable left0 = 12 * sc
+    Variable top0  = 12 * sc
 
     NewLayout/N=$previewWinName/K=1
 
@@ -3185,22 +3260,25 @@ Function sg_export_current_preview()
     layoutCode = sg_get_layout_code(nSel, layoutMode)
     nCols = sg_layout_cols_from_code(layoutCode)
 
-    gapX = 0
-    gapY = 6
-    left0 = 12
-    top0  = 12
+    Variable sc = sg_get_layout_scale()
+    gapX = 0 * sc
+    gapY = 6 * sc
+    left0 = 12 * sc
+    top0  = 12 * sc
 
     NewLayout/N=$layoutName/K=1
 
     if (StringMatch(renderStyle, "EqualPlot"))
         if (nCols >= 6)
-            plotW = 95; plotH = 180
+            plotW = 85; plotH = 165
         elseif (nCols >= 4)
-            plotW = 110; plotH = 190
+            plotW = 105; plotH = 180
         else
             plotW = 125; plotH = 200
         endif
-        firstColExtraW = 36
+        plotW *= sc
+        plotH *= sc
+        firstColExtraW = 36 * sc
 
         for (i = 0; i < nSel; i += 1)
             layerIdx = round(selLayers[i])
@@ -3255,13 +3333,15 @@ Function sg_export_current_preview()
 
     else
         if (nCols >= 6)
-            graphW = 95; graphH = 180
+            graphW = 85; graphH = 165
         elseif (nCols >= 4)
-            graphW = 110; graphH = 190
+            graphW = 105; graphH = 180
         else
             graphW = 125; graphH = 200
         endif
 
+        graphW *= sc
+        graphH *= sc
         firstColScale = 1.55
         firstColLeftPad = 0.18 * graphW
 
