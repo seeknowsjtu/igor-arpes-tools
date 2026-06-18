@@ -59,11 +59,26 @@
 //Proc 		Edge_Style() 				: GraphStyle
 //Proc 		IT_Peak_Style() 				: GraphStyle
 
+Menu "ARPES_LJZ"
+	"-"
+	Submenu "ImageTool"
+		"Open", ProcLJZ_ImageTool()
+			help={"Open ProcLJZ ImageTool."}
+		"New Window", ProcLJZ_NewImageTool()
+			help={"Open a new independent ImageTool window."}
+		"-"
+		"Demo 2D", IT_demoImage()
+		"Demo 3D", IT_demoVol()
+		"-"
+		"Help", IT_ImageToolHelp()
+	End
+End
+
 Menu "2D"
 	"-"
-	"Image Tool 4!"+num2char(19)+"/2", IT_ShowImageTool()
-		help={"Show Image Processing GUI"}
-	"New ImageTool",IT_NewImageTool("")
+	"ImageTool Legacy", IT_ShowImageTool()
+		help={"Legacy shortcut for ProcLJZ ImageTool."}
+	"New ImageTool Legacy", IT_NewImageTool("")
 	"demoImage", IT_demoImage()
 End
 
@@ -73,13 +88,13 @@ End
 
 menu "GraphMarquee"
 	"-"
-	submenu "ImageTool4"
-		"AdjustCT", IT_AdjustCT()
+	submenu "LJZ ImageTool"
+		"Adjust CT", IT_AdjustCT()
 		"Crop"
-		"Norm X [select Y-range]", IT_ImgModify("", 0,"Norm X")
-		"Norm Y [Select X-range]", IT_ImgModify("", 0,"Norm Y")
-		"Scale Data Max=1", IT_ImgModify("", 0,"Norm D")
-		"Offset Data Min=0", IT_ImgModify("", 0,"Offset D")
+		"Norm X", IT_ImgModify("", 0,"Norm X")
+		"Norm Y", IT_ImgModify("", 0,"Norm Y")
+		"Scale Max=1", IT_ImgModify("", 0,"Norm D")
+		"Offset Min=0", IT_ImgModify("", 0,"Offset D")
 //		submenu "Norm"
 //			"X [select Y-range]", IT_ImgModify("", 0,"Norm X")
 //			"Y [Select X-range]", IT_ImgModify("", 0,"Norm Y")
@@ -87,7 +102,7 @@ menu "GraphMarquee"
 //			"Offset Data Min=0", IT_ImgModify("", 0,"Offset D")
 //		end
 		"-"
-		"AreaX", IT_ImgAnalyze("", 0,"Area X")
+		"Area X", IT_ImgAnalyze("", 0,"Area X")
 		"Find Edge", IT_ImgAnalyze("", 0, "Find Edge")
 		"Find Peak", IT_ImgAnalyze("", 0, "Find Peak")
 	end
@@ -136,8 +151,8 @@ Proc IT_ImageToolHelp()
 		string htxt
 		NewNotebook/W=(100,100,570,400)/F=1/K=1/N=ImageToolInfo
 		Notebook ImageToolinfo, showruler=0, backRGB=(45000,65535,65535)
-		Notebook ImageToolinfo, fstyle=1, text="Image Tool 4\r"
-		Notebook ImageToolinfo, fstyle=0, text="version 4.00, Feb2003 J. Denlinger\r"
+		Notebook ImageToolinfo, fstyle=1, text="ProcLJZ ImageTool\r"
+		Notebook ImageToolinfo, fstyle=0, text="based on Image Tool 4, local LJZ style build\r"
 		Notebook ImageToolinfo, fstyle=0, text="Contributions by Eli Rotenberg\r\r"
 
 		Notebook ImageToolinfo, fstyle=1, text="Mouse Shortcuts:\r"
@@ -391,6 +406,14 @@ Function IT_demoVol( )
 	IT_NewImg( "demo3D" )
 End
 
+Proc ProcLJZ_ImageTool()
+	IT_ShowImageTool()
+End
+
+Proc ProcLJZ_NewImageTool()
+	IT_NewImageTool("")
+End
+
 Function/S IT_ShowImageTool()
 //==================
 //	string dataf = getdataFolder(1)
@@ -419,6 +442,7 @@ Function/S IT_ShowImageTool_( df, imgn )
 	IT_InitImageTool(df)
 	IT_Image_Tool("root:"+df+":")
 	DoWindow/C $df
+	DoWindow/T $df, "ProcLJZ ImageTool - " + df
 
 	IT_SetProfiles()
 	IT_SetHairXY( "Check", 0, "", "" )
@@ -426,7 +450,7 @@ Function/S IT_ShowImageTool_( df, imgn )
 	//Resize Panel (OS specific)
 	string os=IgorInfo(2)
 	if (stringmatch(os[0,2],"Win"))
-		MoveWindow/W=$df 341,146,824,608
+		MoveWindow/W=$df 300,120,900,640
 	else	   //Mac
 		//MoveWindow/W=ImageTool 341,146,993,639
 	endif
@@ -472,7 +496,7 @@ Function IT_Image_Tool(df) : Graph
 		return -1
 	endif
 	string dfn=StringFromList(1,df,":")
-	Display /W=(341,146,993,639) HairY0 vs HairX0 as dfn
+	Display /W=(300,120,900,640) HairY0 vs HairX0 as dfn
 	DoWindow/C $dfn
 	AppendToGraph/L=lineX profileH vs profileH_x
 	AppendToGraph/B=lineY profileV_y vs profileV
@@ -481,7 +505,8 @@ Function IT_Image_Tool(df) : Graph
 	AppendImage Image
 	ModifyImage/W=$dfn Image cindex=imageCT
 	SetDataFolder $fldrSav
-	ModifyGraph cbRGB=(65535,65532,16385)
+	ModifyGraph cbRGB=(61166,61166,61166)
+	ModifyGraph gbRGB=(65535,65535,65535)
 	ModifyGraph rgb(HairY0)=(0,65535,65535),rgb(HairX1)=(0,65535,65535),rgb(HairY1)=(0,65535,65535)
 	ModifyGraph quickdrag(HairY0)=1,quickdrag(HairX1)=1,quickdrag(HairY1)=1
 	ModifyGraph offset(HairY0)={352,2.99988},offset(HairX1)={352,0},offset(HairY1)={0,2.99988}
@@ -489,6 +514,7 @@ Function IT_Image_Tool(df) : Graph
 	ModifyGraph minor(left)=1,minor(bottom)=1
 	ModifyGraph sep(left)=8,sep(bottom)=8
 	ModifyGraph fSize=10
+	ModifyGraph font="Arial"
 	ModifyGraph lblPos(left)=53,lblPos(bottom)=38,lblPos(lineX)=54,lblPos(lineY)=39
 	ModifyGraph lblLatPos(lineX)=1,lblLatPos(lineY)=8
 	ModifyGraph freePos(lineX)=0
@@ -498,68 +524,69 @@ Function IT_Image_Tool(df) : Graph
 	ModifyGraph axisEnab(lineX)={0.75,1}
 	ModifyGraph axisEnab(lineY)={0.75,1}
 	ShowInfo
-	TextBox/N=title/F=0/A=MT/X=-4.28/Y=1.90/E "\\Z09image"
-	ControlBar 50
-	Button LoadImg,pos={4,3},size={40,22},proc=IT_NewImg,title="Load"
+	TextBox/N=title/F=0/A=MT/X=-4.28/Y=1.90/E "\\Z09ProcLJZ ImageTool"
+	ControlBar 56
+	Button LoadImg,pos={4,3},size={42,20},proc=IT_NewImg,title="Load",fSize=9
 	Button LoadImg,help={"Select 2D image array in memory to copy to the ImageTool Panel"}
-	Button LoadCurrent,pos={47,3},size={55,22},proc=IT_btn_load_current,title="Current"
+	Button LoadCurrent,pos={49,3},size={55,20},proc=IT_btn_load_current,title="Current",fSize=9
 	Button LoadCurrent,help={"Load first image wave from the top graph, or selected/current 2D/3D wave if available."}
-	SetVariable setX0,pos={67,26},size={70,14},proc=IT_SetHairXY,title="X"
+	SetVariable setX0,pos={67,30},size={70,14},proc=IT_SetHairXY,title="X",fSize=9
 	SetVariable setX0,help={"Cross hair X-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
 	SetVariable setX0,limits={213,491,1},value=$(df+"X0")	//<tool-df>X0
-	SetVariable setY0,pos={141,26},size={70,14},proc=IT_SetHairXY,title="Y"
+	SetVariable setY0,pos={141,30},size={70,14},proc=IT_SetHairXY,title="Y",fSize=9
 	SetVariable setY0,help={"Cross hair Y-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
 	SetVariable setY0,limits={-6.00024,12,0.031972},value= $(df+"Y0")
-	ValDisplay valD0,pos={214,26},size={61,14},title="D"
+	ValDisplay valD0,pos={214,30},size={61,14},title="D",fSize=9
 	ValDisplay valD0,help={"Image intensity value at current cross hair (X,Y) location.  "}
 	ValDisplay valD0,limits={0,0,0},barmisc={0,1000}
 		//ValDisplay valD0,value= D0			//can't use local variables
 		execute "ValDisplay valD0,value="+df+"D0"
-	ValDisplay nptx,pos={281,26},size={45,14},title="Nx"
+	ValDisplay nptx,pos={281,30},size={45,14},title="Nx",fSize=9
 	ValDisplay nptx,help={"Number of horizontal pixels of current image."}
 	ValDisplay nptx,limits={0,0,0},barmisc={0,1000}			//,value= nx
 		execute "ValDisplay nptx,value="+df+"nx"
-	ValDisplay npty,pos={328,26},size={46,14},title="Ny"
+	ValDisplay npty,pos={328,30},size={46,14},title="Ny",fSize=9
 	ValDisplay npty,help={"Number of vertical pixels of current image."}
 	ValDisplay npty,limits={0,0,0},barmisc={0,1000}		//,value=ny
 		execute "ValDisplay npty,value="+df+"ny"
-	ValDisplay nptz,pos={377,26},size={45,14},title="Nz"
+	ValDisplay nptz,pos={377,30},size={45,14},title="Nz",fSize=9
 	ValDisplay nptz,help={"Number of slices in 3D data set."}
 	ValDisplay nptz,limits={0,0,0},barmisc={0,1000}			//,value= <tool-df>nz
 		execute "ValDisplay nptz,value="+df+"nz"
-	PopupMenu ImageUndo,pos={489,24},size={57,20},disable=1,proc=IT_ImageUndo
+	PopupMenu ImageUndo,pos={489,24},size={57,20},disable=1,proc=IT_ImageUndo,title="Undo",fSize=9
 	PopupMenu ImageUndo,help={"Undo last image modification or restore to original"}
 	PopupMenu ImageUndo,mode=1,popvalue="Undo",value= #"\"Undo;Restore\""
-	PopupMenu ImageProcess,pos={70,23},size={65,20},disable=1,proc=IT_ImgModify,title="Modify"
+	PopupMenu ImageProcess,pos={70,23},size={65,20},disable=1,proc=IT_ImgModify,title="Modify",fSize=9
 	PopupMenu ImageProcess,help={"Image Modification:\rCrop & Norm Y optionally use a marquee box sub range.\rNorm X(Y),  Set X(Y)=0  use current crosshair location."}
 	PopupMenu ImageProcess,mode=0,value= #"\"Crop;Transpose;Rotate;Resize;Rescale;Set X=0;Set Y=0;Shift;Reflect X;-;Norm X;Norm Y;Norm XY;Norm D;Offset D;Invert D;Deglitch\""
 	SetVariable setnumpass,pos={160,26},size={30,15},disable=1,title=" "
 	SetVariable setnumpass,help={"# of passes to apply filter"}
 	SetVariable setnumpass,limits={1,9,1},value= $(df+"numpass")
-	PopupMenu popFilter,pos={192,24},size={55,20},disable=1,proc=IT_PopFilter,title="Filter"
+	PopupMenu popFilter,pos={192,24},size={55,20},disable=1,proc=IT_PopFilter,title="Filter",fSize=9
 	PopupMenu popFilter,help={"Convolution -type image modification."}
 	PopupMenu popFilter,mode=0,value= #"\"AvgX;AvgY;median;avg;gauss;min;max;NaNZapMedian;FindEdges;Point;Sharpen;SharpenMore;gradN;gradS;gradE;gradW;\""
-	PopupMenu ImageAnalyze,pos={385,24},size={72,20},disable=1,proc=IT_ImgAnalyze,title="Analyze"
+	PopupMenu ImageAnalyze,pos={385,24},size={72,20},disable=1,proc=IT_ImgAnalyze,title="Analyze",fSize=9
 	PopupMenu ImageAnalyze,help={"Image Analysis within a horizontal (X) range of the image selected by a marquee or A/B Cursors on the horizontal line profile.  Resulting (Area, Position, Width) waves are plotted in an new window with prompted-for names."}
 	PopupMenu ImageAnalyze,mode=0,value= #"\"Area X;Find Edge;Fit Edge;Fit Peak;Find Peak;Find Peak Max;-;Average Y;\""
 	SetVariable setpinc,pos={270,26},size={38,15},disable=1,title=" "
 	SetVariable setpinc,help={"Y-increment to stack"}
 	SetVariable setpinc,limits={1,20,1},value= $(df+"STACK:pinc")
-	Button Stack,pos={313,25},size={45,18},disable=1,proc=IT_StackUpdate,title="Stack"
+	Button Stack,pos={313,25},size={45,18},disable=1,proc=IT_StackUpdate,title="Stack",fSize=9
 	Button Stack,help={"Extract spectra from current image and export to separate IT_Stack  plot window.  Uses current axes limits for extracting spectra."}
 
 	SetVariable setgamma,pos={74,26},size={52,14},disable=1,title="g"
 	SetVariable setgamma,help={"Gamma value for image color table mapping.  Gamma < 1 enhances lower intensity features."}
 	SetVariable setgamma,font="Symbol",limits={0.05,Inf,0.05},value= $(df+"gamma")
-	PopupMenu SelectCT,pos={153,23},size={43,20},disable=1,proc=IT_SelectCT,title="CT"
+	PopupMenu SelectCT,pos={153,23},size={43,20},disable=1,proc=IT_SelectCT,title="CT",fSize=9
 	//PopupMenu SelectCT,mode=0,value= #"\"Grayscale;Red Temp;Invert;Rescale\""
 	//Popupmenu selectCT,mode=0,value="Invert;Rescale;"+colornameslist()     //ER
 	Popupmenu selectCT,mode=0,value="Invert;Rescale;"+CTnamelist(2)         //JD
-	Button ShowHelp,pos={604,3},size={18,22},proc=IT_ShowWin,title="?"
+	Button ShowHelp,pos={604,3},size={18,20},proc=IT_ShowWin,title="?",fSize=9
 	Button ShowHelp,help={"Show shortcut & version history notebook"}
-	TabControl imgtab,pos={105,0},size={495,48},proc=IT_ImgTabProc,tabLabel(0)="info"
-	TabControl imgtab,tabLabel(1)="process",tabLabel(2)="colors"
-	TabControl imgtab,tabLabel(3)="volume",tabLabel(4)="export",value= 0
+	TabControl imgtab,pos={105,2},size={495,46},proc=IT_ImgTabProc,fSize=9
+	TabControl imgtab,tabLabel(0)="Info"
+	TabControl imgtab,tabLabel(1)="Process",tabLabel(2)="Color"
+	TabControl imgtab,tabLabel(3)="Volume",tabLabel(4)="Export",value= 0
 	///////
 	if (exists("AddEDCpathTab2ITpanel"))
 		execute "AddEDCpathTab2ITpanel()"				// Code in Procedure_EDC.ipf (David Fournier, UBC)
@@ -575,9 +602,9 @@ Function IT_Image_Tool(df) : Graph
 	Button SliceMinus,help={"Decrement image slice index."}
 	Button SlicePlus,pos={181,24},size={12,16},disable=1,proc=IT_StepSlice,title=">"
 	Button SlicePlus,help={"Increment image slice index."}
-	PopupMenu popAnim,pos={465,23},size={74,20},disable=1,proc=IT_AnimateAction,title="Animate"
+	PopupMenu popAnim,pos={465,23},size={74,20},disable=1,proc=IT_AnimateAction,title="Anim",fSize=9
 	PopupMenu popAnim,help={"Step thru slices of 3D data set"}
-	Button StopAnim,pos={542,23},size={40,18},disable=1,proc=IT_btn_stop_animate,title="Stop"
+	Button StopAnim,pos={542,23},size={40,18},disable=1,proc=IT_btn_stop_animate,title="Stop",fSize=9
 	PopupMenu popAnim,mode=0	//,value= "\""+$(df+"anim_menu")+"\""	//<tool-df>anim_menu	//#anim_menu
 		execute "PopupMenu popAnim,value="+df+"anim_menu"
 	PopupMenu popSlice,pos={65,21},size={42,20},disable=1,proc=IT_SelectSliceDir
@@ -586,11 +613,11 @@ Function IT_Image_Tool(df) : Graph
 	SetVariable setZstep,limits={1,Inf,1},value= $(df+"zstep")
 	SetVariable setZavg,pos={331,25},size={62,15},disable=1,title="navg",proc=IT_SetSliceAvg		//**JD
 	SetVariable setZavg,limits={1,Inf,2},value= $(df+"nsliceavg")
-	PopupMenu VolModify,pos={394,23},size={65,20},disable=1,proc=IT_VolModify,title="Modify"
+	PopupMenu VolModify,pos={394,23},size={65,20},disable=1,proc=IT_VolModify,title="Modify",fSize=9
 	PopupMenu VolModify,mode=0,value= #"\"Crop;Rotate;Resize;Transpose;Rescale;Set X=0;Set Y=0;Set Z=0;Norm Z;Avg Z (to img);Shift;\""
-	CheckBox ShowImgSlices,pos={547,25},size={78,14},disable=1,proc=IT_ShowImgSliceCheck,title="Image Slices"
+	CheckBox ShowImgSlices,pos={547,25},size={78,14},disable=1,proc=IT_ShowImgSliceCheck,title="Slices",fSize=9
 	CheckBox ShowImgSlices,value= 1
-	CheckBox lockColors,pos={219,26},size={80,14},disable=1,proc=IT_ColorLockCheck,title="Lock colors?"
+	CheckBox lockColors,pos={219,26},size={80,14},disable=1,proc=IT_ColorLockCheck,title="Lock CT",fSize=9
 	CheckBox lockColors,value= 0
 	PopupMenu colorOptions,pos={309,26},size={113,20},disable=1,proc=IT_ColorOptionsProc,title="Set Colors By..."
 	PopupMenu colorOptions,mode=0,value= #"\"2D images;All XYZ Data;Last Marquee\""  //!!ER
@@ -603,7 +630,7 @@ Function IT_Image_Tool(df) : Graph
 	CheckBox cleanExport,pos={265,26},size={70,14},disable=1,title="Clean NaN"
 	CheckBox cleanExport,variable=$(df+"exportCleanNonFinite")
 	CheckBox cleanExport,help={"Replace NaN/Inf with 0 in exported image only. Original ImageTool data are unchanged."}
-	TitleBox it_status,pos={425,3},size={170,14},fSize=9,frame=0,title="Ready"
+	TitleBox it_status,pos={425,6},size={165,12},title="Ready",fSize=9,frame=0
 	TitleBox version,pos={10,28},size={35,14},fsize=9, title="v4.053",frame=0, fstyle=2
 
 	SetWindow kwTopWin,hook=IT_imgHookFcn,hookevents=3
