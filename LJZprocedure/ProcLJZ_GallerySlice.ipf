@@ -2425,18 +2425,16 @@ End
 // Color range
 //============================================================
 
-Function sg_compute_shared_color_range()
-    sg_init_defaults_if_needed()
+Function sg_compute_shared_minmax_range(outC0, outC1)
+    Variable &outC0, &outC1
+
+    outC0 = NaN
+    outC1 = NaN
 
     Wave selLayers = root:ARPES_LJZ:SliceGallery:selLayers
-    NVAR cMin = root:ARPES_LJZ:SliceGallery:cMin
-    NVAR cMax = root:ARPES_LJZ:SliceGallery:cMax
-    NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
-
     Variable nSel = DimSize(selLayers, 0)
-
     if (nSel <= 0)
-        return NaN
+        return -1
     endif
 
     Variable globalMin = NaN
@@ -2451,6 +2449,10 @@ Function sg_compute_shared_color_range()
         endif
 
         WaveStats/Q imgWave
+        if (numtype(V_min) != 0 || numtype(V_max) != 0)
+            continue
+        endif
+
         if (numtype(globalMin) != 0)
             globalMin = V_min
             globalMax = V_max
@@ -2461,11 +2463,7 @@ Function sg_compute_shared_color_range()
     endfor
 
     if (numtype(globalMin) != 0 || numtype(globalMax) != 0)
-        return NaN
-    endif
-
-    if (sg_second_derivative_view_enabled())
-        return sg_set_second_deriv_color_range(globalMin, globalMax)
+        return -1
     endif
 
     if (globalMin == globalMax)
@@ -2473,9 +2471,30 @@ Function sg_compute_shared_color_range()
         globalMax += 1e-12
     endif
 
-    cMin = globalMin
-    cMax = globalMax
+    outC0 = globalMin
+    outC1 = globalMax
+    return 0
+End
 
+Function sg_compute_shared_color_range()
+    sg_init_defaults_if_needed()
+
+    NVAR cMinState = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMaxState = root:ARPES_LJZ:SliceGallery:cMax
+
+    Variable tmpC0 = NaN
+    Variable tmpC1 = NaN
+    Variable rc = sg_compute_shared_minmax_range(tmpC0, tmpC1)
+    if (rc != 0)
+        return rc
+    endif
+
+    if (sg_second_derivative_view_enabled())
+        return sg_set_second_deriv_color_range(tmpC0, tmpC1)
+    endif
+
+    cMinState = tmpC0
+    cMaxState = tmpC1
     return 0
 End
 
@@ -2510,10 +2529,13 @@ Function sg_valid_range_or_fallback(c0, c1, context)
     return 0
 End
 
-Function sg_compute_image_percentile_range(imgWave, lowPct, highPct, c0, c1)
+Function sg_compute_image_percentile_range(imgWave, lowPct, highPct, outC0, outC1)
     Wave imgWave
     Variable lowPct, highPct
-    Variable &c0, &c1
+    Variable &outC0, &outC1
+
+    outC0 = NaN
+    outC1 = NaN
 
     Variable nx = DimSize(imgWave, 0), ny = DimSize(imgWave, 1)
     Make/FREE/N=(max(1, nx*ny)) sgVals
@@ -2528,8 +2550,6 @@ Function sg_compute_image_percentile_range(imgWave, lowPct, highPct, c0, c1)
         endfor
     endfor
     if (n < 2)
-        c0 = 0; c1 = 1
-        Print "SliceGallery warning: percentile range has fewer than 2 valid points; fallback to 0..1"
         return -1
     endif
     Redimension/N=(n) sgVals
@@ -2538,14 +2558,21 @@ Function sg_compute_image_percentile_range(imgWave, lowPct, highPct, c0, c1)
     highPct = max(0, min(100, highPct))
     Variable loIdx = round((n - 1) * lowPct / 100)
     Variable hiIdx = round((n - 1) * highPct / 100)
-    c0 = sgVals[loIdx]
-    c1 = sgVals[hiIdx]
-    return sg_valid_range_or_fallback(c0, c1, "percentile")
+    outC0 = sgVals[loIdx]
+    outC1 = sgVals[hiIdx]
+    if (numtype(outC0) != 0 || numtype(outC1) != 0 || outC0 >= outC1)
+        return -1
+    endif
+    return 0
 End
 
-Function sg_compute_selected_robust_range(lowPct, highPct, c0, c1)
+Function sg_compute_selected_robust_range(lowPct, highPct, outC0, outC1)
     Variable lowPct, highPct
-    Variable &c0, &c1
+    Variable &outC0, &outC1
+
+    outC0 = NaN
+    outC1 = NaN
+
     Wave selLayers = root:ARPES_LJZ:SliceGallery:selLayers
     Variable nSel = DimSize(selLayers, 0), i, nx, ny, p, q, n = 0, v
     Variable total = 1
@@ -2572,16 +2599,88 @@ Function sg_compute_selected_robust_range(lowPct, highPct, c0, c1)
         endfor
     endfor
     if (n < 2)
-        c0 = 0; c1 = 1
-        Print "SliceGallery warning: selected robust range has fewer than 2 valid points; fallback to 0..1"
         return -1
     endif
     Redimension/N=(n) sgVals
     Sort sgVals, sgVals
     lowPct = max(0, min(100, lowPct)); highPct = max(0, min(100, highPct))
-    c0 = sgVals[round((n-1)*lowPct/100)]
-    c1 = sgVals[round((n-1)*highPct/100)]
-    return sg_valid_range_or_fallback(c0, c1, "selected robust")
+    outC0 = sgVals[round((n-1)*lowPct/100)]
+    outC1 = sgVals[round((n-1)*highPct/100)]
+    if (numtype(outC0) != 0 || numtype(outC1) != 0 || outC0 >= outC1)
+        return -1
+    endif
+    return 0
+End
+
+Function sg_compute_grouped_robust_range_for_panel(panelIdx, groupSize, lowPct, highPct, outC0, outC1)
+    Variable panelIdx, groupSize, lowPct, highPct
+    Variable &outC0, &outC1
+
+    outC0 = NaN
+    outC1 = NaN
+
+    Wave selLayers = root:ARPES_LJZ:SliceGallery:selLayers
+    Variable nSel = DimSize(selLayers,0), gs = max(1, round(groupSize))
+    if (nSel <= 0)
+        return -1
+    endif
+
+    Variable i0 = floor(max(0, round(panelIdx)) / gs) * gs
+    Variable i1 = min(nSel - 1, i0 + gs - 1)
+    Variable i, p, q, nx, ny, n = 0, total = 1, v
+
+    for (i = i0; i <= i1; i += 1)
+        Wave/Z w = $(sg_preview_tmp_df() + sg_img_name_from_index(i))
+        if (WaveExists(w))
+            total += DimSize(w,0) * DimSize(w,1)
+        endif
+    endfor
+
+    Make/FREE/N=(total) sgVals
+    for (i = i0; i <= i1; i += 1)
+        Wave/Z w2 = $(sg_preview_tmp_df() + sg_img_name_from_index(i))
+        if (!WaveExists(w2))
+            continue
+        endif
+        nx = DimSize(w2,0); ny = DimSize(w2,1)
+        for (q = 0; q < ny; q += 1)
+            for (p = 0; p < nx; p += 1)
+                v = w2[p][q]
+                if (numtype(v) == 0)
+                    sgVals[n] = v; n += 1
+                endif
+            endfor
+        endfor
+    endfor
+
+    if (n < 2)
+        return -1
+    endif
+
+    Redimension/N=(n) sgVals
+    Sort sgVals, sgVals
+    lowPct = max(0, min(100, lowPct)); highPct = max(0, min(100, highPct))
+    outC0 = sgVals[round((n-1)*lowPct/100)]
+    outC1 = sgVals[round((n-1)*highPct/100)]
+    if (numtype(outC0) != 0 || numtype(outC1) != 0 || outC0 >= outC1)
+        return -1
+    endif
+    return 0
+End
+
+Function sg_compute_ref_robust_range(refPanelIndex, lowPct, highPct, outC0, outC1)
+    Variable refPanelIndex, lowPct, highPct
+    Variable &outC0, &outC1
+
+    outC0 = NaN
+    outC1 = NaN
+
+    Wave/Z w = $(sg_preview_tmp_df() + sg_img_name_from_index(max(0, round(refPanelIndex))))
+    if (!WaveExists(w))
+        return -1
+    endif
+
+    return sg_compute_image_percentile_range(w, lowPct, highPct, outC0, outC1)
 End
 
 Function sg_compute_grouped_robust_ranges(groupSize)
@@ -2590,113 +2689,149 @@ Function sg_compute_grouped_robust_ranges(groupSize)
     NVAR robustLowPct = root:ARPES_LJZ:SliceGallery:robustLowPct
     NVAR robustHighPct = root:ARPES_LJZ:SliceGallery:robustHighPct
     Variable nSel = DimSize(selLayers,0), gs = max(1, round(groupSize))
-    Variable nGroups = max(1, ceil(nSel / gs)), g, i0, i1, i, c0, c1
-    Variable p, q, nx, ny, n, total, v
+    Variable nGroups = max(1, ceil(nSel / gs)), g, tmpC0, tmpC1, rc
     Make/O/N=(nGroups) root:ARPES_LJZ:SliceGallery:TMP:groupCMin, root:ARPES_LJZ:SliceGallery:TMP:groupCMax
     Wave groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
     Wave groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
     for (g = 0; g < nGroups; g += 1)
-        i0 = g * gs; i1 = min(nSel - 1, i0 + gs - 1)
-        total = 1
-        for (i = i0; i <= i1; i += 1)
-            Wave/Z w = $(sg_preview_tmp_df() + sg_img_name_from_index(i))
-            if (WaveExists(w))
-                total += DimSize(w,0) * DimSize(w,1)
-            endif
-        endfor
-        Make/FREE/N=(total) sgVals
-        n = 0
-        for (i = i0; i <= i1; i += 1)
-            Wave/Z w2 = $(sg_preview_tmp_df() + sg_img_name_from_index(i))
-            if (!WaveExists(w2))
-                continue
-            endif
-            nx = DimSize(w2,0); ny = DimSize(w2,1)
-            for (q = 0; q < ny; q += 1)
-                for (p = 0; p < nx; p += 1)
-                    v = w2[p][q]
-                    if (numtype(v) == 0)
-                        sgVals[n] = v; n += 1
-                    endif
-                endfor
-            endfor
-        endfor
-        if (n >= 2)
-            Redimension/N=(n) sgVals
-            Sort sgVals, sgVals
-            c0 = sgVals[round((n-1)*robustLowPct/100)]
-            c1 = sgVals[round((n-1)*robustHighPct/100)]
-        else
-            c0 = 0; c1 = 1
-            Print "SliceGallery warning: grouped robust range has fewer than 2 valid points; fallback to 0..1"
+        tmpC0 = NaN
+        tmpC1 = NaN
+        rc = sg_compute_grouped_robust_range_for_panel(g * gs, gs, robustLowPct, robustHighPct, tmpC0, tmpC1)
+        if (rc != 0)
+            tmpC0 = 0
+            tmpC1 = 1
+            Print "SliceGallery warning: invalid grouped robust range, using 0..1 fallback."
         endif
-        sg_valid_range_or_fallback(c0, c1, "grouped robust")
-        groupCMin[g] = c0; groupCMax[g] = c1
+        groupCMin[g] = tmpC0; groupCMax[g] = tmpC1
     endfor
     return 0
 End
 
-Function sg_compute_symmetric_zero_range(pct, c0, c1)
-    Variable pct, &c0, &c1
-    Variable a0, a1
-    sg_compute_selected_robust_range(100-pct, pct, a0, a1)
+Function sg_compute_symmetric_zero_range(pct, outC0, outC1)
+    Variable pct
+    Variable &outC0, &outC1
+
+    outC0 = NaN
+    outC1 = NaN
+
+    Variable a0 = NaN, a1 = NaN
+    Variable rc = sg_compute_selected_robust_range(100-pct, pct, a0, a1)
+    if (rc != 0)
+        return rc
+    endif
     Variable a = max(abs(a0), abs(a1))
-    c0 = -a; c1 = a
-    return sg_valid_range_or_fallback(c0, c1, "symmetric zero")
+    outC0 = -a; outC1 = a
+    if (numtype(outC0) != 0 || numtype(outC1) != 0 || outC0 >= outC1)
+        return -1
+    endif
+    return 0
 End
 
-Function sg_compute_negative_to_zero_range(lowPct, c0, c1)
-    Variable lowPct, &c0, &c1
-    Variable dummy
-    sg_compute_selected_robust_range(lowPct, 50, c0, dummy)
-    c1 = 0
-    return sg_valid_range_or_fallback(c0, c1, "negative to zero")
+Function sg_compute_negative_to_zero_range(lowPct, outC0, outC1)
+    Variable lowPct
+    Variable &outC0, &outC1
+
+    outC0 = NaN
+    outC1 = NaN
+
+    Variable dummy = NaN
+    Variable rc = sg_compute_selected_robust_range(lowPct, 50, outC0, dummy)
+    if (rc != 0)
+        return rc
+    endif
+    outC1 = 0
+    if (numtype(outC0) != 0 || outC0 >= outC1)
+        return -1
+    endif
+    return 0
 End
 
-Function sg_compute_positive_from_zero_range(highPct, c0, c1)
-    Variable highPct, &c0, &c1
-    Variable dummy
-    sg_compute_selected_robust_range(50, highPct, dummy, c1)
-    c0 = 0
-    return sg_valid_range_or_fallback(c0, c1, "positive from zero")
+Function sg_compute_positive_from_zero_range(highPct, outC0, outC1)
+    Variable highPct
+    Variable &outC0, &outC1
+
+    outC0 = NaN
+    outC1 = NaN
+
+    Variable dummy = NaN
+    Variable rc = sg_compute_selected_robust_range(50, highPct, dummy, outC1)
+    if (rc != 0)
+        return rc
+    endif
+    outC0 = 0
+    if (numtype(outC1) != 0 || outC0 >= outC1)
+        return -1
+    endif
+    return 0
 End
 
-Function sg_prepare_color_range_for_render()
+Function sg_prepare_color_range_for_render(panelIdx, useFixedRangeOut, fixedC0Out, fixedC1Out)
+    Variable panelIdx
+    Variable &useFixedRangeOut
+    Variable &fixedC0Out
+    Variable &fixedC1Out
+
+    sg_init_defaults_if_needed()
+
     NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
-    NVAR cMin = root:ARPES_LJZ:SliceGallery:cMin
-    NVAR cMax = root:ARPES_LJZ:SliceGallery:cMax
     NVAR robustLowPct = root:ARPES_LJZ:SliceGallery:robustLowPct
     NVAR robustHighPct = root:ARPES_LJZ:SliceGallery:robustHighPct
+    NVAR cMinState = root:ARPES_LJZ:SliceGallery:cMin
+    NVAR cMaxState = root:ARPES_LJZ:SliceGallery:cMax
     NVAR groupSize = root:ARPES_LJZ:SliceGallery:groupSize
     NVAR refPanelIndex = root:ARPES_LJZ:SliceGallery:refPanelIndex
     NVAR zeroSymPct = root:ARPES_LJZ:SliceGallery:zeroSymPct
-    Variable cm = round(colorMode), c0, c1
-    if (sg_second_derivative_view_enabled() || cm == 1)
-        sg_compute_shared_color_range(); return 1
-    elseif (cm == 2)
+
+    Variable tmpC0 = NaN
+    Variable tmpC1 = NaN
+    Variable rc = 0
+
+    useFixedRangeOut = 0
+    fixedC0Out = NaN
+    fixedC1Out = NaN
+
+    if (colorMode == 0)
+        useFixedRangeOut = 0
+        return 0
+    elseif (colorMode == 1)
+        rc = sg_compute_shared_minmax_range(tmpC0, tmpC1)
+    elseif (colorMode == 2)
         if (sg_validate_manual_color_range() != 0)
-            cMin = 0; cMax = 1
+            return -1
         endif
-        return 1
-    elseif (cm == 3)
-        sg_compute_selected_robust_range(robustLowPct, robustHighPct, cMin, cMax); return 1
-    elseif (cm == 4)
-        sg_compute_grouped_robust_ranges(groupSize); return 2
-    elseif (cm == 5)
-        Wave/Z w = $(sg_preview_tmp_df() + sg_img_name_from_index(max(0, round(refPanelIndex))))
-        if (WaveExists(w))
-            sg_compute_image_percentile_range(w, robustLowPct, robustHighPct, cMin, cMax)
-        else
-            cMin = 0; cMax = 1; Print "SliceGallery warning: LockFromRef missing ref panel; fallback to 0..1"
-        endif
-        return 1
-    elseif (cm == 6)
-        sg_compute_symmetric_zero_range(zeroSymPct, cMin, cMax); return 1
-    elseif (cm == 7)
-        sg_compute_negative_to_zero_range(robustLowPct, cMin, cMax); return 1
-    elseif (cm == 8)
-        sg_compute_positive_from_zero_range(robustHighPct, cMin, cMax); return 1
+        tmpC0 = cMinState
+        tmpC1 = cMaxState
+        rc = 0
+    elseif (colorMode == 3)
+        rc = sg_compute_selected_robust_range(robustLowPct, robustHighPct, tmpC0, tmpC1)
+    elseif (colorMode == 4)
+        rc = sg_compute_grouped_robust_range_for_panel(panelIdx, groupSize, robustLowPct, robustHighPct, tmpC0, tmpC1)
+    elseif (colorMode == 5)
+        rc = sg_compute_ref_robust_range(refPanelIndex, robustLowPct, robustHighPct, tmpC0, tmpC1)
+    elseif (colorMode == 6)
+        rc = sg_compute_symmetric_zero_range(zeroSymPct, tmpC0, tmpC1)
+    elseif (colorMode == 7)
+        rc = sg_compute_negative_to_zero_range(robustLowPct, tmpC0, tmpC1)
+    elseif (colorMode == 8)
+        rc = sg_compute_positive_from_zero_range(robustHighPct, tmpC0, tmpC1)
+    else
+        useFixedRangeOut = 0
+        return 0
     endif
+
+    if (rc != 0 || numtype(tmpC0) != 0 || numtype(tmpC1) != 0 || tmpC0 >= tmpC1)
+        Print "SliceGallery warning: invalid color range, using 0..1 fallback."
+        tmpC0 = 0
+        tmpC1 = 1
+    endif
+
+    useFixedRangeOut = 1
+    fixedC0Out = tmpC0
+    fixedC1Out = tmpC1
+
+    cMinState = tmpC0
+    cMaxState = tmpC1
+
     return 0
 End
 
@@ -3010,13 +3145,6 @@ Function sg_render_preview_legacytight()
     NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode  = root:ARPES_LJZ:SliceGallery:colorMode
 
-    Variable rangeMode = sg_prepare_color_range_for_render()
-    Variable useFixedRange = (rangeMode == 1)
-    NVAR cMinNow = root:ARPES_LJZ:SliceGallery:cMin
-    NVAR cMaxNow = root:ARPES_LJZ:SliceGallery:cMax
-    Variable fixedC0 = cMinNow
-    Variable fixedC1 = cMaxNow
-
     Variable layoutCode = sg_get_layout_code(nSel, layoutMode)
     Variable nRows = sg_layout_rows_from_code(layoutCode)
     Variable nCols = sg_layout_cols_from_code(layoutCode)
@@ -3078,17 +3206,12 @@ Function sg_render_preview_legacytight()
         Display/W=(0,0,graphW,graphH)/N=$graphName
         AppendImage/W=$graphName imgWave
 
-        Variable thisUseFixedRange = useFixedRange
-        Variable thisC0 = fixedC0
-        Variable thisC1 = fixedC1
-        if (rangeMode == 2)
-            Wave groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
-            Wave groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
-            NVAR groupSize = root:ARPES_LJZ:SliceGallery:groupSize
-            Variable gIdx = floor(i / max(1, round(groupSize)))
-            thisUseFixedRange = 1
-            thisC0 = groupCMin[gIdx]
-            thisC1 = groupCMax[gIdx]
+        Variable thisUseFixedRange = 0
+        Variable thisC0 = NaN
+        Variable thisC1 = NaN
+        if (sg_prepare_color_range_for_render(i, thisUseFixedRange, thisC0, thisC1) != 0)
+            DoAlert 0, "SliceGallery: failed to prepare color range."
+            return -1
         endif
         sg_apply_image_style_basic(graphName, imgName, thisUseFixedRange, thisC0, thisC1)
         sg_apply_panel_textbox(graphName, layerIdx)
@@ -3202,13 +3325,6 @@ Function sg_render_preview_equalplot()
     NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode  = root:ARPES_LJZ:SliceGallery:colorMode
 
-    Variable rangeMode = sg_prepare_color_range_for_render()
-    Variable useFixedRange = (rangeMode == 1)
-    NVAR cMinNow = root:ARPES_LJZ:SliceGallery:cMin
-    NVAR cMaxNow = root:ARPES_LJZ:SliceGallery:cMax
-    Variable fixedC0 = cMinNow
-    Variable fixedC1 = cMaxNow
-
     Variable layoutCode = sg_get_layout_code(nSel, layoutMode)
     Variable nRows = sg_layout_rows_from_code(layoutCode)
     Variable nCols = sg_layout_cols_from_code(layoutCode)
@@ -3277,17 +3393,12 @@ Function sg_render_preview_equalplot()
         Display/W=(0,0,thisGraphW,thisGraphH)/N=$graphName
         AppendImage/W=$graphName imgWave
 
-        Variable thisUseFixedRange = useFixedRange
-        Variable thisC0 = fixedC0
-        Variable thisC1 = fixedC1
-        if (rangeMode == 2)
-            Wave groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
-            Wave groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
-            NVAR groupSize = root:ARPES_LJZ:SliceGallery:groupSize
-            Variable gIdx = floor(i / max(1, round(groupSize)))
-            thisUseFixedRange = 1
-            thisC0 = groupCMin[gIdx]
-            thisC1 = groupCMax[gIdx]
+        Variable thisUseFixedRange = 0
+        Variable thisC0 = NaN
+        Variable thisC1 = NaN
+        if (sg_prepare_color_range_for_render(i, thisUseFixedRange, thisC0, thisC1) != 0)
+            DoAlert 0, "SliceGallery: failed to prepare color range."
+            return -1
         endif
         sg_apply_image_style_basic(graphName, imgName, thisUseFixedRange, thisC0, thisC1)
         sg_apply_panel_textbox(graphName, layerIdx)
@@ -3469,13 +3580,6 @@ Function sg_export_current_preview()
     NVAR displayMode = root:ARPES_LJZ:SliceGallery:displayMode
     NVAR colorMode = root:ARPES_LJZ:SliceGallery:colorMode
 
-    Variable rangeMode = sg_prepare_color_range_for_render()
-    Variable useFixedRange = (rangeMode == 1)
-    NVAR cMinNow = root:ARPES_LJZ:SliceGallery:cMin
-    NVAR cMaxNow = root:ARPES_LJZ:SliceGallery:cMax
-    Variable fixedC0 = cMinNow
-    Variable fixedC1 = cMaxNow
-
     layoutCode = sg_get_layout_code(nSel, layoutMode)
     nCols = sg_layout_cols_from_code(layoutCode)
 
@@ -3520,17 +3624,12 @@ Function sg_export_current_preview()
             Display/W=(0,0,thisGraphW,plotH)/N=$gname
             AppendImage/W=$gname imgWave
 
-            Variable thisUseFixedRange = useFixedRange
-            Variable thisC0 = fixedC0
-            Variable thisC1 = fixedC1
-            if (rangeMode == 2)
-                Wave groupCMin = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
-                Wave groupCMax = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
-                NVAR groupSize = root:ARPES_LJZ:SliceGallery:groupSize
-                Variable gIdx = floor(i / max(1, round(groupSize)))
-                thisUseFixedRange = 1
-                thisC0 = groupCMin[gIdx]
-                thisC1 = groupCMax[gIdx]
+            Variable thisUseFixedRange = 0
+            Variable thisC0 = NaN
+            Variable thisC1 = NaN
+            if (sg_prepare_color_range_for_render(i, thisUseFixedRange, thisC0, thisC1) != 0)
+                DoAlert 0, "SliceGallery: failed to prepare color range."
+                return -1
             endif
             sg_apply_image_style_basic(gname, NameOfWave(imgWave), thisUseFixedRange, thisC0, thisC1)
             sg_apply_panel_textbox(gname, layerIdx)
@@ -3589,17 +3688,12 @@ Function sg_export_current_preview()
             Display/W=(0,0,graphW,graphH)/N=$gname2
             AppendImage/W=$gname2 imgWave2
 
-            Variable thisUseFixedRange2 = useFixedRange
-            Variable thisC02 = fixedC0
-            Variable thisC12 = fixedC1
-            if (rangeMode == 2)
-                Wave groupCMin2 = root:ARPES_LJZ:SliceGallery:TMP:groupCMin
-                Wave groupCMax2 = root:ARPES_LJZ:SliceGallery:TMP:groupCMax
-                NVAR groupSize2 = root:ARPES_LJZ:SliceGallery:groupSize
-                Variable gIdx2 = floor(i / max(1, round(groupSize2)))
-                thisUseFixedRange2 = 1
-                thisC02 = groupCMin2[gIdx2]
-                thisC12 = groupCMax2[gIdx2]
+            Variable thisUseFixedRange2 = 0
+            Variable thisC02 = NaN
+            Variable thisC12 = NaN
+            if (sg_prepare_color_range_for_render(i, thisUseFixedRange2, thisC02, thisC12) != 0)
+                DoAlert 0, "SliceGallery: failed to prepare color range."
+                return -1
             endif
             sg_apply_image_style_basic(gname2, NameOfWave(imgWave2), thisUseFixedRange2, thisC02, thisC12)
             sg_apply_panel_textbox(gname2, layerIdx)
