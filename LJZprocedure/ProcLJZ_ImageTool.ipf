@@ -200,6 +200,203 @@ End
 
 // *** Image Procs and Functions *****
 
+// *** Safe indexing helpers *****
+
+Function IT_is_finite(v)
+	Variable v
+	return numtype(v) == 0
+End
+
+Function IT_clamp_index(idx, n)
+	Variable idx, n
+
+	if (numtype(idx) != 0 || n <= 0)
+		return 0
+	endif
+
+	idx = round(idx)
+	return max(0, min(n - 1, idx))
+End
+
+Function IT_dim_min(w, dim)
+	Wave w
+	Variable dim
+
+	Variable n = DimSize(w, dim)
+	Variable off = DimOffset(w, dim)
+	Variable del = DimDelta(w, dim)
+
+	if (n <= 0 || numtype(off) != 0 || numtype(del) != 0)
+		return NaN
+	endif
+
+	if (del >= 0)
+		return off
+	endif
+	return off + del * (n - 1)
+End
+
+Function IT_dim_max(w, dim)
+	Wave w
+	Variable dim
+
+	Variable n = DimSize(w, dim)
+	Variable off = DimOffset(w, dim)
+	Variable del = DimDelta(w, dim)
+
+	if (n <= 0 || numtype(off) != 0 || numtype(del) != 0)
+		return NaN
+	endif
+
+	if (del >= 0)
+		return off + del * (n - 1)
+	endif
+	return off
+End
+
+Function IT_clamp_coord_to_dim(w, dim, coord)
+	Wave w
+	Variable dim, coord
+
+	Variable lo = IT_dim_min(w, dim)
+	Variable hi = IT_dim_max(w, dim)
+
+	if (numtype(coord) != 0 || numtype(lo) != 0 || numtype(hi) != 0)
+		return 0
+	endif
+
+	return max(lo, min(hi, coord))
+End
+
+Function IT_coord_to_index_clamped(w, dim, coord)
+	Wave w
+	Variable dim, coord
+
+	Variable n = DimSize(w, dim)
+	Variable off = DimOffset(w, dim)
+	Variable del = DimDelta(w, dim)
+
+	if (n <= 0 || numtype(off) != 0 || numtype(del) != 0 || abs(del) < 1e-15 || numtype(coord) != 0)
+		return 0
+	endif
+
+	Variable idx = round((coord - off) / del)
+	return IT_clamp_index(idx, n)
+End
+
+Function IT_index_to_coord(w, dim, idx)
+	Wave w
+	Variable dim, idx
+
+	Variable n = DimSize(w, dim)
+	idx = IT_clamp_index(idx, n)
+	return DimOffset(w, dim) + DimDelta(w, dim) * idx
+End
+
+Function IT_read2D_safe(w, xq, yq)
+	Wave w
+	Variable xq, yq
+
+	if (!WaveExists(w) || WaveDims(w) < 2)
+		return NaN
+	endif
+
+	Variable ix = IT_coord_to_index_clamped(w, 0, xq)
+	Variable iy = IT_coord_to_index_clamped(w, 1, yq)
+
+	return w[ix][iy]
+End
+
+Function IT_read3D_index_safe(w, ix, iy, iz)
+	Wave w
+	Variable ix, iy, iz
+
+	if (!WaveExists(w) || WaveDims(w) < 3)
+		return NaN
+	endif
+
+	ix = IT_clamp_index(ix, DimSize(w, 0))
+	iy = IT_clamp_index(iy, DimSize(w, 1))
+	iz = IT_clamp_index(iz, DimSize(w, 2))
+
+	return w[ix][iy][iz]
+End
+
+Function IT_read3D_coord_safe(w, xq, yq, zq)
+	Wave w
+	Variable xq, yq, zq
+
+	if (!WaveExists(w) || WaveDims(w) < 3)
+		return NaN
+	endif
+
+	Variable ix = IT_coord_to_index_clamped(w, 0, xq)
+	Variable iy = IT_coord_to_index_clamped(w, 1, yq)
+	Variable iz = IT_coord_to_index_clamped(w, 2, zq)
+
+	return w[ix][iy][iz]
+End
+
+Function IT_UpdateProfileZSafe(df)
+	String df
+
+	if (!DataFolderExists(df))
+		return -1
+	endif
+
+	String curr = GetDataFolder(1)
+	SetDataFolder $df
+		SVAR datnam = datnam
+		WAVE/Z vol = $datnam
+		WAVE profileZ = profileZ
+		NVAR islicedir = islicedir
+		NVAR X0 = X0
+		NVAR Y0 = Y0
+		NVAR Z0 = Z0
+	SetDataFolder $curr
+
+	if (!WaveExists(vol) || WaveDims(vol) != 3)
+		return -1
+	endif
+
+	Variable idir = 3 - islicedir
+	Variable nz = DimSize(vol, idir)
+	if (nz <= 0)
+		Redimension/N=0 profileZ
+		return -1
+	endif
+
+	Redimension/N=(nz) profileZ
+	SetScale/P x DimOffset(vol, idir), DimDelta(vol, idir), WaveUnits(vol, idir), profileZ
+
+	Variable ix, iy, iz
+
+	switch (islicedir)
+		case 1:		// XY/Z: profile along original z, fixed x/y
+			ix = IT_coord_to_index_clamped(vol, 0, X0)
+			iy = IT_coord_to_index_clamped(vol, 1, Y0)
+			profileZ = IT_read3D_index_safe(vol, ix, iy, p)
+			break
+
+		case 2:		// XZ/Y: profile along original y, fixed x/z
+			ix = IT_coord_to_index_clamped(vol, 0, X0)
+			iz = IT_coord_to_index_clamped(vol, 2, Y0)
+			profileZ = IT_read3D_index_safe(vol, ix, p, iz)
+			break
+
+		case 3:		// YZ/X: profile along original x, fixed y/z
+			iy = IT_coord_to_index_clamped(vol, 1, X0)
+			iz = IT_coord_to_index_clamped(vol, 2, Y0)
+			profileZ = IT_read3D_index_safe(vol, p, iy, iz)
+			break
+
+		default:
+			return -1
+	endswitch
+
+	return 0
+End
+
 Function IT_InitImageTool(df)
 //===============
 	string df
@@ -218,6 +415,7 @@ Function IT_InitImageTool(df)
 		string/G imgnam, imgfldr, imgproc, imgproc_undo, exportn,datnam=""
 		String/G statusMsg = "Ready"
 		variable/G X0=0, Y0=0, D0
+		Variable/G safeMode = 1
 		variable/G nx=111, ny=101,center, width
 		variable/G xmin=0, xinc=1, xmax, ymin=0, yinc=1, ymax
 		variable/G dmin0, dmax0, dmin=0, dmax=1
@@ -328,9 +526,9 @@ Function IT_InitImageTool(df)
 		//setformula $(df+"vimg_ct")  ,"RedTemp_CT[pmap[p]][q]"
 
 
-		setformula $(df+"profileH") , "image("+df+"profileH_x)("+df+"Y0)"
-		setformula $(df+"profileV"), "image("+df+"X0)("+df+"profileV_y)"
-		setformula $(df+"D0") ,  df+"image("+df+"X0)("+df+"Y0)"
+		setformula $(df+"profileH"), "IT_read2D_safe("+df+"image,"+df+"profileH_x,"+df+"Y0)"
+		setformula $(df+"profileV"), "IT_read2D_safe("+df+"image,"+df+"X0,"+df+"profileV_y)"
+		setformula $(df+"D0"), "IT_read2D_safe("+df+"image,"+df+"X0,"+df+"Y0)"
 		//profileH:=image(profileH_x)(<tool-df>Y0)
 		//profileV:=image(<tool-df>X0)(profileV_y)
 		//profileZ:=$datnam(<tool-df>X0)(<tool-df>Y0)(x)
@@ -450,7 +648,7 @@ Function/S IT_ShowImageTool_( df, imgn )
 	//Resize Panel (OS specific)
 	string os=IgorInfo(2)
 	if (stringmatch(os[0,2],"Win"))
-		MoveWindow/W=$df 300,120,900,640
+		MoveWindow/W=$df 260,90,960,660
 	else	   //Mac
 		//MoveWindow/W=ImageTool 341,146,993,639
 	endif
@@ -496,7 +694,7 @@ Function IT_Image_Tool(df) : Graph
 		return -1
 	endif
 	string dfn=StringFromList(1,df,":")
-	Display /W=(300,120,900,640) HairY0 vs HairX0 as dfn
+	Display /W=(260,90,960,660) HairY0 vs HairX0 as dfn
 	DoWindow/C $dfn
 	AppendToGraph/L=lineX profileH vs profileH_x
 	AppendToGraph/B=lineY profileV_y vs profileV
@@ -507,7 +705,7 @@ Function IT_Image_Tool(df) : Graph
 	SetDataFolder $fldrSav
 	ModifyGraph cbRGB=(61166,61166,61166)
 	ModifyGraph gbRGB=(65535,65535,65535)
-	ModifyGraph rgb(HairY0)=(0,65535,65535),rgb(HairX1)=(0,65535,65535),rgb(HairY1)=(0,65535,65535)
+	ModifyGraph rgb(HairY0)=(65535,32768,0),rgb(HairX1)=(65535,32768,0),rgb(HairY1)=(0,32768,65535)
 	ModifyGraph quickdrag(HairY0)=1,quickdrag(HairX1)=1,quickdrag(HairY1)=1
 	ModifyGraph offset(HairY0)={352,2.99988},offset(HairX1)={352,0},offset(HairY1)={0,2.99988}
 	ModifyGraph mirror(left)=3,mirror(bottom)=3,mirror(lineX)=2,mirror(lineY)=2
@@ -524,32 +722,34 @@ Function IT_Image_Tool(df) : Graph
 	ModifyGraph axisEnab(lineX)={0.75,1}
 	ModifyGraph axisEnab(lineY)={0.75,1}
 	ShowInfo
-	TextBox/N=title/F=0/A=MT/X=-4.28/Y=1.90/E "\\Z09ProcLJZ ImageTool"
-	ControlBar 56
-	Button LoadImg,pos={4,3},size={42,20},proc=IT_NewImg,title="Load",fSize=9
+	TextBox/N=title/F=0/A=MT/X=-3/Y=1/E "\\Z09ProcLJZ ImageTool"
+	ControlBar 72
+	TitleBox itHeader,pos={8,4},size={120,14},title="ProcLJZ IT",frame=0,fSize=10,fStyle=1
+	TitleBox it_status,pos={132,4},size={180,14},title="Ready",frame=0,fSize=9
+	Button LoadImg,pos={320,3},size={45,20},proc=IT_NewImg,title="Load",fSize=9
 	Button LoadImg,help={"Select 2D image array in memory to copy to the ImageTool Panel"}
-	Button LoadCurrent,pos={49,3},size={55,20},proc=IT_btn_load_current,title="Current",fSize=9
+	Button LoadCurrent,pos={370,3},size={60,20},proc=IT_btn_load_current,title="Current",fSize=9
 	Button LoadCurrent,help={"Load first image wave from the top graph, or selected/current 2D/3D wave if available."}
-	SetVariable setX0,pos={67,30},size={70,14},proc=IT_SetHairXY,title="X",fSize=9
+	SetVariable setX0,pos={16,50},size={70,15},proc=IT_SetHairXY,title="X",fSize=9
 	SetVariable setX0,help={"Cross hair X-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
 	SetVariable setX0,limits={213,491,1},value=$(df+"X0")	//<tool-df>X0
-	SetVariable setY0,pos={141,30},size={70,14},proc=IT_SetHairXY,title="Y",fSize=9
+	SetVariable setY0,pos={92,50},size={70,15},proc=IT_SetHairXY,title="Y",fSize=9
 	SetVariable setY0,help={"Cross hair Y-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
 	SetVariable setY0,limits={-6.00024,12,0.031972},value= $(df+"Y0")
-	ValDisplay valD0,pos={214,30},size={61,14},title="D",fSize=9
+	ValDisplay valD0,pos={168,50},size={70,15},title="D",fSize=9
 	ValDisplay valD0,help={"Image intensity value at current cross hair (X,Y) location.  "}
 	ValDisplay valD0,limits={0,0,0},barmisc={0,1000}
 		//ValDisplay valD0,value= D0			//can't use local variables
 		execute "ValDisplay valD0,value="+df+"D0"
-	ValDisplay nptx,pos={281,30},size={45,14},title="Nx",fSize=9
+	ValDisplay nptx,pos={246,50},size={50,15},title="Nx",fSize=9
 	ValDisplay nptx,help={"Number of horizontal pixels of current image."}
 	ValDisplay nptx,limits={0,0,0},barmisc={0,1000}			//,value= nx
 		execute "ValDisplay nptx,value="+df+"nx"
-	ValDisplay npty,pos={328,30},size={46,14},title="Ny",fSize=9
+	ValDisplay npty,pos={302,50},size={50,15},title="Ny",fSize=9
 	ValDisplay npty,help={"Number of vertical pixels of current image."}
 	ValDisplay npty,limits={0,0,0},barmisc={0,1000}		//,value=ny
 		execute "ValDisplay npty,value="+df+"ny"
-	ValDisplay nptz,pos={377,30},size={45,14},title="Nz",fSize=9
+	ValDisplay nptz,pos={358,50},size={50,15},title="Nz",fSize=9
 	ValDisplay nptz,help={"Number of slices in 3D data set."}
 	ValDisplay nptz,limits={0,0,0},barmisc={0,1000}			//,value= <tool-df>nz
 		execute "ValDisplay nptz,value="+df+"nz"
@@ -581,9 +781,12 @@ Function IT_Image_Tool(df) : Graph
 	//PopupMenu SelectCT,mode=0,value= #"\"Grayscale;Red Temp;Invert;Rescale\""
 	//Popupmenu selectCT,mode=0,value="Invert;Rescale;"+colornameslist()     //ER
 	Popupmenu selectCT,mode=0,value="Invert;Rescale;"+CTnamelist(2)         //JD
-	Button ShowHelp,pos={604,3},size={18,20},proc=IT_ShowWin,title="?",fSize=9
+	Button ShowHelp,pos={642,3},size={22,20},proc=IT_ShowWin,title="?",fSize=9
 	Button ShowHelp,help={"Show shortcut & version history notebook"}
-	TabControl imgtab,pos={105,2},size={495,46},proc=IT_ImgTabProc,fSize=9
+	CheckBox itSafe,pos={500,50},size={80,14},title="Safe",fSize=9
+	CheckBox itSafe,variable=$(df+"safeMode")
+	CheckBox itSafe,help={"Clamp wave indices and coordinates to avoid index-out-of-range errors."}
+	TabControl imgtab,pos={8,24},size={660,44},proc=IT_ImgTabProc,fSize=9
 	TabControl imgtab,tabLabel(0)="Info"
 	TabControl imgtab,tabLabel(1)="Process",tabLabel(2)="Color"
 	TabControl imgtab,tabLabel(3)="Volume",tabLabel(4)="Export",value= 0
@@ -619,18 +822,17 @@ Function IT_Image_Tool(df) : Graph
 	CheckBox ShowImgSlices,value= 1
 	CheckBox lockColors,pos={219,26},size={80,14},disable=1,proc=IT_ColorLockCheck,title="Lock CT",fSize=9
 	CheckBox lockColors,value= 0
-	PopupMenu colorOptions,pos={309,26},size={113,20},disable=1,proc=IT_ColorOptionsProc,title="Set Colors By..."
+	PopupMenu colorOptions,pos={309,26},size={113,20},disable=1,proc=IT_ColorOptionsProc,title="Set Colors By...",fSize=9
 	PopupMenu colorOptions,mode=0,value= #"\"2D images;All XYZ Data;Last Marquee\""  //!!ER
-	Button exportprofile,pos={77,22},size={50,20},disable=1,title="Profile", proc=IT_ExportProfileFct
+	Button exportprofile,pos={77,22},size={50,20},disable=1,title="Profile", proc=IT_ExportProfileFct,fSize=9
 	Button exportprofile,help={"Export X, Y or Z profile to a separate plot (name prompted for)."}
-	Button exportimage,pos={137,22},size={50,20},disable=1,title="Image", proc=IT_ExportImageFct
+	Button exportimage,pos={137,22},size={50,20},disable=1,title="Image", proc=IT_ExportImageFct,fSize=9
 	Button exportimage,help={"Export current image or H or V slice to a separate window (name prompted for)."}
-	Button exportvolume,pos={197,22},size={55,20},disable=1,title="Volume", proc=IT_ExportVolumeFct
+	Button exportvolume,pos={197,22},size={55,20},disable=1,title="Volume", proc=IT_ExportVolumeFct,fSize=9
 	Button exportvolume,help={"Export current (modified) volume to root (name prompted for)."}
-	CheckBox cleanExport,pos={265,26},size={70,14},disable=1,title="Clean NaN"
+	CheckBox cleanExport,pos={265,26},size={70,14},disable=1,title="Clean NaN",fSize=9
 	CheckBox cleanExport,variable=$(df+"exportCleanNonFinite")
 	CheckBox cleanExport,help={"Replace NaN/Inf with 0 in exported image only. Original ImageTool data are unchanged."}
-	TitleBox it_status,pos={425,6},size={165,12},title="Ready",fSize=9,frame=0
 	TitleBox version,pos={10,28},size={35,14},fsize=9, title="v4.053",frame=0, fstyle=2
 
 	SetWindow kwTopWin,hook=IT_imgHookFcn,hookevents=3
@@ -809,6 +1011,8 @@ Function IT_set_status(msg)
 	String msg
 
 	String df = IT_getdf()
+	String dfn = StringFromList(1, df, ":")
+
 	if (DataFolderExists(df))
 		SVAR/Z statusMsg=$(df+"statusMsg")
 		if (SVAR_Exists(statusMsg))
@@ -816,16 +1020,14 @@ Function IT_set_status(msg)
 		endif
 	endif
 
-	String win = WinName(0,1)
-	DoWindow $win
+	DoWindow $dfn
 	if (V_flag)
-		TitleBox it_status,win=$win,title=msg
+		TitleBox it_status,win=$dfn,title=msg
 	endif
 
 	Print "ImageTool: " + msg
 	return 0
 End
-
 Function IT_SetupImg()		//**ER moved this out of newimg
 //============
 	silent 1; pauseupdate
@@ -872,6 +1074,7 @@ Function IT_SetupImg()		//**ER moved this out of newimg
 		return -1
 	endif
 	Wave/Z imageCT = $(df + "Image_CT")
+	SetFormula $(df+"profileZ"), ""
 	if (!WaveExists(imageCT))
 		IT_set_status("Missing Image_CT")
 		return -1
@@ -1003,6 +1206,7 @@ Function IT_SetupImg()		//**ER moved this out of newimg
 	//print dmin, dmax, dmin0, dmax0
 
 	IT_SetHairXY( "Center", 0, "", "" )
+	IT_UpdateProfileZSafe(df)
 	IT_SetProfiles()
 
 	ReplaceText/N=title "\Z09"+imgnam
@@ -1017,6 +1221,7 @@ Function IT_SetupImg()		//**ER moved this out of newimg
 	Label bottom xlbl
 	Label left ylbl
 	IT_UpdateImgSlices(0)		//**ER
+	IT_UpdateProfileZSafe(df)
 	IT_set_status("Ready")
 	//SetDataFolder $curr
 End
@@ -1084,7 +1289,7 @@ function IT_UpdateImgSlices(option)
 		NVAR ndim=ndim, islicedir=islicedir
 		WAVE image=image, h_img=h_img, v_img=v_img
 		SVAR  datnam=datnam
-		WAVE vol=$datnam				//$("root:"+datnam)  v4.023 fix
+		WAVE/Z vol=$datnam				//$("root:"+datnam)  v4.023 fix
 		NVAR lc=lockColors
 	SetDataFolder $curr
 	//print datnam, NameOfWave(vol), WaveDims($datnam), WaveDims(vol)
@@ -1108,29 +1313,32 @@ function IT_UpdateImgSlices(option)
 		px = max(0, min(DimSize(image,0)-1, px))
 		py = max(0, min(DimSize(image,1)-1, py))
 		//print x0,y0,px,py
+		if (!WaveExists(vol) || WaveDims(vol) != 3)
+			return -1
+		endif
 		switch( islicedir )
-		case 1:		//XY
+		case 1:		// XY/Z
 			if(doH)
-				h_img=vol[p][py][q]
+				h_img = IT_read3D_index_safe(vol, p, py, q)
 			endif
 			if(doV)
-				v_img=vol[px][q][p]
+				v_img = IT_read3D_index_safe(vol, px, q, p)
 			endif
 			break
-		case 2:		//XZ
+		case 2:		// XZ/Y
 			if(doH)
-				h_img=vol[p][q][py]
+				h_img = IT_read3D_index_safe(vol, p, q, py)
 			endif
 			if(doV)
-				v_img=vol[px][p][q]
+				v_img = IT_read3D_index_safe(vol, px, p, q)
 			endif
 			break
-		case 3:		//YZ
+		case 3:		// YZ/X
 			if(doH)
-				h_img=vol[q][p][py]
+				h_img = IT_read3D_index_safe(vol, q, p, py)
 			endif
 			if(doV)
-				v_img=vol[p][px][q]
+				v_img = IT_read3D_index_safe(vol, p, px, q)
 			endif
 			break
 		endswitch
@@ -1185,7 +1393,7 @@ Function IT_SelectSliceDir(ctrlName,popNum,popStr) : PopupMenuControl
 		//profileZ:=dw(x)(X0)(Y0)    //"Can't use local variable in dependency"
 		//  v4.023 fix -- remove "root:" prefix
 		//execute df+"profileZ:=root:"+datnam+"(x)("+df+"X0)("+df+"Y0)"
-		execute df+"profileZ:="+datnam+"(x)("+df+"X0)("+df+"Y0)"
+		// profileZ is updated explicitly by IT_UpdateProfileZSafe(df)
 		switch (odir)
 			case 1:
 				X=Z0;Y=Y0;Z=X0
@@ -1200,7 +1408,7 @@ Function IT_SelectSliceDir(ctrlName,popNum,popStr) : PopupMenuControl
 	endif
 	if (idir==1)	// XZ-Y
 		//profileZ:=dw(X0)(x)(Y0)
-		execute df+"profileZ:="+datnam+"("+df+"X0)(x)("+df+"Y0)"
+		// profileZ is updated explicitly by IT_UpdateProfileZSafe(df)
 		switch (odir)
 			case 1:
 				X=X0;Y=Y0;Z=Z0
@@ -1215,7 +1423,7 @@ Function IT_SelectSliceDir(ctrlName,popNum,popStr) : PopupMenuControl
 	endif
 	if (idir==2)	// XY-Z
 		//profileZ:=dw(X0)(Y0)(x)
-		execute df+"profileZ:="+datnam+"("+df+"X0)("+df+"Y0)(x)"
+		// profileZ is updated explicitly by IT_UpdateProfileZSafe(df)
 		switch (odir)
 			case 0:
 				X=Z0;Y=X0;Z=Y0
@@ -1238,6 +1446,7 @@ Function IT_SelectSliceDir(ctrlName,popNum,popStr) : PopupMenuControl
 	//IT_SelectSlice("", trunc(nz/2), "", "" )
 	IT_SelectSlice("SetZ0", Z, "", "" )
 	IT_SetSliceAvg("",nsliceavg,"","")			//also calls IT_SelectSlice()
+	IT_UpdateProfileZSafe(df)
 
 	DoWindow/F $dfn
 	//Label bottom WaveUnits(Image, 0)
@@ -1256,6 +1465,7 @@ Function IT_SelectSliceDir(ctrlName,popNum,popStr) : PopupMenuControl
 	IT_SetProfiles()
 	IT_MakeImgSlices(df)
 	IT_UpdateImgSlices(0)
+	IT_UpdateProfileZSafe(df)
 	//SetDataFolder $curr
 End
 
@@ -1307,9 +1517,15 @@ Function IT_SelectSlice(ctrlName,varNum,varStr,varName) : SetVariableControl
 
 	//string datnam=imgfldr+imgnam
 	//print datnam, islice, islicedir
+	Variable avgN = max(1, min(round(nsliceavg), nz))
+	Variable halfAvg = floor(avgN / 2)
+	if ((islice - halfAvg) < 0 || (islice + halfAvg) > (nz - 1))
+		avgN = 1
+	endif
+
 	string opt = "/"+"XYZ"[3-islicedir]
 		opt+= "/D="+df+"Image"
-		opt+=  "/AVG="+num2str(nsliceavg)
+		opt+=  "/AVG="+num2str(avgN)
 	VolSlice( dw, islice, opt )
 	//ExtractSlice( islice, $datnam, "root:IMG:Image", 3-islicedir )
 	//Duplicate/O Image Image0, Image_Undo
@@ -1318,6 +1534,8 @@ Function IT_SelectSlice(ctrlName,varNum,varStr,varName) : SetVariableControl
 	if (lockColors==0)
 		IT_AdjustCT()			// auto-rescale color table; always want on?
 	endif
+	IT_UpdateProfileZSafe(df)
+	IT_set_status("Slice OK")
 	//SetDataFolder $curr
 End
 
@@ -1591,65 +1809,71 @@ Function IT_SetHairXY(ctrlName,varNum,varStr,varName) : SetVariableControl
 		DoAlert 0, "ImageTool: active data folder not found."
 		return -1
 	endif
-	variable/C coffset=GetWaveOffset($(df+"HairY0"))
-	variable xcur=REAL(coffset), ycur=(IMAG(coffset)), pcur
+	WAVE Image=$(df+"Image")
+	NVAR X0=$(df+"X0")
+	NVAR Y0=$(df+"Y0")
+	NVAR ndim=$(df+"ndim")
 	NVAR xmin=$(df+"xmin"), xmax=$(df+"xmax")
 	NVAR ymin=$(df+"ymin"), ymax=$(df+"ymax")
-	//print "old: ", xcur, ycur
+	variable/C coffset=GetWaveOffset($(df+"HairY0"))
+	variable xcur=IT_clamp_coord_to_dim(Image, 0, REAL(coffset))
+	variable ycur=IT_clamp_coord_to_dim(Image, 1, IMAG(coffset)), pcur
+	variable newX=xcur, newY=ycur
+
 	if (cmpstr(ctrlName,"SetX0")==0)
-		ModifyGraph offset(HairX1)={varNum, 0}
-		ModifyGraph offset(HairY0)={varNum, ycur}
-		//setdatafolder $df
-		//setdatafolder img	//**ER
-		IT_UpdateImgSlices(2)	//**ER
-		//setdatafolder ::		//**ER
+		newX = varNum
 	endif
 	if (cmpstr(ctrlName,"SetY0")==0)
-		ModifyGraph offset(HairY1)={0, varNum}
-		ModifyGraph offset(HairY0)={xcur, varNum}
-		//setdatafolder $df
-		//setdatafolder img	//**ER
-		IT_UpdateImgSlices(1)	//**ER
-		//setdatafolder ::		//**ER
+		newY = varNum
 	endif
 	if (cmpstr(ctrlName,"Check")==0)
-//		print xmin,xmax, ymin,ymax
-		if ((xcur<xmin)+(xcur>xmax))
-			xcur=(xmin+xmax)/2
-			ModifyGraph offset(HairX1)={ (xmin+xmax)/2, 0}
-			ModifyGraph offset(HairY0)={ (xmin+xmax)/2, ycur}
-		endif
-		if ((ycur<ymin)+(ycur>ymax))
-			ModifyGraph offset(HairY1)={ 0, (ymin+ymax)/2 }
-			ModifyGraph offset(HairY0)={ xcur, (ymin+ymax)/2 }
-		endif
+		newX = xcur
+		newY = ycur
 	endif
 	if (CmpStr(ctrlname,"stepLeftRight")==0)
 		NVAR xinc=$(df+"xinc")
-		pcur=round((xcur-xmin)/xinc)
-		xcur=xmin+pcur*xinc
-		ModifyGraph offset(HairX1)={xcur+sign(VarNum)*sign(xinc)*xinc, 0}
-		ModifyGraph offset(HairY0)={xcur+sign(VarNum)*sign(xinc)*xinc, ycur}
+		if (numtype(xinc) == 0 && abs(xinc) >= 1e-15)
+			pcur=round((xcur-xmin)/xinc)
+			xcur=xmin+pcur*xinc
+			newX = xcur+sign(VarNum)*sign(xinc)*xinc
+		endif
 	endif
 	if (CmpStr(ctrlname,"stepUpDown")==0)
 		NVAR yinc=$(df+"yinc")
-		pcur=round((ycur-ymin)/yinc)
-		ycur=ymin+pcur*yinc
-		ModifyGraph offset(HairY1)={0,      ycur+sign(VarNum)*sign(yinc)*yinc}
-		ModifyGraph offset(HairY0)={xcur, ycur+sign(VarNum)*sign(yinc)*yinc}
+		if (numtype(yinc) == 0 && abs(yinc) >= 1e-15)
+			pcur=round((ycur-ymin)/yinc)
+			ycur=ymin+pcur*yinc
+			newY = ycur+sign(VarNum)*sign(yinc)*yinc
+		endif
 	endif
 	if (cmpstr(ctrlName,"Center")==0)
-		ModifyGraph offset(HairX1)={(xmin+xmax)/2, 0 }
-		ModifyGraph offset(HairY1)={0, (ymin+ymax)/2 }
-		ModifyGraph offset(HairY0)={(xmin+xmax)/2, (ymin+ymax)/2 }
+		newX = 0.5 * (IT_dim_min(Image,0) + IT_dim_max(Image,0))
+		newY = 0.5 * (IT_dim_min(Image,1) + IT_dim_max(Image,1))
+	endif
+
+	X0 = IT_clamp_coord_to_dim(Image, 0, newX)
+	Y0 = IT_clamp_coord_to_dim(Image, 1, newY)
+	ModifyGraph offset(HairX1)={X0, 0}
+	ModifyGraph offset(HairY1)={0, Y0}
+	ModifyGraph offset(HairY0)={X0, Y0}
+
+	if (cmpstr(ctrlName,"SetX0")==0 || CmpStr(ctrlname,"stepLeftRight")==0)
+		IT_UpdateImgSlices(2)
+	endif
+	if (cmpstr(ctrlName,"SetY0")==0 || CmpStr(ctrlname,"stepUpDown")==0)
+		IT_UpdateImgSlices(1)
+	endif
+	if (cmpstr(ctrlName,"Center")==0 || cmpstr(ctrlName,"Check")==0)
+		IT_UpdateImgSlices(0)
+	endif
+	if (ndim==3)
+		IT_UpdateProfileZSafe(df)
 	endif
 	if (cmpstr(ctrlName,"ResetCursor")==0)
-		WAVE Image=$(df+"Image")
-		Cursor/P A, profileH, round((xcur - DimOffset(Image, 0))/DimDelta(Image,0))
-		Cursor/P B, profileV_y, round((ycur - DimOffset(Image, 1))/DimDelta(Image,1))
+		Cursor/P A, profileH, IT_coord_to_index_clamped(Image, 0, X0)
+		Cursor/P B, profileV_y, IT_coord_to_index_clamped(Image, 1, Y0)
 	endif
 End
-
 Function IT_PopFilter(ctrlName,popNum,popStr) : PopupMenuControl
 //================
 	String ctrlName
@@ -3359,13 +3583,18 @@ Function IT_UpdateXYGlobals(tinfo)
 
 	String dfSav= GetDataFolder(1)
 	SetDataFolder thedf
+	WAVE/Z Image=Image
 
 	s= "XOFFSET:"
 	p0=  StrSearch(tinfo,s,0)
 	if( p0 >= 0 )
 		p0 += strlen(s)
 		p1= StrSearch(tinfo,";",p0)
-		Variable/G $"X"+num2str(n)=str2num(tinfo[p0,p1-1])
+		Variable xOff = str2num(tinfo[p0,p1-1])
+		if (n == 0 && WaveExists(Image))
+			xOff = IT_clamp_coord_to_dim(Image, 0, xOff)
+		endif
+		Variable/G $"X"+num2str(n)=xOff
 	endif
 
 	s= "YOFFSET:"
@@ -3373,10 +3602,17 @@ Function IT_UpdateXYGlobals(tinfo)
 	if( p0 >= 0 )
 		p0 += strlen(s)
 		p1= StrSearch(tinfo,";",p0)
-		Variable/G $"Y"+num2str(n)=str2num(tinfo[p0,p1-1])
+		Variable yOff = str2num(tinfo[p0,p1-1])
+		if (n == 0 && WaveExists(Image))
+			yOff = IT_clamp_coord_to_dim(Image, 1, yOff)
+		endif
+		Variable/G $"Y"+num2str(n)=yOff
 	endif
 
 //	CreateUpdateZ(gname,n)
+	if (n == 0)
+		IT_UpdateProfileZSafe(thedf+":")
+	endif
 
 	SetDataFolder dfSav
 end
