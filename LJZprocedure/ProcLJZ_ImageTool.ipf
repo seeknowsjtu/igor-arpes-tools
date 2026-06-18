@@ -648,7 +648,7 @@ Function/S IT_ShowImageTool_( df, imgn )
 	//Resize Panel (OS specific)
 	string os=IgorInfo(2)
 	if (stringmatch(os[0,2],"Win"))
-		MoveWindow/W=$df 260,90,960,660
+		MoveWindow/W=$df 260,90,960,690
 	else	   //Mac
 		//MoveWindow/W=ImageTool 341,146,993,639
 	endif
@@ -694,7 +694,7 @@ Function IT_Image_Tool(df) : Graph
 		return -1
 	endif
 	string dfn=StringFromList(1,df,":")
-	Display /W=(260,90,960,660) HairY0 vs HairX0 as dfn
+	Display /W=(260,90,960,690) HairY0 vs HairX0 as dfn
 	DoWindow/C $dfn
 	AppendToGraph/L=lineX profileH vs profileH_x
 	AppendToGraph/B=lineY profileV_y vs profileV
@@ -723,117 +723,158 @@ Function IT_Image_Tool(df) : Graph
 	ModifyGraph axisEnab(lineY)={0.75,1}
 	ShowInfo
 	TextBox/N=title/F=0/A=MT/X=-3/Y=1/E "\\Z09ProcLJZ ImageTool"
-	ControlBar 72
-	TitleBox itHeader,pos={8,4},size={120,14},title="ProcLJZ IT",frame=0,fSize=10,fStyle=1
-	TitleBox it_status,pos={132,4},size={180,14},title="Ready",frame=0,fSize=9
-	Button LoadImg,pos={320,3},size={45,20},proc=IT_NewImg,title="Load",fSize=9
+	ControlBar 104
+	TitleBox itHeader,pos={8,6},size={100,14},title="ProcLJZ IT",frame=0,fSize=10,fStyle=1
+	TitleBox it_status,pos={115,6},size={160,14},title="Ready",frame=0,fSize=9
+	Button LoadImg,pos={285,4},size={46,20},proc=IT_NewImg,title="Load",fSize=9
 	Button LoadImg,help={"Select 2D image array in memory to copy to the ImageTool Panel"}
-	Button LoadCurrent,pos={370,3},size={60,20},proc=IT_btn_load_current,title="Current",fSize=9
+	Button LoadCurrent,pos={337,4},size={62,20},proc=IT_btn_load_current,title="Current",fSize=9
 	Button LoadCurrent,help={"Load first image wave from the top graph, or selected/current 2D/3D wave if available."}
-	SetVariable setX0,pos={16,50},size={70,15},proc=IT_SetHairXY,title="X",fSize=9
+	SetVariable setX0,pos={16,70},size={78,16},proc=IT_SetHairXY,title="X",fSize=9
 	SetVariable setX0,help={"Cross hair X-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
 	SetVariable setX0,limits={213,491,1},value=$(df+"X0")	//<tool-df>X0
-	SetVariable setY0,pos={92,50},size={70,15},proc=IT_SetHairXY,title="Y",fSize=9
+	SetVariable setY0,pos={102,70},size={78,16},proc=IT_SetHairXY,title="Y",fSize=9
 	SetVariable setY0,help={"Cross hair Y-value.  Updates when cross hair is moved.  Cross hair moves if value is manually changed."}
 	SetVariable setY0,limits={-6.00024,12,0.031972},value= $(df+"Y0")
-	ValDisplay valD0,pos={168,50},size={70,15},title="D",fSize=9
+	ValDisplay valD0,pos={188,70},size={76,16},title="D",fSize=9
 	ValDisplay valD0,help={"Image intensity value at current cross hair (X,Y) location.  "}
 	ValDisplay valD0,limits={0,0,0},barmisc={0,1000}
 		//ValDisplay valD0,value= D0			//can't use local variables
 		execute "ValDisplay valD0,value="+df+"D0"
-	ValDisplay nptx,pos={246,50},size={50,15},title="Nx",fSize=9
+	ValDisplay nptx,pos={272,70},size={52,16},title="Nx",fSize=9
 	ValDisplay nptx,help={"Number of horizontal pixels of current image."}
 	ValDisplay nptx,limits={0,0,0},barmisc={0,1000}			//,value= nx
 		execute "ValDisplay nptx,value="+df+"nx"
-	ValDisplay npty,pos={302,50},size={50,15},title="Ny",fSize=9
+	ValDisplay npty,pos={330,70},size={52,16},title="Ny",fSize=9
 	ValDisplay npty,help={"Number of vertical pixels of current image."}
 	ValDisplay npty,limits={0,0,0},barmisc={0,1000}		//,value=ny
 		execute "ValDisplay npty,value="+df+"ny"
-	ValDisplay nptz,pos={358,50},size={50,15},title="Nz",fSize=9
+	ValDisplay nptz,pos={388,70},size={52,16},title="Nz",fSize=9
 	ValDisplay nptz,help={"Number of slices in 3D data set."}
 	ValDisplay nptz,limits={0,0,0},barmisc={0,1000}			//,value= <tool-df>nz
 		execute "ValDisplay nptz,value="+df+"nz"
-	PopupMenu ImageUndo,pos={489,24},size={57,20},disable=1,proc=IT_ImageUndo,title="Undo",fSize=9
+	PopupMenu ImageUndo,pos={470,68},size={72,20},disable=1,proc=IT_ImageUndo,title="Undo",fSize=9
 	PopupMenu ImageUndo,help={"Undo last image modification or restore to original"}
 	PopupMenu ImageUndo,mode=1,popvalue="Undo",value= #"\"Undo;Restore\""
-	PopupMenu ImageProcess,pos={70,23},size={65,20},disable=1,proc=IT_ImgModify,title="Modify",fSize=9
+	PopupMenu ImageProcess,pos={16,68},size={88,20},disable=1,proc=IT_ImgModify,title="Modify",fSize=9
 	PopupMenu ImageProcess,help={"Image Modification:\rCrop & Norm Y optionally use a marquee box sub range.\rNorm X(Y),  Set X(Y)=0  use current crosshair location."}
 	PopupMenu ImageProcess,mode=0,value= #"\"Crop;Transpose;Rotate;Resize;Rescale;Set X=0;Set Y=0;Shift;Reflect X;-;Norm X;Norm Y;Norm XY;Norm D;Offset D;Invert D;Deglitch\""
-	SetVariable setnumpass,pos={160,26},size={30,15},disable=1,title=" "
+	SetVariable setnumpass,pos={112,70},size={44,16},disable=1,title="N",fSize=9
 	SetVariable setnumpass,help={"# of passes to apply filter"}
 	SetVariable setnumpass,limits={1,9,1},value= $(df+"numpass")
-	PopupMenu popFilter,pos={192,24},size={55,20},disable=1,proc=IT_PopFilter,title="Filter",fSize=9
+	PopupMenu popFilter,pos={164,68},size={78,20},disable=1,proc=IT_PopFilter,title="Filter",fSize=9
 	PopupMenu popFilter,help={"Convolution -type image modification."}
 	PopupMenu popFilter,mode=0,value= #"\"AvgX;AvgY;median;avg;gauss;min;max;NaNZapMedian;FindEdges;Point;Sharpen;SharpenMore;gradN;gradS;gradE;gradW;\""
-	PopupMenu ImageAnalyze,pos={385,24},size={72,20},disable=1,proc=IT_ImgAnalyze,title="Analyze",fSize=9
+	PopupMenu ImageAnalyze,pos={250,68},size={92,20},disable=1,proc=IT_ImgAnalyze,title="Analyze",fSize=9
 	PopupMenu ImageAnalyze,help={"Image Analysis within a horizontal (X) range of the image selected by a marquee or A/B Cursors on the horizontal line profile.  Resulting (Area, Position, Width) waves are plotted in an new window with prompted-for names."}
 	PopupMenu ImageAnalyze,mode=0,value= #"\"Area X;Find Edge;Fit Edge;Fit Peak;Find Peak;Find Peak Max;-;Average Y;\""
-	SetVariable setpinc,pos={270,26},size={38,15},disable=1,title=" "
+	SetVariable setpinc,pos={350,70},size={52,16},disable=1,title="P",fSize=9
 	SetVariable setpinc,help={"Y-increment to stack"}
 	SetVariable setpinc,limits={1,20,1},value= $(df+"STACK:pinc")
-	Button Stack,pos={313,25},size={45,18},disable=1,proc=IT_StackUpdate,title="Stack",fSize=9
+	Button Stack,pos={410,68},size={52,20},disable=1,proc=IT_StackUpdate,title="Stack",fSize=9
 	Button Stack,help={"Extract spectra from current image and export to separate IT_Stack  plot window.  Uses current axes limits for extracting spectra."}
 
-	SetVariable setgamma,pos={74,26},size={52,14},disable=1,title="g"
+	SetVariable setgamma,pos={16,70},size={60,16},disable=1,title="g",fSize=9
 	SetVariable setgamma,help={"Gamma value for image color table mapping.  Gamma < 1 enhances lower intensity features."}
 	SetVariable setgamma,font="Symbol",limits={0.05,Inf,0.05},value= $(df+"gamma")
-	PopupMenu SelectCT,pos={153,23},size={43,20},disable=1,proc=IT_SelectCT,title="CT",fSize=9
+	PopupMenu SelectCT,pos={84,68},size={90,20},disable=1,proc=IT_SelectCT,title="CT",fSize=9
 	//PopupMenu SelectCT,mode=0,value= #"\"Grayscale;Red Temp;Invert;Rescale\""
 	//Popupmenu selectCT,mode=0,value="Invert;Rescale;"+colornameslist()     //ER
 	Popupmenu selectCT,mode=0,value="Invert;Rescale;"+CTnamelist(2)         //JD
-	Button ShowHelp,pos={642,3},size={22,20},proc=IT_ShowWin,title="?",fSize=9
+	Button ShowHelp,pos={642,4},size={22,20},proc=IT_ShowWin,title="?",fSize=9
 	Button ShowHelp,help={"Show shortcut & version history notebook"}
-	CheckBox itSafe,pos={500,50},size={80,14},title="Safe",fSize=9
+	CheckBox itSafe,pos={410,7},size={58,14},title="Safe",fSize=9
 	CheckBox itSafe,variable=$(df+"safeMode")
 	CheckBox itSafe,help={"Clamp wave indices and coordinates to avoid index-out-of-range errors."}
-	TabControl imgtab,pos={8,24},size={660,44},proc=IT_ImgTabProc,fSize=9
+	TabControl imgtab,pos={8,30},size={660,26},proc=IT_ImgTabProc,fSize=9
 	TabControl imgtab,tabLabel(0)="Info"
 	TabControl imgtab,tabLabel(1)="Process",tabLabel(2)="Color"
 	TabControl imgtab,tabLabel(3)="Volume",tabLabel(4)="Export",value= 0
 	///////
-	if (exists("AddEDCpathTab2ITpanel"))
-		execute "AddEDCpathTab2ITpanel()"				// Code in Procedure_EDC.ipf (David Fournier, UBC)
-	endif
+	// Disabled to prevent external EDC tab injection from overlapping the main ImageTool ControlBar layout.
+	// if (exists("AddEDCpathTab2ITpanel"))
+	// 	execute "AddEDCpathTab2ITpanel()"				// Code in Procedure_EDC.ipf (David Fournier, UBC)
+	// endif
 	///////
-	SetVariable setZ0,pos={197,26},size={70,15},disable=1,proc=IT_SelectSlice,title="Z"
+	SetVariable setZ0,pos={210,70},size={78,16},disable=1,proc=IT_SelectSlice,title="Z",fSize=9
 	SetVariable setZ0,help={"Select/show  value of  current slice of 3D data set."}
 	SetVariable setZ0,limits={0,206,1},value= $(df+"Z0")
-	SetVariable setSlice,pos={135,25},size={45,15},disable=1,proc=IT_SelectSlice,title=" "
+	SetVariable setSlice,pos={124,70},size={54,16},disable=1,proc=IT_SelectSlice,title="i",fSize=9
 	SetVariable setSlice,help={"Select 3D image slice index."}
 	SetVariable setSlice,limits={0,206,1},value= $(df+"islice")
-	Button SliceMinus,pos={121,24},size={12,16},disable=1,proc=IT_StepSlice,title="<"
+	Button SliceMinus,pos={102,70},size={18,18},disable=1,proc=IT_StepSlice,title="<",fSize=9
 	Button SliceMinus,help={"Decrement image slice index."}
-	Button SlicePlus,pos={181,24},size={12,16},disable=1,proc=IT_StepSlice,title=">"
+	Button SlicePlus,pos={182,70},size={18,18},disable=1,proc=IT_StepSlice,title=">",fSize=9
 	Button SlicePlus,help={"Increment image slice index."}
-	PopupMenu popAnim,pos={465,23},size={74,20},disable=1,proc=IT_AnimateAction,title="Anim",fSize=9
+	PopupMenu popAnim,pos={534,68},size={80,20},disable=1,proc=IT_AnimateAction,title="Anim",fSize=9
 	PopupMenu popAnim,help={"Step thru slices of 3D data set"}
-	Button StopAnim,pos={542,23},size={40,18},disable=1,proc=IT_btn_stop_animate,title="Stop",fSize=9
+	Button StopAnim,pos={622,68},size={42,20},disable=1,proc=IT_btn_stop_animate,title="Stop",fSize=9
 	PopupMenu popAnim,mode=0	//,value= "\""+$(df+"anim_menu")+"\""	//<tool-df>anim_menu	//#anim_menu
 		execute "PopupMenu popAnim,value="+df+"anim_menu"
-	PopupMenu popSlice,pos={65,21},size={42,20},disable=1,proc=IT_SelectSliceDir
+	PopupMenu popSlice,pos={16,68},size={78,20},disable=1,proc=IT_SelectSliceDir,title="",fSize=9
 	PopupMenu popSlice,mode=1,popvalue="XY/Z",value= #"\"XY/Z;XZ/Y;YZ/X\""
-	SetVariable setZstep,pos={268,25},size={60,15},disable=1,title="step"
+	SetVariable setZstep,pos={296,70},size={64,16},disable=1,title="step",fSize=9
 	SetVariable setZstep,limits={1,Inf,1},value= $(df+"zstep")
-	SetVariable setZavg,pos={331,25},size={62,15},disable=1,title="navg",proc=IT_SetSliceAvg		//**JD
+	SetVariable setZavg,pos={368,70},size={64,16},disable=1,title="avg",proc=IT_SetSliceAvg,fSize=9		//**JD
 	SetVariable setZavg,limits={1,Inf,2},value= $(df+"nsliceavg")
-	PopupMenu VolModify,pos={394,23},size={65,20},disable=1,proc=IT_VolModify,title="Modify",fSize=9
+	PopupMenu VolModify,pos={440,68},size={86,20},disable=1,proc=IT_VolModify,title="Modify",fSize=9
 	PopupMenu VolModify,mode=0,value= #"\"Crop;Rotate;Resize;Transpose;Rescale;Set X=0;Set Y=0;Set Z=0;Norm Z;Avg Z (to img);Shift;\""
-	CheckBox ShowImgSlices,pos={547,25},size={78,14},disable=1,proc=IT_ShowImgSliceCheck,title="Slices",fSize=9
+	CheckBox ShowImgSlices,pos={16,90},size={65,14},disable=1,proc=IT_ShowImgSliceCheck,title="Slices",fSize=9
 	CheckBox ShowImgSlices,value= 1
-	CheckBox lockColors,pos={219,26},size={80,14},disable=1,proc=IT_ColorLockCheck,title="Lock CT",fSize=9
+	CheckBox lockColors,pos={184,72},size={70,14},disable=1,proc=IT_ColorLockCheck,title="Lock CT",fSize=9
 	CheckBox lockColors,value= 0
-	PopupMenu colorOptions,pos={309,26},size={113,20},disable=1,proc=IT_ColorOptionsProc,title="Set Colors By...",fSize=9
+	PopupMenu colorOptions,pos={264,68},size={145,20},disable=1,proc=IT_ColorOptionsProc,title="Mode",fSize=9
 	PopupMenu colorOptions,mode=0,value= #"\"2D images;All XYZ Data;Last Marquee\""  //!!ER
-	Button exportprofile,pos={77,22},size={50,20},disable=1,title="Profile", proc=IT_ExportProfileFct,fSize=9
+	Button exportprofile,pos={16,68},size={64,20},disable=1,title="Profile",proc=IT_ExportProfileFct,fSize=9
 	Button exportprofile,help={"Export X, Y or Z profile to a separate plot (name prompted for)."}
-	Button exportimage,pos={137,22},size={50,20},disable=1,title="Image", proc=IT_ExportImageFct,fSize=9
+	Button exportimage,pos={88,68},size={58,20},disable=1,title="Image",proc=IT_ExportImageFct,fSize=9
 	Button exportimage,help={"Export current image or H or V slice to a separate window (name prompted for)."}
-	Button exportvolume,pos={197,22},size={55,20},disable=1,title="Volume", proc=IT_ExportVolumeFct,fSize=9
+	Button exportvolume,pos={154,68},size={68,20},disable=1,title="Volume",proc=IT_ExportVolumeFct,fSize=9
 	Button exportvolume,help={"Export current (modified) volume to root (name prompted for)."}
-	CheckBox cleanExport,pos={265,26},size={70,14},disable=1,title="Clean NaN",fSize=9
+	CheckBox cleanExport,pos={235,72},size={85,14},disable=1,title="Clean NaN",fSize=9
 	CheckBox cleanExport,variable=$(df+"exportCleanNonFinite")
 	CheckBox cleanExport,help={"Replace NaN/Inf with 0 in exported image only. Original ImageTool data are unchanged."}
-	TitleBox version,pos={10,28},size={35,14},fsize=9, title="v4.053",frame=0, fstyle=2
+	TitleBox version,pos={610,7},size={45,12},fSize=8,title="v4.053",frame=0,fStyle=2
+
+	PopupMenu ImageUndo,fSize=9
+	PopupMenu ImageProcess,fSize=9
+	PopupMenu popFilter,fSize=9
+	PopupMenu ImageAnalyze,fSize=9
+	PopupMenu SelectCT,fSize=9
+	PopupMenu popAnim,fSize=9
+	PopupMenu popSlice,fSize=9
+	PopupMenu VolModify,fSize=9
+	PopupMenu colorOptions,fSize=9
+	SetVariable setX0,fSize=9
+	SetVariable setY0,fSize=9
+	SetVariable setnumpass,fSize=9
+	SetVariable setpinc,fSize=9
+	SetVariable setgamma,fSize=9
+	SetVariable setZ0,fSize=9
+	SetVariable setSlice,fSize=9
+	SetVariable setZstep,fSize=9
+	SetVariable setZavg,fSize=9
+	Button LoadImg,fSize=9
+	Button LoadCurrent,fSize=9
+	Button ShowHelp,fSize=9
+	Button Stack,fSize=9
+	Button SliceMinus,fSize=9
+	Button SlicePlus,fSize=9
+	Button StopAnim,fSize=9
+	Button exportprofile,fSize=9
+	Button exportimage,fSize=9
+	Button exportvolume,fSize=9
+	CheckBox itSafe,fSize=9
+	CheckBox ShowImgSlices,fSize=9
+	CheckBox lockColors,fSize=9
+	CheckBox cleanExport,fSize=9
+	ValDisplay valD0,fSize=9
+	ValDisplay nptx,fSize=9
+	ValDisplay npty,fSize=9
+	ValDisplay nptz,fSize=9
+	TabControl imgtab,fSize=9
+
+	IT_UpdateTabVisibility()
 
 	SetWindow kwTopWin,hook=IT_imgHookFcn,hookevents=3
 EndMacro
@@ -3617,55 +3658,76 @@ Function IT_UpdateXYGlobals(tinfo)
 	SetDataFolder dfSav
 end
 
-Function IT_ImgTabProc(name,tab)
+Function IT_UpdateTabVisibility()
+	String df = IT_getdf()
+	String win = StringFromList(1, df, ":")
+	DoWindow $win
+	if (!V_flag)
+		return 0
+	endif
+
+	ControlInfo/W=$win imgtab
+	Variable tab = V_Value
+	Variable dInfo = 1, dProc = 1, dColor = 1, dVol = 1, dExp = 1
+
+	if (tab == 0)
+		dInfo = 0
+	elseif (tab == 1)
+		dProc = 0
+	elseif (tab == 2)
+		dColor = 0
+	elseif (tab == 3)
+		dVol = 0
+	elseif (tab == 4)
+		dExp = 0
+	endif
+
+	SetVariable setX0,win=$win,disable=dInfo
+	SetVariable setY0,win=$win,disable=dInfo
+	ValDisplay valD0,win=$win,disable=dInfo
+	ValDisplay nptx,win=$win,disable=dInfo
+	ValDisplay npty,win=$win,disable=dInfo
+	ValDisplay nptz,win=$win,disable=dInfo
+
+	PopupMenu ImageProcess,win=$win,disable=dProc
+	SetVariable setnumpass,win=$win,disable=dProc
+	PopupMenu popFilter,win=$win,disable=dProc
+	PopupMenu ImageAnalyze,win=$win,disable=dProc
+	SetVariable setpinc,win=$win,disable=dProc
+	Button Stack,win=$win,disable=dProc
+	PopupMenu ImageUndo,win=$win,disable=dProc
+
+	SetVariable setgamma,win=$win,disable=dColor
+	PopupMenu SelectCT,win=$win,disable=dColor
+	CheckBox lockColors,win=$win,disable=dColor
+	PopupMenu colorOptions,win=$win,disable=dColor
+
+	PopupMenu popSlice,win=$win,disable=dVol
+	Button SliceMinus,win=$win,disable=dVol
+	SetVariable setSlice,win=$win,disable=dVol
+	Button SlicePlus,win=$win,disable=dVol
+	SetVariable setZ0,win=$win,disable=dVol
+	SetVariable setZstep,win=$win,disable=dVol
+	SetVariable setZavg,win=$win,disable=dVol
+	PopupMenu VolModify,win=$win,disable=dVol
+	PopupMenu popAnim,win=$win,disable=dVol
+	Button StopAnim,win=$win,disable=dVol
+	CheckBox ShowImgSlices,win=$win,disable=dVol
+
+	Button exportprofile,win=$win,disable=dExp
+	Button exportimage,win=$win,disable=dExp
+	Button exportvolume,win=$win,disable=dExp
+	CheckBox cleanExport,win=$win,disable=dExp
+
+	return 0
+End
+
+Function IT_ImgTabProc(name,tab) : TabControl
 	String name
 	Variable tab
 
-	setvariable setx0,disable=(tab!=0)		//Info
-	setvariable sety0,disable=(tab!=0)
-	valdisplay valD0,disable=(tab!=0)
-	valdisplay nptx,disable=(tab!=0)
-	valdisplay npty,disable=(tab!=0)
-	valdisplay nptz,disable=(tab!=0)
-
-	popupmenu imageprocess, disable=(tab!=1)		//Process
-	setvariable setnumpass,disable=(tab!=1)
-	popupmenu popFilter, disable=(tab!=1)
-	popupmenu imageAnalyze, disable=(tab!=1)
-	button stack,disable=(tab!=1)
-	setvariable setpinc,disable=(tab!=1)
-	popupmenu imageUndo, disable=(tab!=1)
-
-	setvariable setgamma,disable=(tab!=2)		//Colors
-	popupmenu selectct, disable=(tab!=2)
-	checkbox lockcolors,disable=(tab!=2)
-	popupmenu colorOptions, disable=(tab!=2)
-
-	popupmenu popslice, disable=(tab!=3)		//Volume
-	button sliceminus,disable=(tab!=3)
-	button sliceplus,disable=(tab!=3)
-	setvariable setslice,disable=(tab!=3)
-	setvariable setZ0,disable=(tab!=3)
-	setvariable setZstep,disable=(tab!=3)
-	setvariable setZavg,disable=(tab!=3)		//**JD
-	popupmenu volModify,disable=(tab!=3)
-	popupmenu popAnim,disable=(tab!=3)
-	button StopAnim,disable=(tab!=3)
-	checkbox ShowImgSlices, disable=(tab!=3)
-
-	button exportprofile, disable=(tab!=4)		//Export
-	button exportimage,disable=(tab!=4)
-	button exportvolume,disable=(tab!=4)
-	checkbox cleanExport,disable=(tab!=4)
-
-	if (exists("AddEDCpathTab2ITpanel"))
-		button addpoint, disable=(tab!=5) 		//EDCs over path (Add from David Fournier)
-		button rempoint, disable=(tab!=5)
-		button resetkpath, disable=(tab!=5)
-		popupmenu path, disable=(tab!=5)
-		button edcspath, disable=(tab!=5)
-		button edcspoints, disable=(tab!=5)
-	endif
+	IT_UpdateTabVisibility()
+	return 0
 End
 
 function IT_imgHookfcn ( s )
