@@ -2265,6 +2265,10 @@ Function IT_VolModify(ctrlName, popNum,popStr) : PopupMenuControl
 
 	SetDataFolder $df
 	WAVE Image=Image, Image_undo=Image_Undo
+	WAVE h_img=h_img, v_img=v_img
+	WAVE profileZ=profileZ
+	WAVE HairY0=HairY0, HairX1=HairX1, HairY1=HairY1
+	WAVE HairZ0=HairZ0
 	SVAR imgnam=imgnam, imgproc=imgproc, imgproc_undo=imgproc_undo
 	SVAR datnam=datnam
 	NVAR nx=nx, ny=ny, X0=X0, Y0=Y0
