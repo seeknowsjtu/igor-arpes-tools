@@ -2566,12 +2566,12 @@ Function sg_compute_image_percentile_range(imgWave, lowPct, highPct, outC0, outC
     return 0
 End
 
-Function sg_compute_selected_robust_range(lowPct, highPct, outC0, outC1)
+Static Function sg_compute_selected_robust_range(lowPct, highPct, outMin, outMax)
     Variable lowPct, highPct
-    Variable &outC0, &outC1
+    Variable &outMin, &outMax
 
-    outC0 = NaN
-    outC1 = NaN
+    outMin = NaN
+    outMax = NaN
 
     Wave selLayers = root:ARPES_LJZ:SliceGallery:selLayers
     Variable nSel = DimSize(selLayers, 0), i, nx, ny, p, q, n = 0, v
@@ -2604,9 +2604,9 @@ Function sg_compute_selected_robust_range(lowPct, highPct, outC0, outC1)
     Redimension/N=(n) sgVals
     Sort sgVals, sgVals
     lowPct = max(0, min(100, lowPct)); highPct = max(0, min(100, highPct))
-    outC0 = sgVals[round((n-1)*lowPct/100)]
-    outC1 = sgVals[round((n-1)*highPct/100)]
-    if (numtype(outC0) != 0 || numtype(outC1) != 0 || outC0 >= outC1)
+    outMin = sgVals[round((n-1)*lowPct/100)]
+    outMax = sgVals[round((n-1)*highPct/100)]
+    if (numtype(outMin) != 0 || numtype(outMax) != 0 || outMin >= outMax)
         return -1
     endif
     return 0
@@ -2734,11 +2734,13 @@ Function sg_compute_negative_to_zero_range(lowPct, outC0, outC1)
     outC0 = NaN
     outC1 = NaN
 
+    Variable tmpMin = NaN
     Variable dummy = NaN
-    Variable rc = sg_compute_selected_robust_range(lowPct, 50, outC0, dummy)
+    Variable rc = sg_compute_selected_robust_range(lowPct, 50, tmpMin, dummy)
     if (rc != 0)
         return rc
     endif
+    outC0 = tmpMin
     outC1 = 0
     if (numtype(outC0) != 0 || outC0 >= outC1)
         return -1
@@ -2754,11 +2756,13 @@ Function sg_compute_positive_from_zero_range(highPct, outC0, outC1)
     outC1 = NaN
 
     Variable dummy = NaN
-    Variable rc = sg_compute_selected_robust_range(50, highPct, dummy, outC1)
+    Variable tmpMax = NaN
+    Variable rc = sg_compute_selected_robust_range(50, highPct, dummy, tmpMax)
     if (rc != 0)
         return rc
     endif
     outC0 = 0
+    outC1 = tmpMax
     if (numtype(outC1) != 0 || outC0 >= outC1)
         return -1
     endif
