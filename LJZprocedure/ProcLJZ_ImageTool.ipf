@@ -273,7 +273,7 @@ Function IT_InitImageTool(df)
 		make/o/n=10 profileZ, profileZ_x
 		make/o/n=3 iz_sav={0,0,0}
 		Make/O HairZ0={-Inf,0, Inf}, HairZ0_x={0,0,0}
-		SetScale/P x 0,1E-7,"" HairZ0
+		SetScale/P x 0, 1E-7, "", HairZ0
 		variable/G ndim=2, islice, nz, iz, Z0, islicedir=1
 		variable/G nsliceavg=1			//**JD
 		variable/G zmin, zinc, zmax, zstep=1
@@ -613,45 +613,45 @@ EndMacro
 // not used  anymore by img Analyze
 //Function/T PickStr( promptstr, defaultstr, wvlst )
 //=============
-	String promptstr, defaultstr
-	variable wvlst
-	String/G  PickStr0, Promptstr0=promptstr, DefaultStr0=defaultstr
+	//String promptstr, defaultstr
+	//variable wvlst
+	//String/G  PickStr0, Promptstr0=promptstr, DefaultStr0=defaultstr
 	//string a=""
-	string str=defaultstr
-	if (wvlst==1)
+	//string str=defaultstr
+	//if (wvlst==1)
 		//execute "Pick_Str( \"\", )"
-		prompt str, promptstr, popup, WaveList("!*_x",";","")
-	else
+		//prompt str, promptstr, popup, WaveList("!*_x",";","")
+	//else
 		//execute "Pick_Str( , \"\" )"
-		prompt str, promptstr
-	endif
-	DoPrompt "Pick String",  str
+		//prompt str, promptstr
+	//endif
+	//DoPrompt "Pick String",  str
 	//execute cmd
-	Pickstr0=str
-	return str
-End
+	//Pickstr0=str
+	//return str
+//End
 
 //Obsolete with DoPrompt
 //Proc Pick_Str( str1, str2 )
 //------------
-	String str1=DefaultStr0, str2=DefaultStr0
-	prompt str1, Promptstr0
-	prompt str2, Promptstr0, popup, WaveList("!*_x",";","")
-	Silent 1
-	String/G PickStr0=str1+str2
-End
+	//String str1=DefaultStr0, str2=DefaultStr0
+	//prompt str1, Promptstr0
+	//prompt str2, Promptstr0, popup, WaveList("!*_x",";","")
+	//Silent 1
+	//String/G PickStr0=str1+str2
+//End
 
 //Obsolete with DoPrompt
 //Proc PickImage( wn )
 //------------
-	String wn=StrVarOrDefault(IT_getdf1()+"imgnam","")
-	prompt wn, "new image, 2D array", popup, WaveList("!*_CT",";","DIMS:2")+"-; -- 3D --;"+WaveList("!*_CT",";","DIMS:3")
+	//String wn=StrVarOrDefault(IT_getdf1()+"imgnam","")
+	//prompt wn, "new image, 2D array", popup, WaveList("!*_CT",";","DIMS:2")+"-; -- 3D --;"+WaveList("!*_CT",";","DIMS:3")
 
-	string df=IT_getdf1()
-	$(df+"imgnam")=wn
-	$(df+"imgfldr")=GetWavesDataFolder($wn, 1)
-	$(df+"exporti_nam")=wn+"_"		// prepare export name
-End
+	//string df=IT_getdf1()
+	//$(df+"imgnam")=wn
+	//$(df+"imgfldr")=GetWavesDataFolder($wn, 1)
+	//$(df+"exporti_nam")=wn+"_"		// prepare export name
+//End
 
 Function IT_NewImg(ctrlName) : ButtonControl
 //============
@@ -824,7 +824,7 @@ Function IT_SetupImg()		//**ER moved this out of newimg
 		NVAR dmin=dmin, dmin0=dmin0, dmax=dmax, dmax0=dmax0
 		SVAR imgnam=imgnam, imgproc=imgproc
 		NVAR islice=islice,  iSliceDir=islicedir
-		NVAR vol_dmin=vol_dmin, vol_dmax, vol_dmax
+		NVAR vol_dmin=vol_dmin, vol_dmax=vol_dmax
 		NVAR showimgslices=showimgslices, Z0=Z0
 		WAVE axisLabels=axisLabels
 	setdatafolder $curr
@@ -999,7 +999,7 @@ Function IT_ShowImgSliceCheck(ctrlName,checked) : CheckBoxControl
 	Variable checked
 	NVAR sis=$(IT_getdf()+"showImgSlices")
 	sis=checked
-	execute "setupimg()"
+	IT_SetupImg()
 End
 
 Function IT_ColorLockCheck(ctrlName,checked) : CheckBoxControl
@@ -1029,12 +1029,12 @@ Function IT_MakeImgSlices( df )
 		WAVE image=image, profileZ=profileZ
 		WAVE h_img=h_img, v_img=v_img
 		make/o/n=(dimsize(image,0),dimsize(profileZ,0)) h_img
-		setscale/p x dimoffset(image,0),dimdelta(image,0),waveunits(image,0),h_img
-		setscale/p y dimoffset(profileZ,0),dimdelta(profileZ,0),waveunits(profileZ,0), h_img
+		SetScale/P x DimOffset(Image,0), DimDelta(Image,0), WaveUnits(Image,0), h_img
+		SetScale/P y DimOffset(profileZ,0), DimDelta(profileZ,0), WaveUnits(profileZ,0), h_img
 
 		make/o/n=(dimsize(profileZ,0),dimsize(image,1)) v_img
-		setscale/p y dimoffset(image,1),dimdelta(image,1),waveunits(image,1),v_img
-		setscale/p x dimoffset(profileZ,0),dimdelta(profileZ,0),waveunits(profileZ,0), v_img
+		SetScale/P y DimOffset(Image,1), DimDelta(Image,1), WaveUnits(Image,1), v_img
+		SetScale/P x DimOffset(profileZ,0), DimDelta(profileZ,0), WaveUnits(profileZ,0), v_img
 	SetDataFolder $curr
 end
 
@@ -1151,7 +1151,7 @@ Function IT_SelectSliceDir(ctrlName,popNum,popStr) : PopupMenuControl
 
 	// Z profile
 	Redimension/N=(nz) profileZ		//, profileZ_x
-	SetScale/P x zmin, zinc, zunit profileZ
+	SetScale/P x zmin, zinc, zunit, profileZ
 	variable Z,X,Y
 	//profileZ_x=zmin+p*zinc
 	if (idir==0)	// YZ-X
@@ -1886,15 +1886,15 @@ Function IT_ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		break
 
 	case "Set X=0":
-		cmd="SetScale/P x "+num2str(xmin-REAL(coffset))+","+num2str( xinc)+",\"\" Image"
-		SetScale/P x xmin-REAL(coffset), xinc,"" Image
+		cmd="SetScale/P x "+num2str(xmin-REAL(coffset))+","+num2str( xinc)+",\"\", Image"
+		SetScale/P x xmin-REAL(coffset), xinc, "", Image
 		ModifyGraph offset(HairY0)={0, IMAG(coffset)}
 		ModifyGraph offset(HairX1)={0, 0}
 		break
 
 	case "Set Y=0":
-		cmd="SetScale/P y "+num2str(ymin-IMAG(coffset))+","+num2str( yinc)+",\"\" Image"
-		SetScale/P y ymin-IMAG(coffset), yinc,"" Image
+		cmd="SetScale/P y "+num2str(ymin-IMAG(coffset))+","+num2str( yinc)+",\"\", Image"
+		SetScale/P y ymin-IMAG(coffset), yinc, "", Image
 		ModifyGraph offset(HairY0)={REAL(coffset), 0}
 		ModifyGraph offset(HairY1)={0, 0}
 		break
@@ -1922,7 +1922,7 @@ Function IT_ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		//Cursor/P B, profileV_y, x2pnt( Image, y2)
 
 		make/o/n=(nx) xtmp
-		SetScale/P x xmin, xinc, "" xtmp
+		SetScale/P x xmin, xinc, "", xtmp
 		// different methods of normalizing? NormImg in image_util??
 		xtmp = IT_AREA2D( Image, 1, y1, y2, x )
 		Variable badNorm = 0
@@ -1966,7 +1966,7 @@ Function IT_ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		Cursor/P B, profileH, x2pnt( Image, x2)
 
 		make/o/n=(ny) ytmp
-		SetScale/P x ymin, yinc,  ytmp
+		SetScale/P x ymin, yinc, "", ytmp
 		ytmp = IT_AREA2D( Image, 0, x1, x2, x )
 		Variable badNormY = 0
 		Duplicate/FREE ytmp, tmpDenY
@@ -2077,7 +2077,7 @@ Function IT_ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		opt="/O"+"/"+"IIRT"[xyopt-1]+SelectString(xyopt==2, "", "/NP")
 		cmd="ImgResize(Image, \""+xyval+"\",\""+opt+"\")"
 		//execute "ResizeImg(  )"
-		//SetScale/P x xmin-REAL(coffset), xinc,"" Image
+		//SetScale/P x xmin-REAL(coffset), xinc, "", Image
 		//ModifyGraph offset(HairY0)={0, IMAG(coffset)}
 		break
 
@@ -2561,27 +2561,27 @@ Function IT_VolModify(ctrlName, popNum,popStr) : PopupMenuControl
 		cmd="VolRescale("+datnam+", \"/"+svoldir+"="+num2str(voffset)+"\", \"/"+svoldir+"Z\")"
 		print cmd
 		execute cmd
-		cmd="SetScale/P "+LowerStr(svoldir)+" "+num2str(vmin)+", "+num2str( vinc)+", "+datnam
+		cmd="SetScale/P "+LowerStr(svoldir)+" "+num2str(vmin)+", "+num2str( vinc)+", \"\", "+datnam
 
 		// reset scale of images and slices
 		strswitch (popStr )
 			case "Set X=0":
 
-				SetScale/P x xmin, xinc, image, h_img		//profileH vs ProfileHx
+				SetScale/P x xmin, xinc, "", Image, h_img		//profileH vs ProfileHx
 				ModifyGraph offset(HairY0)={0, IMAG(coffset)}
 				ModifyGraph offset(HairX1)={0, 0}
 				IT_SetProfiles()
 				break
 			case "Set Y=0":
 
-				SetScale/P y ymin, yinc, image, v_img		//profileV_y vs ProfileV
+				SetScale/P y ymin, yinc, "", Image, v_img		//profileV_y vs ProfileV
 				ModifyGraph offset(HairY0)={REAL(coffset), 0}
 				ModifyGraph offset(HairY1)={0, 0}
 				IT_SetProfiles()
 				break
 			case "Set Z=0":
 
-				SetScale/P x zmin, zinc, profileZ
+				SetScale/P x zmin, zinc, "", profileZ
 				ModifyGraph offset(HairZ0)={0, 0}
 //				IT_SetProfiles()
 				break
@@ -2752,7 +2752,7 @@ Function/T IT_RescaleBox()
 			vincnew = (v2new-v1new) / (p2-p1)
 			//print p1, p2, vincnew
 			vminnew= v1new - vincnew*p1
-			cmd+=num2str(vminnew)+", "+num2str(vincnew)+" , \"\" "+arrn+"; "
+			cmd+=num2str(vminnew)+", "+num2str(vincnew)+" , \"\", "+arrn+"; "
 		endif
 		if (strlen(cmd)>0)
 			execute cmd
@@ -2770,7 +2770,7 @@ Function/T IT_RescaleBox()
 		//vinc=DimDelta(image,0) * (v2-v1)/(x2_resize-x1_resize)
 //		vmin = str2num(StringFromList(0, xrang, ",")) - vinc*p1
 		//print "X:", vmin, vinc, p1, p2
-//		SetScale/P x vmin, vinc , "" Image
+//		SetScale/P x vmin, vinc , "", Image
 //		cmd+="SetScale/P x "+num2str(vmin)+", "+num2str(vinc)+" , \"\" Image; "
 		//Set cursors on X profile to range selected
 //		Cursor/P A, profileH, p1
@@ -2782,7 +2782,7 @@ Function/T IT_RescaleBox()
 //		p1=(y1_resize - ymin)/yinc;   p2=(y2_resize -  ymin)/yinc
 //		vinc = (v2-v1) / (p2-p1)
 //		vmin = str2num(StringFromList(0, yrang, ",")) - vinc*p1
-//		SetScale/P y vmin, vinc , "" Image
+//		SetScale/P y vmin, vinc , "", Image
 //		cmd+="SetScale/P y "+num2str(vmin)+", "+num2str(vinc)+" , \"\" Image"
 		//print "Y:", vmin, vinc, p1,p2
 		//Set cursors on X profile to range selected
@@ -2903,7 +2903,7 @@ Function IT_ImgAnalyze(ctrlName, popNum,popStr) : PopupMenuControl
 		SetDataFolder $curr
 		//areaXn="root:"+areaXn
 		make/o/n=(ny) $areaXn
-		SetScale/P x ymin, yinc,  $areaXn
+		SetScale/P x ymin, yinc, "", $areaXn
 		WAVE areaXw=$areaXn
 		areaXw = IT_AREA2D( $(df+"Image"),  0, x1,  x2, x )
 
@@ -2943,7 +2943,7 @@ Function IT_ImgAnalyze(ctrlName, popNum,popStr) : PopupMenuControl
 		make/o/n=(ny) $ctrn, $wdthn
 		WAVE/C edgew=$edgewn
 		WAVE ctr=$ctrn, wdth=$wdthn
-		SetScale/P x ymin, yinc, edgew,  ctr, wdth
+		SetScale/P x ymin, yinc, "", edgew, ctr, wdth
 
 		variable wfrac=0.15*SelectNumber(fitedge==2, 1, -1)	// negative turns on fitting
 		variable debug=0
@@ -3023,7 +3023,7 @@ Function IT_ImgAnalyze(ctrlName, popNum,popStr) : PopupMenuControl
 		make/o/n=(ny) $ctrn, $wdthn
 		WAVE/C pkw=$peakn
 		WAVE ctr=$ctrn, wdth=$wdthn
-		SetScale/P x ymin, yinc, pkw,  ctr, wdth
+		SetScale/P x ymin, yinc, "", pkw, ctr, wdth
 		NewDataFolder/O $(df+"TMP")
 		Make/O/N=5 $(df+"TMP:W_coef_peak")
 		WAVE W_coef_peak=$(df+"TMP:W_coef_peak")
@@ -3096,7 +3096,7 @@ Function IT_AREA2D( img, axis, x1, x2, y0 )
 	axis*=(axis==1)		// make sure 0 or 1 only
 	variable nx=DimSize( img, axis)
 	make/O/n=(nx) tmp
-	SetScale/P x DimOffset(img,axis), DimDelta(img,axis), "" tmp
+	SetScale/P x DimOffset(img,axis), DimDelta(img,axis), "", tmp
 	tmp=SelectNumber( axis, img(x)( y0), img(y0)(x) )
 
 	return area( tmp, x1, x2)
@@ -3631,8 +3631,8 @@ Function IT_AdjustCT() 	//: GraphMarquee
 			//!!ER next if-else-endif
 			if(coloroptions==1)	// independently for xy, h, v images
 				if( showImgSlices)
-					Wavestats/Q h_img; dosetscale(himgCT, v_min, v_max, ctinvert)
-					wavestats/Q v_img; dosetscale(vimgCT, v_min, v_max, ctinvert)
+					Wavestats/Q h_img; IT_dosetScale(himgCT, v_min, v_max, ctinvert)
+					wavestats/Q v_img; IT_dosetScale(vimgCT, v_min, v_max, ctinvert)
 				endif
 				Wavestats/Q Image
 			else
@@ -3640,8 +3640,8 @@ Function IT_AdjustCT() 	//: GraphMarquee
 					//variable/G V_min, V_max
 					V_min=vol_dmin; V_max=vol_dmax
 					if (showImgSlices)
-						dosetscale( himgCT, V_min, V_max, ctinvert)
-						dosetscale( vimgCT, V_min, V_max, ctinvert)
+						IT_dosetScale( himgCT, V_min, V_max, ctinvert)
+						IT_dosetScale( vimgCT, V_min, V_max, ctinvert)
 					endif
 				else		//previous marquee value
 					Duplicate/O/R=(V_left,V_right)(V_bottom,V_top) Image, $(df+"imgtmp")
@@ -3677,7 +3677,7 @@ Function IT_AdjustCT() 	//: GraphMarquee
 	endif
 
 	dmin=V_min;  dmax=V_max
-	dosetscale( imageCT, V_min, V_max, CTinvert)
+	IT_dosetScale( imageCT, V_min, V_max, CTinvert)
 
 	SetDataFolder $curr
 End
@@ -3783,8 +3783,8 @@ Function IT_SelectCT(ctrlName,popNum,popStr) : PopupMenuControl
 			SetScale/I x dmin, dmax,"" imageCT
 		endif
 		if (showImgSlices*(ndim==3))
-			Wavestats/Q h_img;    dosetscale( himgCT, V_min, V_max, CTinvert)
-			Wavestats/Q v_img;    dosetscale( vimgCT, V_min, V_max, CTinvert)
+			Wavestats/Q h_img;    IT_dosetScale( himgCT, V_min, V_max, CTinvert)
+			Wavestats/Q v_img;    IT_dosetScale( vimgCT, V_min, V_max, CTinvert)
 		endif
 		//CTwriteNote( Image_CT, CTnam, gamma, CTinvert)  //or do at export only
 		break
@@ -3895,8 +3895,8 @@ Function IT_ExportStackFct(ctrlName) : ButtonControl
 		duplicate/o $tn $wn
 		WAVE wv=$wn
 		wv+=offset*ii
-		SetScale/P x xmin+shift*ii, xinc,"" wv
-		//SetScale/P x DimOffset($tn,0),DimDelta($tn,0),"" wv
+		SetScale/P x xmin+shift*ii, xinc, "", wv
+		//SetScale/P x DimOffset($tn,0), DimDelta($tn,0), "", wv
 		Write_Mod(wv, shift*ii, offset*ii, 1, 0, 0.5, 0, yval, shortimgn)
 		AppendToGraph wv
 		ii+=1
@@ -4269,7 +4269,6 @@ Proc IT_ShowWin(ctrlName) : ButtonControl
 			If (!stringmatch( IgorInfo(2), "Macintosh") )
 				//Display /W=(104,265,463,483)
 				// Windows: scale window width smaller by 72/96
-0.75
 				MoveWindow 100,265,100+(463-104)*0.7,483
 			endif
 		endif
@@ -4338,7 +4337,6 @@ Function IT_StackUpdate(ctrlName) : ButtonControl
 		If (!stringmatch( IgorInfo(2), "Macintosh") )
 			//Display /W=(219,250,540,600)
 			// Windows: scale window width smaller by 72/96
-0.75
 			MoveWindow 219,250,219+(540-219)*0.7,600
 		endif
 	endif
