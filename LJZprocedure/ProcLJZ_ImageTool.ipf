@@ -1521,6 +1521,7 @@ Function IT_SetProfiles()				//XY profiles
 	endif
 	string curr=GetDataFolder(1)
 	SetDataFolder $df
+		WAVE Image=Image
 		WAVE profileH=profileH, profileH_x=profileH_x
 		NVAR nx=nx, xmin=xmin, xmax=xmax, xinc=xinc
 		WAVE profileV=profileV,profileV_y=profileV_y
@@ -1702,6 +1703,7 @@ Function IT_ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 
 	SetDataFolder $df
 	WAVE Image=Image, Image_undo=Image_Undo
+	WAVE profileH=profileH, profileV_y=profileV_y
 	SVAR imgnam=imgnam, imgproc=imgproc, imgproc_undo=imgproc_undo
 	NVAR nx=nx, ny=ny, X0=X0, Y0=Y0
 	NVAR xmin=xmin, xmax=xmax, xinc=xinc, ymin=ymin, ymax=ymax, yinc=yinc
@@ -1922,6 +1924,7 @@ Function IT_ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		//Cursor/P B, profileV_y, x2pnt( Image, y2)
 
 		make/o/n=(nx) xtmp
+		WAVE xtmp=xtmp
 		SetScale/P x xmin, xinc, "", xtmp
 		// different methods of normalizing? NormImg in image_util??
 		xtmp = IT_AREA2D( Image, 1, y1, y2, x )
@@ -1966,6 +1969,7 @@ Function IT_ImgModify(ctrlName, popNum,popStr) : PopupMenuControl
 		Cursor/P B, profileH, x2pnt( Image, x2)
 
 		make/o/n=(ny) ytmp
+		WAVE ytmp=ytmp
 		SetScale/P x ymin, yinc, "", ytmp
 		ytmp = IT_AREA2D( Image, 0, x1, x2, x )
 		Variable badNormY = 0
@@ -2862,11 +2866,21 @@ Function IT_ImgAnalyze(ctrlName, popNum,popStr) : PopupMenuControl
 
 	PauseUpdate; Silent 1
 	string df=IT_getdf(), curr=GetDataFolder(1)
+	if (!DataFolderExists(df))
+		DoAlert 0, "ImageTool: active data folder not found."
+		return -1
+	endif
 	string opt, cmd, xrng
 	SetDataFolder $df
+	WAVE Image=Image
+	WAVE profileH=profileH
+	WAVE profileH_x=profileH_x
+	WAVE profileV=profileV
+	WAVE profileV_y=profileV_y
 //	SVAR imgnam=imgnam, imgproc=imgproc, imgproc_undo=imgproc_undo
 	NVAR nx=nx, xmin=xmin, xinc=xinc
 	NVAR ny=ny, ymin=ymin, yinc=yinc
+	SetDataFolder $curr
 
 //	Duplicate/o Image Image_Undo
 //	imgproc_undo=imgproc
@@ -2907,8 +2921,8 @@ Function IT_ImgAnalyze(ctrlName, popNum,popStr) : PopupMenuControl
 		SetDataFolder $curr
 		//areaXn="root:"+areaXn
 		make/o/n=(ny) $areaXn
-		SetScale/P x ymin, yinc, "", $areaXn
 		WAVE areaXw=$areaXn
+		SetScale/P x ymin, yinc, "", areaXw
 		areaXw = IT_AREA2D( $(df+"Image"),  0, x1,  x2, x )
 
 		DoWindow/F Area_
